@@ -36,18 +36,21 @@ async def set_rls_context(
     owner_account_id: UUID | None = None,
     role: str | None = None,
 ) -> None:
-    """Set transaction-local GUCs used by RLS policies. Must be called inside a transaction."""
+    """Set transaction-local GUCs used by RLS policies. Must be called inside a transaction.
+
+    One statement (one DB round trip) instead of three — matters when the DB is remote.
+    """
     await session.execute(
-        text("SELECT set_config('app.current_user_id', :uid, true)"),
-        {"uid": str(user_id) if user_id else ""},
-    )
-    await session.execute(
-        text("SELECT set_config('app.current_owner_id', :oid, true)"),
-        {"oid": str(owner_account_id) if owner_account_id else ""},
-    )
-    await session.execute(
-        text("SELECT set_config('app.current_role', :role, true)"),
-        {"role": role or ""},
+        text(
+            "SELECT set_config('app.current_user_id', :uid, true),"
+            " set_config('app.current_owner_id', :oid, true),"
+            " set_config('app.current_role', :role, true)"
+        ),
+        {
+            "uid": str(user_id) if user_id else "",
+            "oid": str(owner_account_id) if owner_account_id else "",
+            "role": role or "",
+        },
     )
 
 
