@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { ScrollView, StyleSheet, View, ViewStyle } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Edge, SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, space } from "../../theme/tokens";
 
@@ -8,9 +8,11 @@ type Props = {
   children: ReactNode;
   scroll?: boolean;
   style?: ViewStyle;
+  /** Navigation headers/tab bars already pad top/bottom; pass "top" only on header-less screens. */
+  edges?: Edge[];
 };
 
-export function Screen({ children, scroll, style }: Props) {
+export function Screen({ children, scroll, style, edges = ["left", "right"] }: Props) {
   const body = scroll ? (
     <ScrollView contentContainerStyle={[styles.content, style]} keyboardShouldPersistTaps="handled">
       {children}
@@ -20,7 +22,7 @@ export function Screen({ children, scroll, style }: Props) {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right", "bottom"]}>
+    <SafeAreaView style={styles.safe} edges={edges}>
       {body}
     </SafeAreaView>
   );

@@ -15,7 +15,7 @@ export default function FarmersScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.title}>Farmers</Text>
+        <Text style={styles.count}>{farmers.data ? `${farmers.data.length} farmer${farmers.data.length === 1 ? "" : "s"}` : ""}</Text>
         <Button label="Add" onPress={() => router.push("/(app)/farmers/create")} />
       </View>
       {farmers.isError ? <Text style={styles.error}>Failed to load (need farmer.manage)</Text> : null}
@@ -42,7 +42,7 @@ export default function FarmersScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space.sm },
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand, flex: 1 },
+  count: { fontSize: 14, fontWeight: "600", color: colors.inkMuted, flex: 1 },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.lg,

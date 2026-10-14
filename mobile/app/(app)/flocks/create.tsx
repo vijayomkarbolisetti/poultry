@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { z } from "zod";
 
 import { createFlock } from "../../../src/api/flocks";
+import { describeApiError } from "../../../src/api/client";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
@@ -57,11 +58,11 @@ export default function CreateFlockScreen() {
         breed: values.breed || undefined,
         unbanded_count: mode === "individual" ? 0 : count,
       });
-      await qc.invalidateQueries({ queryKey: ["flocks", ownerAccountId] });
-      await qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["flocks", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
       router.replace(`/(app)/flocks/${flock.id}`);
     } catch (e: unknown) {
-      setError(String((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed"));
+      setError(describeApiError(e, "create the flock"));
     } finally {
       setLoading(false);
     }
@@ -69,7 +70,6 @@ export default function CreateFlockScreen() {
 
   return (
     <Screen scroll>
-      <Text style={styles.title}>Onboard flock</Text>
       <Text style={styles.section}>Shed</Text>
       {(sheds.data ?? []).map((s) => (
         <Pressable key={s.id} style={[styles.chip, shedId === s.id && styles.chipOn]} onPress={() => setShedId(s.id)}>

@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
@@ -51,6 +51,43 @@ export const api = axios.create({
   // Render free instances sleep when idle (~30-50s cold start) and hash passwords slowly on 0.1 CPU.
   timeout: 90000,
   headers: { "Content-Type": "application/json" },
+});
+
+// Access tokens expire after 15 min. On a 401, swap the refresh token for a new pair once and retry.
+// Refresh tokens rotate, so concurrent 401s must share a single refresh call.
+let refreshing: Promise<string | null> | null = null;
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refresh = await tokenStore.getRefresh();
+  if (!refresh) return null;
+  try {
+    const { data } = await axios.post<{ access_token: string; refresh_token: string }>(
+      `${API_URL}/api/v1/auth/refresh`,
+      { refresh_token: refresh },
+      { timeout: 90000 },
+    );
+    await tokenStore.setTokens(data.access_token, data.refresh_token);
+    return data.access_token;
+  } catch {
+    await tokenStore.clear();
+    return null;
+  }
+}
+
+api.interceptors.response.use(undefined, async (error: AxiosError) => {
+  const original = error.config as (InternalAxiosRequestConfig & { _retried?: boolean }) | undefined;
+  const isAuthCall = /^\/auth\/(login|register-owner|refresh|logout)/.test(original?.url ?? "");
+  if (error.response?.status !== 401 || !original || original._retried || isAuthCall) {
+    throw error;
+  }
+  original._retried = true;
+  refreshing ??= refreshAccessToken().finally(() => {
+    refreshing = null;
+  });
+  const access = await refreshing;
+  if (!access) throw error;
+  original.headers.Authorization = `Bearer ${access}`;
+  return api(original);
 });
 
 api.interceptors.request.use(async (config) => {

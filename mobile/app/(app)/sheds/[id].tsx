@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { listFarmers } from "../../../src/api/farmers";
+import { describeApiError } from "../../../src/api/client";
 import { assignFarmer, getShed, listAssignments } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
@@ -37,10 +38,10 @@ export default function ShedDetailScreen() {
     setError(null);
     try {
       await assignFarmer(id!, { owner_membership_id: membershipId, is_manager: true });
-      await qc.invalidateQueries({ queryKey: ["shed-assignments", id] });
-      await qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["shed-assignments", id] });
+      void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
     } catch (e: unknown) {
-      setError(String((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Assign failed"));
+      setError(describeApiError(e, "assign the farmer"));
     } finally {
       setBusy(null);
     }
@@ -50,6 +51,9 @@ export default function ShedDetailScreen() {
   if (shed.isError || !shed.data) return <Screen><Text style={styles.error}>Shed not found or access denied</Text></Screen>;
 
   const assignedIds = new Set((assignments.data ?? []).map((a) => a.owner_membership_id));
+  const unassigned = (farmers.data ?? []).filter(
+    (f) => f.is_active && f.role === "farmer" && !assignedIds.has(f.membership_id),
+  );
 
   return (
     <Screen scroll>
@@ -73,8 +77,12 @@ export default function ShedDetailScreen() {
       {canManage ? (
         <>
           <Text style={styles.section}>Assign farmer</Text>
-          {(farmers.data ?? [])
-            .filter((f) => f.is_active && f.role === "farmer" && !assignedIds.has(f.membership_id))
+          {farmers.data && unassigned.length === 0 ? (
+            <Text style={styles.meta}>
+              No farmers available. Add farmers from Home → Farmers, then assign them here.
+            </Text>
+          ) : null}
+          {unassigned
             .map((f) => (
               <View key={f.membership_id} style={styles.card}>
                 <Text style={styles.cardTitle}>{f.full_name}</Text>

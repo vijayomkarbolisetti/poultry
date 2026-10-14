@@ -15,7 +15,7 @@ export default function FlocksScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.title}>Flocks</Text>
+        <Text style={styles.count}>{flocks.data ? `${flocks.data.length} flock${flocks.data.length === 1 ? "" : "s"}` : ""}</Text>
         <Button label="Onboard" onPress={() => router.push("/(app)/flocks/create")} />
       </View>
       {flocks.isError ? <Text style={styles.error}>Failed to load flocks</Text> : null}
@@ -40,7 +40,7 @@ export default function FlocksScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  title: { flex: 1, fontSize: 22, fontWeight: "800", color: colors.brand },
+  count: { fontSize: 14, fontWeight: "600", color: colors.inkMuted, flex: 1 },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.lg,

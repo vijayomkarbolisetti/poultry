@@ -7,6 +7,7 @@ import { StyleSheet, Text, Switch, View } from "react-native";
 import { z } from "zod";
 
 import { createShed } from "../../../src/api/sheds";
+import { describeApiError } from "../../../src/api/client";
 import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
 import { TextField } from "../../../src/components/ui/TextField";
@@ -42,12 +43,11 @@ export default function CreateShedScreen() {
         location_notes: values.location_notes || undefined,
         is_owner_managed: ownerManaged,
       });
-      await qc.invalidateQueries({ queryKey: ["sheds", ownerAccountId] });
-      await qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["sheds", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
       router.replace(`/(app)/sheds/${shed.id}`);
     } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Create failed";
-      setError(String(msg));
+      setError(describeApiError(e, "create the shed"));
     } finally {
       setLoading(false);
     }
@@ -55,13 +55,17 @@ export default function CreateShedScreen() {
 
   return (
     <Screen scroll>
-      <Text style={styles.title}>New shed</Text>
       <TextField control={control} name="name" label="Shed name" placeholder="North Barn" autoCapitalize="words" />
       <TextField control={control} name="code" label="Code" placeholder="N1" autoCapitalize="characters" />
       <TextField control={control} name="location_notes" label="Location / notes" placeholder="Optional" autoCapitalize="sentences" />
       <View style={styles.row}>
         <Text style={styles.switchLabel}>Owner-managed</Text>
-        <Switch value={ownerManaged} onValueChange={setOwnerManaged} />
+        <Switch
+          value={ownerManaged}
+          onValueChange={setOwnerManaged}
+          trackColor={{ true: colors.brandSoft, false: colors.border }}
+          thumbColor={ownerManaged ? colors.brand : "#f4f4f4"}
+        />
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button label="Create shed" onPress={onSubmit} loading={loading} />

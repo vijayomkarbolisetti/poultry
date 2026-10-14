@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { z } from "zod";
 
 import { createFarmer } from "../../../src/api/farmers";
+import { describeApiError } from "../../../src/api/client";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
@@ -66,11 +67,11 @@ export default function CreateFarmerScreen() {
         permission_codes: perms,
         shed_ids: selectedSheds,
       });
-      await qc.invalidateQueries({ queryKey: ["farmers", ownerAccountId] });
-      await qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["farmers", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
       router.replace("/(app)/farmers/index");
     } catch (e: unknown) {
-      setError(String((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed"));
+      setError(describeApiError(e, "add the farmer"));
     } finally {
       setLoading(false);
     }
@@ -78,7 +79,6 @@ export default function CreateFarmerScreen() {
 
   return (
     <Screen scroll>
-      <Text style={styles.title}>Add farmer</Text>
       <TextField control={control} name="full_name" label="Full name" autoCapitalize="words" />
       <TextField control={control} name="email" label="Email" keyboardType="email-address" />
       <TextField control={control} name="password" label="Temp password" secureTextEntry />

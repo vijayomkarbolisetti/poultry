@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { bulkImportBirds, createBird, getFlock, listBirds, recordLifecycle } from "../../../src/api/flocks";
+import { describeApiError } from "../../../src/api/client";
 import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -21,10 +22,10 @@ export default function FlockDetailScreen() {
   const [busy, setBusy] = useState(false);
 
   const refresh = async () => {
-    await qc.invalidateQueries({ queryKey: ["flock", id] });
-    await qc.invalidateQueries({ queryKey: ["birds", id] });
-    await qc.invalidateQueries({ queryKey: ["flocks", ownerAccountId] });
-    await qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+    void qc.invalidateQueries({ queryKey: ["flock", id] });
+    void qc.invalidateQueries({ queryKey: ["birds", id] });
+    void qc.invalidateQueries({ queryKey: ["flocks", ownerAccountId] });
+    void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
   };
 
   const onAddBird = async () => {
@@ -36,7 +37,7 @@ export default function FlockDetailScreen() {
       await refresh();
       setMsg("Bird added");
     } catch (e: unknown) {
-      setMsg(String((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed"));
+      setMsg(describeApiError(e, "save"));
     } finally {
       setBusy(false);
     }
@@ -59,7 +60,7 @@ export default function FlockDetailScreen() {
       await refresh();
       setMsg(`Bulk: created ${result.created}, failed ${result.failed}`);
     } catch (e: unknown) {
-      setMsg(String((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Bulk failed"));
+      setMsg(describeApiError(e, "import birds"));
     } finally {
       setBusy(false);
     }

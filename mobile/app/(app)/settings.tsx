@@ -16,7 +16,6 @@ export default function SettingsScreen() {
 
   return (
     <Screen scroll>
-      <Text style={styles.title}>Account</Text>
       <View style={styles.card}>
         <Text style={styles.label}>Name</Text>
         <Text style={styles.value}>{user?.full_name}</Text>

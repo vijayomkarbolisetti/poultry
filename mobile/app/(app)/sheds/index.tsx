@@ -18,7 +18,7 @@ export default function ShedsScreen() {
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.title}>Sheds</Text>
+        <Text style={styles.count}>{sheds.data ? `${sheds.data.length} shed${sheds.data.length === 1 ? "" : "s"}` : ""}</Text>
         {canCreate ? <Button label="Add shed" onPress={() => router.push("/(app)/sheds/create")} /> : null}
       </View>
 
@@ -53,7 +53,7 @@ export default function ShedsScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space.sm },
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand, flex: 1 },
+  count: { fontSize: 14, fontWeight: "600", color: colors.inkMuted, flex: 1 },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.lg,

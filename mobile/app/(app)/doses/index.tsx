@@ -3,6 +3,7 @@ import { useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import { listFlocks } from "../../../src/api/flocks";
+import { describeApiError } from "../../../src/api/client";
 import {
   fetchCompliance,
   generateNotifications,
@@ -30,10 +31,10 @@ export default function DosesScreen() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const refresh = async () => {
-    await qc.invalidateQueries({ queryKey: ["doses", ownerAccountId] });
-    await qc.invalidateQueries({ queryKey: ["compliance", ownerAccountId] });
-    await qc.invalidateQueries({ queryKey: ["notifications", ownerAccountId] });
-    await qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+    void qc.invalidateQueries({ queryKey: ["doses", ownerAccountId] });
+    void qc.invalidateQueries({ queryKey: ["compliance", ownerAccountId] });
+    void qc.invalidateQueries({ queryKey: ["notifications", ownerAccountId] });
+    void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
   };
 
   const onGenerate = async () => {
@@ -51,7 +52,7 @@ export default function DosesScreen() {
       await refresh();
       setMsg("Schedules + alerts generated for first flock");
     } catch (e: unknown) {
-      setMsg(String((e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Failed"));
+      setMsg(describeApiError(e, "save"));
     } finally {
       setBusy(false);
     }
@@ -76,7 +77,6 @@ export default function DosesScreen() {
 
   return (
     <Screen>
-      <Text style={styles.title}>Doses & compliance</Text>
       <View style={styles.card}>
         <Text style={styles.meta}>
           On-time {c?.on_time ?? "—"} · Late {c?.late ?? "—"} · Overdue {c?.overdue ?? "—"} · Due today {c?.due_today ?? "—"}
