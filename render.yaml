@@ -1,0 +1,28 @@
+# Render Blueprint — backend API only (database is on Neon).
+# Render dashboard → New → Blueprint → pick this repo.
+services:
+  - type: web
+    name: poultry-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    # Free plan has no pre-deploy step, so migrations run on start (alembic is a no-op when up to date).
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.1
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false # paste the Neon connection string when Render asks
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: MEDIA_ENABLED
+        value: "false"

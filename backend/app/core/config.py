@@ -1,6 +1,22 @@
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _with_driver(url: str, driver: str) -> str:
+    """Normalize a Postgres URL (e.g. Neon's `postgresql://...?sslmode=require`) for a SQLAlchemy driver."""
+    parts = urlsplit(url)
+    if not parts.scheme.startswith("postgres"):
+        return url
+    query = dict(parse_qsl(parts.query))
+    query.pop("channel_binding", None)  # not understood by asyncpg/psycopg2 URL parsing
+    if driver == "asyncpg" and "sslmode" in query:
+        query["ssl"] = query.pop("sslmode")
+    elif driver == "psycopg2" and "ssl" in query:
+        query["sslmode"] = query.pop("ssl")
+    return urlunsplit(parts._replace(scheme=f"postgresql+{driver}", query=urlencode(query)))
 
 
 class Settings(BaseSettings):
@@ -28,6 +44,18 @@ class Settings(BaseSettings):
     cloudinary_api_key: str | None = None
     cloudinary_api_secret: str | None = None
     media_enabled: bool = False
+
+    @model_validator(mode="after")
+    def _normalize_database_urls(self) -> "Settings":
+        # Hosted Postgres (Neon/Render) provides one plain URL; derive the sync URL from it unless set explicitly.
+        if "database_url_sync" not in self.model_fields_set:
+            self.database_url_sync = _with_driver(self.database_url, "psycopg2")
+        else:
+            self.database_url_sync = _with_driver(self.database_url_sync, "psycopg2")
+        self.database_url = _with_driver(self.database_url, "asyncpg")
+        if self.app_database_url:
+            self.app_database_url = _with_driver(self.app_database_url, "asyncpg")
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
