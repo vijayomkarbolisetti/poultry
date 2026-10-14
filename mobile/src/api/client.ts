@@ -31,9 +31,25 @@ export const tokenStore = {
   },
 };
 
+/** Turn an API failure into a user-facing message (free-tier hosting can be slow to wake up). */
+export function describeApiError(e: unknown, action: string): string {
+  const err = e as { code?: string; response?: { status?: number; data?: { detail?: unknown } } };
+  const detail = err.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) return `Could not ${action}. Please check the details you entered.`;
+  if (err.code === "ECONNABORTED") {
+    return `The server is taking too long (it may be waking up). Please wait a minute and try again.`;
+  }
+  if (err.response?.status && err.response.status >= 500) {
+    return `Could not ${action}: server error (${err.response.status}). Please try again.`;
+  }
+  return `Could not ${action}. Check your internet connection and try again.`;
+}
+
 export const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
-  timeout: 20000,
+  // Render free instances sleep when idle (~30-50s cold start) and hash passwords slowly on 0.1 CPU.
+  timeout: 90000,
   headers: { "Content-Type": "application/json" },
 });
 

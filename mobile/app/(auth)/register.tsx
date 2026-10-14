@@ -6,7 +6,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { z } from "zod";
 
 import { registerOwner } from "../../src/api/auth";
-import { API_URL } from "../../src/api/client";
+import { describeApiError } from "../../src/api/client";
 import { Button } from "../../src/components/ui/Button";
 import { Screen } from "../../src/components/ui/Screen";
 import { TextField } from "../../src/components/ui/TextField";
@@ -39,10 +39,7 @@ export default function RegisterScreen() {
       await refreshSession();
       router.replace("/(app)/home");
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
-        `Could not register. Is the API running at ${API_URL}?`;
-      setError(String(msg));
+      setError(describeApiError(e, "register"));
     } finally {
       setLoading(false);
     }
