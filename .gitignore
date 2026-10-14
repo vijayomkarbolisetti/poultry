@@ -1,0 +1,50 @@
+# Secrets & env
+.env
+.env.*
+!.env.example
+**/secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+dist/
+build/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local data
+*.sqlite3
+postgres-data/
+
+# Scratch / tooling
+mobile-tmp/
+.claude/
+**/.claude/
+expo-env.d.ts
+*.tsbuildinfo
+.metro-health-check*
+/mobile/ios
+/mobile/android
