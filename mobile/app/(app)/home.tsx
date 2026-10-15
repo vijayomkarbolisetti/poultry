@@ -2,11 +2,13 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { Href, router } from "expo-router";
 import { ComponentProps } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { fetchDashboard } from "../../src/api/dashboard";
 import { Screen } from "../../src/components/ui/Screen";
 import { useAuth } from "../../src/features/auth/AuthContext";
+import { hasPermission } from "../../src/features/auth/permissions";
+import { media } from "../../src/theme/media";
 import { colors, radius, shadow, space } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -58,7 +60,11 @@ export default function HomeScreen() {
   const { user, ownerAccountId } = useAuth();
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
-  const isOwnerLike = membership?.role === "owner" || membership?.role === "org_admin";
+  const canSheds = hasPermission(user, ownerAccountId, "shed.view");
+  const canBirds = hasPermission(user, ownerAccountId, "flock.view");
+  const canTasks = hasPermission(user, ownerAccountId, "vaccination.view");
+  const canVaccines = hasPermission(user, ownerAccountId, "schedule.view");
+  const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
   const dash = useQuery({
     queryKey: ["dashboard", ownerAccountId],
     queryFn: fetchDashboard,
@@ -80,23 +86,25 @@ export default function HomeScreen() {
           <RefreshControl refreshing={dash.isRefetching} onRefresh={() => dash.refetch()} tintColor={colors.brand} />
         }
       >
-        <View style={styles.hero}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.brandMark}>PoultryTrack</Text>
-            <Text style={styles.hello}>Hello, {firstName}</Text>
-            <Text style={styles.org} numberOfLines={1}>
-              {membership?.organization_name ?? "Your farm"}
-            </Text>
+        <ImageBackground source={{ uri: media.farmMorning }} style={styles.hero} imageStyle={styles.heroImg}>
+          <View style={styles.heroScrim}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.brandMark}>PoultryTrack</Text>
+              <Text style={styles.hello}>Hello, {firstName}</Text>
+              <Text style={styles.org} numberOfLines={1}>
+                {membership?.organization_name ?? "Your farm"} · healthy hens
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Account"
+              onPress={() => router.push("/(app)/settings")}
+              style={styles.avatar}
+            >
+              <Ionicons name="person" size={22} color={colors.brand} />
+            </Pressable>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Account"
-            onPress={() => router.push("/(app)/settings")}
-            style={styles.avatar}
-          >
-            <Ionicons name="person" size={22} color={colors.brand} />
-          </Pressable>
-        </View>
+        </ImageBackground>
 
         <View style={styles.body}>
           {dash.isError ? (
@@ -123,11 +131,14 @@ export default function HomeScreen() {
           </View>
 
           <Text style={styles.section}>Quick links</Text>
-          <QuickLink label="Vaccination tasks" icon="checkbox-outline" href="/(app)/doses" />
-          <QuickLink label="Manage sheds" icon="business-outline" href="/(app)/sheds" />
-          <QuickLink label="Birds & flocks" icon="egg-outline" href="/(app)/flocks" />
-          <QuickLink label="Vaccine catalogue" icon="medkit-outline" href="/(app)/vaccines" />
-          {isOwnerLike ? <QuickLink label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
+          {canTasks ? <QuickLink label="Vaccination tasks" icon="checkbox-outline" href="/(app)/doses" /> : null}
+          {canSheds ? <QuickLink label="Manage sheds" icon="business-outline" href="/(app)/sheds" /> : null}
+          {canBirds ? <QuickLink label="Birds & flocks" icon="egg-outline" href="/(app)/flocks" /> : null}
+          {canVaccines ? <QuickLink label="Vaccine catalogue" icon="medkit-outline" href="/(app)/vaccines" /> : null}
+          {canFarmers ? <QuickLink label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
+          {!canTasks && !canSheds && !canBirds && !canVaccines && !canFarmers ? (
+            <Text style={styles.muted}>No modules granted yet. Ask your farm owner for permissions.</Text>
+          ) : null}
         </View>
       </ScrollView>
     </Screen>
@@ -146,12 +157,18 @@ function Row({ label, value, last }: { label: string; value: number | string; la
 const styles = StyleSheet.create({
   scroll: { paddingBottom: space.xl },
   hero: {
-    backgroundColor: colors.brand,
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
+    overflow: "hidden",
+    minHeight: 150,
+  },
+  heroImg: { borderBottomLeftRadius: radius.lg, borderBottomRightRadius: radius.lg },
+  heroScrim: {
+    flex: 1,
+    backgroundColor: "rgba(8,40,24,0.72)",
     paddingHorizontal: space.lg,
     paddingTop: space.lg,
     paddingBottom: space.xl,
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
     flexDirection: "row",
     alignItems: "center",
     gap: space.md,
@@ -229,4 +246,5 @@ const styles = StyleSheet.create({
     padding: space.md,
   },
   errorText: { color: colors.danger, fontWeight: "600", flex: 1 },
+  muted: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
 });

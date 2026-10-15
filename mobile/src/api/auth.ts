@@ -6,6 +6,7 @@ export type Membership = {
   role: "owner" | "org_admin" | "farmer" | "read_only";
   is_active: boolean;
   organization_name: string | null;
+  permission_codes?: string[];
 };
 
 export type UserMe = {

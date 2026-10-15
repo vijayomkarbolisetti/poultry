@@ -30,6 +30,8 @@ class MembershipOut(BaseModel):
     role: MembershipRole
     is_active: bool
     organization_name: str | None = None
+    # Explicit grants for farmers/org_admins. Owners ignore this (full access).
+    permission_codes: list[str] = []
 
 
 class UserOut(BaseModel):

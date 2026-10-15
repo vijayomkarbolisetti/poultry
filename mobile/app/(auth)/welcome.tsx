@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { warmApi } from "../../src/api/auth";
 import { Button } from "../../src/components/ui/Button";
+import { media } from "../../src/theme/media";
 import { colors, space } from "../../src/theme/tokens";
 
 export default function WelcomeScreen() {
@@ -14,26 +15,24 @@ export default function WelcomeScreen() {
 
   return (
     <View style={styles.root}>
-      <ImageBackground
-        source={{
-          uri: "https://images.unsplash.com/photo-1548550023-2bdb3c5beed7?auto=format&fit=crop&w=1200&q=80",
-        }}
-        style={styles.bg}
-        resizeMode="cover"
-      >
+      <ImageBackground source={{ uri: media.welcomeHen }} style={styles.bg} resizeMode="cover">
         <View style={styles.scrim}>
           <SafeAreaView style={styles.safe} edges={["top", "bottom", "left", "right"]}>
             <View style={styles.top}>
               <View style={styles.logoMark}>
                 <Text style={styles.logoMarkText}>PT</Text>
               </View>
-              <Text style={styles.brand}>PoultryTrack</Text>
+              <View>
+                <Text style={styles.brand}>PoultryTrack</Text>
+                <Text style={styles.brandSub}>Farm health, made simple</Text>
+              </View>
             </View>
 
             <View style={styles.bottom}>
-              <Text style={styles.tagline}>Healthy Birds.{"\n"}Better Farms.</Text>
+              <Text style={styles.eyebrow}>FOR MODERN POULTRY FARMS</Text>
+              <Text style={styles.tagline}>Healthy Hens.{"\n"}Better Harvest.</Text>
               <Text style={styles.sub}>
-                Track sheds, flocks, and vaccinations — on time, every cycle.
+                Beautiful tools to track sheds, flocks, and vaccination tasks — so every bird stays on schedule.
               </Text>
               <Button label="Get Started" onPress={() => router.push("/(auth)/login")} />
               <Button
@@ -52,20 +51,27 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.brandDark },
   bg: { flex: 1 },
-  scrim: { flex: 1, backgroundColor: "rgba(8,40,24,0.72)" },
+  scrim: { flex: 1, backgroundColor: "rgba(6,28,16,0.58)" },
   safe: { flex: 1, justifyContent: "space-between", padding: space.lg },
   top: { flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: space.md },
   logoMark: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     backgroundColor: colors.brand,
     alignItems: "center",
     justifyContent: "center",
   },
   logoMarkText: { color: "#fff", fontWeight: "800", fontSize: 16 },
   brand: { color: "#fff", fontSize: 22, fontWeight: "800" },
+  brandSub: { color: "#C8E0D1", fontSize: 12, fontWeight: "600" },
   bottom: { gap: space.md, paddingBottom: space.md },
-  tagline: { color: "#fff", fontSize: 36, fontWeight: "800", lineHeight: 42, letterSpacing: -0.8 },
+  eyebrow: {
+    color: "#9FD4B4",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 1.2,
+  },
+  tagline: { color: "#fff", fontSize: 38, fontWeight: "800", lineHeight: 44, letterSpacing: -0.8 },
   sub: { color: "#D5E8DC", fontSize: 16, lineHeight: 24, marginBottom: space.sm },
 });

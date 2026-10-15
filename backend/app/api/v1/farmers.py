@@ -12,6 +12,7 @@ from app.schemas.farmer import (
     FarmerUpdate,
     PermissionOut,
     PermissionsUpdate,
+    ShedAssignmentsUpdate,
 )
 from app.services import farmer_service
 
@@ -96,6 +97,20 @@ async def set_permissions(
 ) -> FarmerOut:
     try:
         data = await farmer_service.set_permissions(db, ctx, membership_id, body.permission_codes)
+    except farmer_service.FarmerError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    return FarmerOut.model_validate(data)
+
+
+@router.put("/{membership_id}/sheds", response_model=FarmerOut)
+async def set_sheds(
+    membership_id: UUID,
+    body: ShedAssignmentsUpdate,
+    ctx: AuthContext = Depends(require_permission("farmer.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> FarmerOut:
+    try:
+        data = await farmer_service.set_shed_assignments(db, ctx, membership_id, body.shed_ids)
     except farmer_service.FarmerError as exc:
         raise HTTPException(status_code=400, detail=exc.message) from exc
     return FarmerOut.model_validate(data)

@@ -6,17 +6,19 @@ import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-na
 
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
+import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
-import { colors, radius, shadow, space } from "../../../src/theme/tokens";
+import { hasPermission } from "../../../src/features/auth/permissions";
+import { media } from "../../../src/theme/media";
+import { colors, radius, space } from "../../../src/theme/tokens";
 
 type Filter = "all" | "owner" | "farmer";
 
 export default function ShedsScreen() {
   const { user, ownerAccountId } = useAuth();
-  const membership =
-    user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
-  const canCreate = membership?.role === "owner";
+  const canCreate = hasPermission(user, ownerAccountId, "shed.create");
   const sheds = useQuery({ queryKey: ["sheds", ownerAccountId], queryFn: listSheds });
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -34,6 +36,9 @@ export default function ShedsScreen() {
 
   return (
     <Screen style={{ paddingTop: space.md }}>
+      <Text style={styles.title}>Sheds</Text>
+      <Text style={styles.sub}>Where your hens live — search and filter below</Text>
+
       <View style={styles.searchWrap}>
         <Ionicons name="search-outline" size={18} color={colors.inkMuted} />
         <TextInput
@@ -53,19 +58,13 @@ export default function ShedsScreen() {
             ["farmer", "Farmer"],
           ] as const
         ).map(([key, label]) => (
-          <Pressable
-            key={key}
-            onPress={() => setFilter(key)}
-            style={[styles.tab, filter === key && styles.tabOn]}
-          >
+          <Pressable key={key} onPress={() => setFilter(key)} style={[styles.tab, filter === key && styles.tabOn]}>
             <Text style={[styles.tabLabel, filter === key && styles.tabLabelOn]}>{label}</Text>
           </Pressable>
         ))}
       </View>
 
       {canCreate ? <Button label="Add shed" onPress={() => router.push("/(app)/sheds/create")} /> : null}
-
-      {sheds.isLoading ? <Text style={styles.meta}>Loading…</Text> : null}
       {sheds.isError ? <Text style={styles.error}>Failed to load sheds</Text> : null}
 
       <FlatList
@@ -74,28 +73,29 @@ export default function ShedsScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
         ListEmptyComponent={
-          !sheds.isLoading ? <Text style={styles.meta}>No sheds yet. Create one to get started.</Text> : null
+          sheds.isLoading ? (
+            <Text style={styles.meta}>Loading…</Text>
+          ) : (
+            <EmptyState
+              title="No sheds yet"
+              body="Create a shed to house flocks and assign farmers."
+              imageUri={media.shedYard}
+              actionLabel={canCreate ? "Add first shed" : undefined}
+              onAction={canCreate ? () => router.push("/(app)/sheds/create") : undefined}
+            />
+          )
         }
         renderItem={({ item }) => (
-          <Pressable
-            style={({ pressed }) => [styles.card, shadow.card, pressed && { opacity: 0.9 }]}
+          <MediaCard
+            title={item.name}
+            subtitle={item.code}
+            meta={item.is_owner_managed ? "Owner-managed" : "Farmer-managed"}
+            imageUri={media.shedYard}
+            icon="business"
+            badge={item.is_active ? "Active" : "Inactive"}
+            badgeTone={item.is_active ? "good" : "neutral"}
             onPress={() => router.push(`/(app)/sheds/${item.id}`)}
-          >
-            <View style={styles.thumb}>
-              <Ionicons name="business" size={22} color={colors.brand} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.meta}>
-                {item.code} · {item.is_owner_managed ? "Owner-managed" : "Farmer-managed"}
-              </Text>
-            </View>
-            <View style={[styles.badge, item.is_active ? styles.badgeOn : styles.badgeOff]}>
-              <Text style={[styles.badgeText, item.is_active ? styles.badgeTextOn : null]}>
-                {item.is_active ? "Active" : "Inactive"}
-              </Text>
-            </View>
-          </Pressable>
+          />
         )}
       />
     </Screen>
@@ -103,6 +103,8 @@ export default function ShedsScreen() {
 }
 
 const styles = StyleSheet.create({
+  title: { fontSize: 22, fontWeight: "800", color: colors.brand },
+  sub: { color: colors.inkMuted, fontSize: 13, marginTop: -space.sm },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -127,30 +129,6 @@ const styles = StyleSheet.create({
   tabOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   tabLabel: { fontWeight: "700", color: colors.inkMuted, fontSize: 13 },
   tabLabelOn: { color: "#fff" },
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: space.md,
-    backgroundColor: colors.bgElevated,
-    borderRadius: radius.lg,
-    padding: space.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  thumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: colors.brandSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  name: { fontSize: 16, fontWeight: "800", color: colors.ink },
-  meta: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
-  badgeOn: { backgroundColor: colors.brandSoft },
-  badgeOff: { backgroundColor: "#F0F0F0" },
-  badgeText: { fontSize: 11, fontWeight: "800", color: colors.inkMuted },
-  badgeTextOn: { color: colors.brand },
+  meta: { fontSize: 13, color: colors.inkMuted },
   error: { color: colors.danger },
 });

@@ -45,6 +45,11 @@ export async function setFarmerPermissions(membershipId: string, permission_code
   return data;
 }
 
+export async function setFarmerSheds(membershipId: string, shed_ids: string[]): Promise<Farmer> {
+  const { data } = await api.put<Farmer>(`/farmers/${membershipId}/sheds`, { shed_ids });
+  return data;
+}
+
 export async function listPermissions(): Promise<Permission[]> {
   const { data } = await api.get<Permission[]>("/farmers/permissions");
   return data;

@@ -1,39 +1,60 @@
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import { listFarmers } from "../../../src/api/farmers";
 import { Button } from "../../../src/components/ui/Button";
+import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
-import { colors, radius, space } from "../../../src/theme/tokens";
+import { media } from "../../../src/theme/media";
+import { colors, space } from "../../../src/theme/tokens";
 
 export default function FarmersScreen() {
   const { ownerAccountId } = useAuth();
   const farmers = useQuery({ queryKey: ["farmers", ownerAccountId], queryFn: listFarmers });
 
   return (
-    <Screen>
+    <Screen style={{ paddingTop: space.md }}>
       <View style={styles.header}>
-        <Text style={styles.count}>{farmers.data ? `${farmers.data.length} farmer${farmers.data.length === 1 ? "" : "s"}` : ""}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Farm team</Text>
+          <Text style={styles.sub}>Invite farmers and control what they can see</Text>
+        </View>
         <Button label="Add" onPress={() => router.push("/(app)/farmers/create")} />
       </View>
-      {farmers.isError ? <Text style={styles.error}>Failed to load (need farmer.manage)</Text> : null}
+
+      {farmers.isError ? <Text style={styles.error}>Need farmer manage permission</Text> : null}
+
       <FlatList
+        style={{ flex: 1 }}
         data={farmers.data ?? []}
         keyExtractor={(item) => item.membership_id}
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
-        ListEmptyComponent={<Text style={styles.meta}>No farmers yet</Text>}
+        ListEmptyComponent={
+          farmers.isLoading ? (
+            <Text style={styles.sub}>Loading…</Text>
+          ) : (
+            <EmptyState
+              title="No farmers yet"
+              body="Add a farmer, assign sheds, and pick only the permissions they need."
+              imageUri={media.farmMorning}
+              actionLabel="Add farmer"
+              onAction={() => router.push("/(app)/farmers/create")}
+            />
+          )
+        }
         renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => router.push(`/(app)/farmers/${item.membership_id}`)}>
-            <Text style={styles.name}>{item.full_name}</Text>
-            <Text style={styles.meta}>
-              {item.email} · {item.role} · {item.is_active ? "active" : "inactive"}
-            </Text>
-            <Text style={styles.meta}>
-              Perms: {item.permission_codes.length ? item.permission_codes.join(", ") : "none"}
-            </Text>
-          </Pressable>
+          <MediaCard
+            title={item.full_name}
+            subtitle={item.email}
+            meta={`${item.permission_codes.length} permissions · ${item.assigned_shed_ids.length} sheds`}
+            icon="person"
+            badge={item.is_active ? item.role.replace("_", " ") : "inactive"}
+            badgeTone={item.is_active ? "good" : "neutral"}
+            onPress={() => router.push(`/(app)/farmers/${item.membership_id}`)}
+          />
         )}
       />
     </Screen>
@@ -41,17 +62,8 @@ export default function FarmersScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space.sm },
-  count: { fontSize: 14, fontWeight: "600", color: colors.inkMuted, flex: 1 },
-  card: {
-    backgroundColor: colors.bgElevated,
-    borderRadius: radius.lg,
-    padding: space.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 4,
-  },
-  name: { fontSize: 17, fontWeight: "700", color: colors.ink },
-  meta: { color: colors.inkMuted, fontSize: 13 },
+  header: { flexDirection: "row", alignItems: "center", gap: space.sm },
+  title: { fontSize: 22, fontWeight: "800", color: colors.brand },
+  sub: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
   error: { color: colors.danger },
 });

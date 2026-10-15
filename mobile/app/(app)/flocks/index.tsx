@@ -1,37 +1,65 @@
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import { listFlocks } from "../../../src/api/flocks";
 import { Button } from "../../../src/components/ui/Button";
+import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
-import { colors, radius, space } from "../../../src/theme/tokens";
+import { hasPermission } from "../../../src/features/auth/permissions";
+import { media } from "../../../src/theme/media";
+import { colors, space } from "../../../src/theme/tokens";
 
 export default function FlocksScreen() {
-  const { ownerAccountId } = useAuth();
+  const { ownerAccountId, user } = useAuth();
+  const canCreate = hasPermission(user, ownerAccountId, "flock.create");
   const flocks = useQuery({ queryKey: ["flocks", ownerAccountId], queryFn: () => listFlocks() });
 
   return (
-    <Screen>
+    <Screen style={{ paddingTop: space.md }}>
       <View style={styles.header}>
-        <Text style={styles.count}>{flocks.data ? `${flocks.data.length} flock${flocks.data.length === 1 ? "" : "s"}` : ""}</Text>
-        <Button label="Onboard" onPress={() => router.push("/(app)/flocks/create")} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>Birds & flocks</Text>
+          <Text style={styles.sub}>
+            {flocks.data ? `${flocks.data.length} active flock${flocks.data.length === 1 ? "" : "s"}` : "Your hen groups"}
+          </Text>
+        </View>
+        {canCreate ? <Button label="Add flock" onPress={() => router.push("/(app)/flocks/create")} /> : null}
       </View>
-      {flocks.isError ? <Text style={styles.error}>Failed to load flocks</Text> : null}
+
+      {flocks.isError ? <Text style={styles.error}>Could not load flocks</Text> : null}
+
       <FlatList
+        style={{ flex: 1 }}
         data={flocks.data ?? []}
         keyExtractor={(i) => i.id}
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
-        ListEmptyComponent={<Text style={styles.meta}>No flocks yet</Text>}
+        ListEmptyComponent={
+          flocks.isLoading ? (
+            <Text style={styles.sub}>Loading flocks…</Text>
+          ) : (
+            <EmptyState
+              title="No flocks yet"
+              body="Start a flock to track hens, ages, and vaccination plans in one place."
+              imageUri={media.flockHen}
+              actionLabel={canCreate ? "Onboard first flock" : undefined}
+              onAction={canCreate ? () => router.push("/(app)/flocks/create") : undefined}
+            />
+          )
+        }
         renderItem={({ item }) => (
-          <Pressable style={styles.card} onPress={() => router.push(`/(app)/flocks/${item.id}`)}>
-            <Text style={styles.name}>{item.batch_code}</Text>
-            <Text style={styles.meta}>
-              {item.tracking_mode} · {item.current_count} birds · {item.dob_confidence} DOB
-              {item.count_mismatch ? " · COUNT MISMATCH" : ""}
-            </Text>
-          </Pressable>
+          <MediaCard
+            title={item.batch_code}
+            subtitle={item.breed ? `${item.breed}` : "Mixed / unknown breed"}
+            meta={`${item.current_count} birds · ${item.tracking_mode} · ${item.dob_confidence} age`}
+            imageUri={media.flockHen}
+            icon="egg"
+            badge={item.count_mismatch ? "Check count" : item.status}
+            badgeTone={item.count_mismatch ? "warn" : "good"}
+            onPress={() => router.push(`/(app)/flocks/${item.id}`)}
+          />
         )}
       />
     </Screen>
@@ -40,16 +68,7 @@ export default function FlocksScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  count: { fontSize: 14, fontWeight: "600", color: colors.inkMuted, flex: 1 },
-  card: {
-    backgroundColor: colors.bgElevated,
-    borderRadius: radius.lg,
-    padding: space.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 4,
-  },
-  name: { fontSize: 17, fontWeight: "700", color: colors.ink },
-  meta: { color: colors.inkMuted, fontSize: 13 },
+  title: { fontSize: 22, fontWeight: "800", color: colors.brand },
+  sub: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
   error: { color: colors.danger },
 });

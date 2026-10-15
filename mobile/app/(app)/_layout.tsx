@@ -4,6 +4,7 @@ import { ComponentProps } from "react";
 import { ActivityIndicator, ColorValue, Pressable, View } from "react-native";
 
 import { useAuth } from "../../src/features/auth/AuthContext";
+import { hasPermission } from "../../src/features/auth/permissions";
 import { colors } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -32,7 +33,7 @@ const backButton = () => <HeaderButton icon="arrow-back" label="Back" onPress={(
 const hidden = (title: string) => ({ href: null as null, title, headerLeft: backButton });
 
 export default function AppLayout() {
-  const { user, loading } = useAuth();
+  const { user, loading, ownerAccountId } = useAuth();
 
   if (loading) {
     return (
@@ -42,6 +43,10 @@ export default function AppLayout() {
     );
   }
   if (!user) return <Redirect href="/(auth)/welcome" />;
+
+  const canSheds = hasPermission(user, ownerAccountId, "shed.view");
+  const canBirds = hasPermission(user, ownerAccountId, "flock.view");
+  const canTasks = hasPermission(user, ownerAccountId, "vaccination.view");
 
   return (
     <Tabs
@@ -66,14 +71,31 @@ export default function AppLayout() {
         name="home"
         options={{ title: "Home", headerShown: false, tabBarIcon: tabIcon("home", "home-outline") }}
       />
-      <Tabs.Screen name="sheds/index" options={{ title: "Sheds", tabBarIcon: tabIcon("business", "business-outline") }} />
+      <Tabs.Screen
+        name="sheds/index"
+        options={{
+          title: "Sheds",
+          href: canSheds ? undefined : null,
+          tabBarIcon: tabIcon("business", "business-outline"),
+        }}
+      />
       <Tabs.Screen
         name="flocks/index"
-        options={{ title: "Birds", tabBarLabel: "Birds", tabBarIcon: tabIcon("egg", "egg-outline") }}
+        options={{
+          title: "Birds",
+          tabBarLabel: "Birds",
+          href: canBirds ? undefined : null,
+          tabBarIcon: tabIcon("egg", "egg-outline"),
+        }}
       />
       <Tabs.Screen
         name="doses/index"
-        options={{ title: "Tasks", tabBarLabel: "Tasks", tabBarIcon: tabIcon("checkbox", "checkbox-outline") }}
+        options={{
+          title: "Tasks",
+          tabBarLabel: "Tasks",
+          href: canTasks ? undefined : null,
+          tabBarIcon: tabIcon("checkbox", "checkbox-outline"),
+        }}
       />
       <Tabs.Screen
         name="settings"

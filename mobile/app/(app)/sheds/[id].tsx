@@ -9,15 +9,15 @@ import { assignFarmer, getShed, listAssignments } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
+import { hasPermission } from "../../../src/features/auth/permissions";
 import { colors, radius, space } from "../../../src/theme/tokens";
 
 export default function ShedDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { ownerAccountId, user } = useAuth();
   const qc = useQueryClient();
-  const membership =
-    user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
-  const canManage = membership?.role === "owner";
+  const canManage = hasPermission(user, ownerAccountId, "farmer.manage");
+  const canUpdate = hasPermission(user, ownerAccountId, "shed.update");
 
   const shed = useQuery({ queryKey: ["shed", id], queryFn: () => getShed(id!), enabled: !!id });
   const assignments = useQuery({

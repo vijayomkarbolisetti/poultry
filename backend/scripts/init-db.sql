@@ -1,3 +1,7 @@
+-- Fresh cluster bootstrap for local Docker Postgres.
+SELECT 'CREATE DATABASE poultry_tracker_test'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'poultry_tracker_test')\gexec
+
 -- Application role that cannot bypass RLS (not a superuser).
 DO $$
 BEGIN

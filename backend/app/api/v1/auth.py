@@ -12,12 +12,14 @@ from app.schemas.auth import (
     TokenResponse,
     UserOut,
 )
-from app.services import auth_service
+from app.services import auth_service, farmer_service
 
 router = APIRouter()
 
 
-def _serialize_user(loaded: User) -> UserOut:
+async def _serialize_user(db: AsyncSession, loaded: User) -> UserOut:
+    active = [m for m in loaded.memberships if m.is_active]
+    perms_map = await farmer_service.permissions_for_memberships(db, [m.id for m in active])
     memberships = [
         MembershipOut(
             id=m.id,
@@ -25,9 +27,9 @@ def _serialize_user(loaded: User) -> UserOut:
             role=m.role,
             is_active=m.is_active,
             organization_name=m.owner_account.name if m.owner_account else None,
+            permission_codes=perms_map.get(m.id, []),
         )
-        for m in loaded.memberships
-        if m.is_active
+        for m in active
     ]
     return UserOut(
         id=loaded.id,
@@ -54,7 +56,7 @@ async def register_owner(body: RegisterOwnerRequest, db: AsyncSession = Depends(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
     loaded = await auth_service.get_user_with_memberships(db, user.id)
     assert loaded is not None
-    return TokenResponse(access_token=access, refresh_token=refresh, user=_serialize_user(loaded))
+    return TokenResponse(access_token=access, refresh_token=refresh, user=await _serialize_user(db, loaded))
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -64,8 +66,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> Token
     except auth_service.AuthError as exc:
         code = status.HTTP_401_UNAUTHORIZED if exc.code == "INVALID_CREDENTIALS" else status.HTTP_403_FORBIDDEN
         raise HTTPException(status_code=code, detail=exc.message) from exc
-    # Memberships were eager-loaded in login(); expire_on_commit=False keeps them usable.
-    return TokenResponse(access_token=access, refresh_token=refresh, user=_serialize_user(user))
+    return TokenResponse(access_token=access, refresh_token=refresh, user=await _serialize_user(db, user))
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -86,4 +87,4 @@ async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> No
 async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> UserOut:
     loaded = await auth_service.get_user_with_memberships(db, user.id)
     assert loaded is not None
-    return _serialize_user(loaded)
+    return await _serialize_user(db, loaded)

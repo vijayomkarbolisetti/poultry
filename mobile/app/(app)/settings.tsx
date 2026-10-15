@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../src/components/ui/Button";
 import { Screen } from "../../src/components/ui/Screen";
 import { useAuth } from "../../src/features/auth/AuthContext";
+import { hasPermission } from "../../src/features/auth/permissions";
 import { colors, radius, shadow, space } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -39,7 +40,9 @@ export default function SettingsScreen() {
   const { user, ownerAccountId, setActiveOwner, signOut } = useAuth();
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
-  const isOwnerLike = membership?.role === "owner" || membership?.role === "org_admin";
+  const canVaccines = hasPermission(user, ownerAccountId, "schedule.view");
+  const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
+  const canTasks = hasPermission(user, ownerAccountId, "vaccination.view");
 
   const onSignOut = async () => {
     await signOut();
@@ -63,9 +66,12 @@ export default function SettingsScreen() {
 
       <Text style={styles.section}>Manage</Text>
       <View style={[styles.card, shadow.card]}>
-        <MenuRow label="Vaccines" icon="medkit-outline" href="/(app)/vaccines" />
-        {isOwnerLike ? <MenuRow label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
-        <MenuRow label="Vaccination tasks" icon="checkbox-outline" href="/(app)/doses" />
+        {canVaccines ? <MenuRow label="Vaccines" icon="medkit-outline" href="/(app)/vaccines" /> : null}
+        {canFarmers ? <MenuRow label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
+        {canTasks ? <MenuRow label="Vaccination tasks" icon="checkbox-outline" href="/(app)/doses" /> : null}
+        {!canVaccines && !canFarmers && !canTasks ? (
+          <Text style={{ padding: space.md, color: colors.inkMuted }}>No manage modules granted.</Text>
+        ) : null}
       </View>
 
       <Text style={styles.section}>Organizations</Text>

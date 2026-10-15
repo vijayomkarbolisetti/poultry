@@ -24,6 +24,10 @@ class PermissionsUpdate(BaseModel):
     permission_codes: list[str]
 
 
+class ShedAssignmentsUpdate(BaseModel):
+    shed_ids: list[UUID] = Field(default_factory=list)
+
+
 class FarmerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
