@@ -136,8 +136,11 @@ api.interceptors.response.use(undefined, async (error: AxiosError) => {
 });
 
 api.interceptors.request.use(async (config) => {
-  const [access, ownerId] = await Promise.all([tokenStore.getAccess(), tokenStore.getOwnerId()]);
-  if (access) config.headers.Authorization = `Bearer ${access}`;
-  if (ownerId) config.headers["X-Owner-Account-Id"] = ownerId;
+  // Fast path: memory already hydrated — no SecureStore awaits.
+  if (memAccess === undefined || memOwner === undefined) {
+    await hydrateTokens();
+  }
+  if (memAccess) config.headers.Authorization = `Bearer ${memAccess}`;
+  if (memOwner) config.headers["X-Owner-Account-Id"] = memOwner;
   return config;
 });

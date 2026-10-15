@@ -73,7 +73,7 @@ async def list_sheds(db: AsyncSession, ctx: AuthContext) -> list[Shed]:
     elif ctx.membership.role != MembershipRole.owner:
         # org_admin / read_only: org-wide view if they have shed.view (checked by route)
         pass
-    result = await db.scalars(stmt.order_by(Shed.name))
+    result = await db.scalars(stmt.order_by(Shed.name).limit(200))
     return list(result)
 
 

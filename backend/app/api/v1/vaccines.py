@@ -109,15 +109,15 @@ async def generate_schedules(
 async def list_doses(
     flock_id: UUID | None = None,
     status_filter: str | None = Query(None, alias="status"),
+    limit: int = Query(200, ge=1, le=500),
     ctx: AuthContext = Depends(require_permission("vaccination.view")),
     db: AsyncSession = Depends(get_db),
 ) -> list[ScheduledDoseOut]:
-    # Same-transaction refresh (no mid-request commit) so RLS GUCs stay valid for the list.
-    await vaccine_service.refresh_dose_statuses(db, ctx, commit=False)
-    rows = await vaccine_service.list_scheduled_doses(db, ctx, flock_id=flock_id, status=status_filter)
-    out = [ScheduledDoseOut.model_validate(r) for r in rows]
-    await db.commit()
-    return out
+    # Pure read — status refresh is POST /vaccines/refresh-statuses (or schedule writes).
+    rows = await vaccine_service.list_scheduled_doses(
+        db, ctx, flock_id=flock_id, status=status_filter, limit=limit
+    )
+    return [ScheduledDoseOut.model_validate(r) for r in rows]
 
 
 @router.post("/refresh-statuses")

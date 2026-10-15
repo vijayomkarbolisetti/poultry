@@ -93,7 +93,12 @@ async def register_owner(
 
 async def login(session: AsyncSession, *, email: str, password: str) -> tuple[User, str, str]:
     await set_rls_bypass(session, True)
-    user = await session.scalar(select(User).where(User.email == email.lower()))
+    # Eager-load memberships so /login can return the full user without a second query.
+    user = await session.scalar(
+        select(User)
+        .where(User.email == email.lower())
+        .options(selectinload(User.memberships).selectinload(OwnerMembership.owner_account))
+    )
     if not user:
         raise AuthError("Invalid email or password", "INVALID_CREDENTIALS")
     ok = await asyncio.to_thread(verify_password, password, user.password_hash)

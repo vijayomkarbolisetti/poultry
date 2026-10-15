@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 
 from sqlalchemy import select
@@ -58,9 +59,10 @@ async def create_farmer(
 
     user = await db.scalar(select(User).where(User.email == email.lower()))
     if user is None:
+        password_hash = await asyncio.to_thread(hash_password, password)
         user = User(
             email=email.lower(),
-            password_hash=hash_password(password),
+            password_hash=password_hash,
             full_name=full_name,
             is_active=True,
         )

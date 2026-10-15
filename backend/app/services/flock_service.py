@@ -153,7 +153,7 @@ async def list_flocks(db: AsyncSession, ctx: AuthContext, shed_id: UUID | None =
     if shed_id:
         await assert_shed_access(db, ctx, shed_id, permission_code="flock.view")
         stmt = stmt.where(Flock.shed_id == shed_id)
-    return list(await db.scalars(stmt.order_by(Flock.created_at.desc())))
+    return list(await db.scalars(stmt.order_by(Flock.created_at.desc()).limit(200)))
 
 
 async def get_flock(db: AsyncSession, ctx: AuthContext, flock_id: UUID) -> Flock:

@@ -64,9 +64,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> Token
     except auth_service.AuthError as exc:
         code = status.HTTP_401_UNAUTHORIZED if exc.code == "INVALID_CREDENTIALS" else status.HTTP_403_FORBIDDEN
         raise HTTPException(status_code=code, detail=exc.message) from exc
-    loaded = await auth_service.get_user_with_memberships(db, user.id)
-    assert loaded is not None
-    return TokenResponse(access_token=access, refresh_token=refresh, user=_serialize_user(loaded))
+    # Memberships were eager-loaded in login(); expire_on_commit=False keeps them usable.
+    return TokenResponse(access_token=access, refresh_token=refresh, user=_serialize_user(user))
 
 
 @router.post("/refresh", response_model=TokenResponse)

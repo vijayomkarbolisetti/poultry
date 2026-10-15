@@ -16,10 +16,11 @@ settings = get_settings()
 engine = create_async_engine(
     settings.runtime_database_url,
     echo=settings.debug and settings.environment == "local",
-    pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
-    pool_recycle=1800,
+    # Avoid pool_pre_ping (extra RTT on every checkout). Recycle idle conns instead.
+    pool_pre_ping=False,
+    pool_size=8,
+    max_overflow=16,
+    pool_recycle=300,
 )
 SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 

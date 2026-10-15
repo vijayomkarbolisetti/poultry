@@ -277,6 +277,7 @@ async def list_scheduled_doses(
     *,
     flock_id: UUID | None = None,
     status: str | None = None,
+    limit: int = 200,
 ) -> list[ScheduledDose]:
     stmt = select(ScheduledDose).where(
         ScheduledDose.owner_account_id == ctx.owner_account_id,
@@ -286,7 +287,7 @@ async def list_scheduled_doses(
         stmt = stmt.where(ScheduledDose.flock_id == flock_id)
     if status:
         stmt = stmt.where(ScheduledDose.status == status)
-    return list(await db.scalars(stmt.order_by(ScheduledDose.due_date)))
+    return list(await db.scalars(stmt.order_by(ScheduledDose.due_date).limit(limit)))
 
 
 async def refresh_dose_statuses(

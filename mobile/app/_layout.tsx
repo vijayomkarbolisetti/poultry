@@ -5,6 +5,7 @@ import { useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { AuthProvider } from "../src/features/auth/AuthContext";
+import { KeepAlive } from "../src/features/auth/KeepAlive";
 import { colors } from "../src/theme/tokens";
 
 export default function RootLayout() {
@@ -27,6 +28,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={client}>
         <AuthProvider>
+          <KeepAlive />
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="index" />

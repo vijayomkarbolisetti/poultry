@@ -8,7 +8,7 @@ services:
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     # Free plan has no pre-deploy step, so migrations run on start (alembic is a no-op when up to date).
-    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 75 --proxy-headers
     healthCheckPath: /health
     autoDeploy: true
     envVars:

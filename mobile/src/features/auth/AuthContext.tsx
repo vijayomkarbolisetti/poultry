@@ -72,10 +72,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const first = user.memberships[0]?.owner_account_id ?? null;
       if (first) {
         setOwnerAccountId(first);
-        await tokenStore.setOwnerId(first);
+        // Persist owner in background — memory is set first inside setOwnerId.
+        void tokenStore.setOwnerId(first);
       }
       queryClient.setQueryData(["auth", "me"], user);
       setHasToken(true);
+      // Prefetch dashboard while navigating home.
+      if (first) {
+        void queryClient.prefetchQuery({
+          queryKey: ["dashboard", first],
+          queryFn: async () => {
+            const { fetchDashboard } = await import("../../api/dashboard");
+            return fetchDashboard();
+          },
+        });
+      }
     },
     [queryClient],
   );
