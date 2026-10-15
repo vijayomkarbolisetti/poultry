@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from "react-native";
 
 import { colors, radius, space } from "../../theme/tokens";
 
@@ -6,13 +6,15 @@ type Props = {
   label: string;
   onPress: () => void;
   loading?: boolean;
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "danger" | "ghost";
   disabled?: boolean;
+  style?: ViewStyle;
 };
 
-export function Button({ label, onPress, loading, variant = "primary", disabled }: Props) {
+export function Button({ label, onPress, loading, variant = "primary", disabled, style }: Props) {
   const isPrimary = variant === "primary";
   const isDanger = variant === "danger";
+  const isGhost = variant === "ghost";
   return (
     <Pressable
       accessibilityRole="button"
@@ -23,8 +25,10 @@ export function Button({ label, onPress, loading, variant = "primary", disabled 
         isPrimary && styles.primary,
         variant === "secondary" && styles.secondary,
         isDanger && styles.danger,
+        isGhost && styles.ghost,
         (disabled || loading) && styles.disabled,
-        pressed && styles.pressed,
+        pressed && !disabled && !loading && styles.pressed,
+        style,
       ]}
     >
       {loading ? (
@@ -34,7 +38,7 @@ export function Button({ label, onPress, loading, variant = "primary", disabled 
           style={[
             styles.label,
             (isPrimary || isDanger) && styles.labelOnDark,
-            variant === "secondary" && styles.labelSecondary,
+            (variant === "secondary" || isGhost) && styles.labelBrand,
           ]}
         >
           {label}
@@ -46,18 +50,23 @@ export function Button({ label, onPress, loading, variant = "primary", disabled 
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 48,
+    minHeight: 52,
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: space.lg,
   },
   primary: { backgroundColor: colors.brand },
-  secondary: { backgroundColor: colors.brandSoft },
+  secondary: {
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1.5,
+    borderColor: colors.brand,
+  },
   danger: { backgroundColor: colors.danger },
+  ghost: { backgroundColor: "transparent" },
   disabled: { opacity: 0.55 },
-  pressed: { opacity: 0.88 },
+  pressed: { transform: [{ scale: 0.98 }], opacity: 0.92 },
   label: { fontSize: 16, fontWeight: "700" },
   labelOnDark: { color: "#fff" },
-  labelSecondary: { color: colors.brand },
+  labelBrand: { color: colors.brand },
 });

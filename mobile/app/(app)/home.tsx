@@ -7,11 +7,11 @@ import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "r
 import { fetchDashboard } from "../../src/api/dashboard";
 import { Screen } from "../../src/components/ui/Screen";
 import { useAuth } from "../../src/features/auth/AuthContext";
-import { colors, radius, space } from "../../src/theme/tokens";
+import { colors, radius, shadow, space } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
-function Metric({
+function StatCard({
   label,
   value,
   icon,
@@ -20,31 +20,36 @@ function Metric({
   label: string;
   value: number | string;
   icon: IconName;
-  tone?: "neutral" | "warn" | "danger" | "good";
+  tone?: "neutral" | "warn" | "danger" | "info";
 }) {
-  const tint = { neutral: colors.brand, warn: colors.accent, danger: colors.danger, good: colors.success }[tone];
+  const tint = {
+    neutral: colors.brand,
+    warn: colors.accent,
+    danger: colors.danger,
+    info: colors.info,
+  }[tone];
   return (
-    <View style={styles.metric}>
-      <View style={[styles.metricIcon, { backgroundColor: `${tint}1A` }]}>
+    <View style={[styles.stat, shadow.card]}>
+      <View style={[styles.statIcon, { backgroundColor: `${tint}18` }]}>
         <Ionicons name={icon} size={18} color={tint} />
       </View>
-      <Text style={[styles.metricValue, tone !== "neutral" && { color: tint }]}>{value}</Text>
-      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={[styles.statValue, { color: tint }]}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
 }
 
-function Action({ label, icon, href }: { label: string; icon: IconName; href: Href }) {
+function QuickLink({ label, icon, href }: { label: string; icon: IconName; href: Href }) {
   return (
     <Pressable
-      accessibilityRole="button"
       onPress={() => router.push(href)}
-      style={({ pressed }) => [styles.action, pressed && { opacity: 0.7 }]}
+      style={({ pressed }) => [styles.quick, shadow.card, pressed && { opacity: 0.85 }]}
     >
-      <View style={styles.actionIcon}>
-        <Ionicons name={icon} size={22} color={colors.brand} />
+      <View style={styles.quickIcon}>
+        <Ionicons name={icon} size={20} color={colors.brand} />
       </View>
-      <Text style={styles.actionLabel}>{label}</Text>
+      <Text style={styles.quickLabel}>{label}</Text>
+      <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
     </Pressable>
   );
 }
@@ -77,19 +82,19 @@ export default function HomeScreen() {
       >
         <View style={styles.hero}>
           <View style={{ flex: 1 }}>
+            <Text style={styles.brandMark}>PoultryTrack</Text>
             <Text style={styles.hello}>Hello, {firstName}</Text>
             <Text style={styles.org} numberOfLines={1}>
               {membership?.organization_name ?? "Your farm"}
-              {membership?.role ? ` · ${membership.role.replace("_", " ")}` : ""}
             </Text>
           </View>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Account"
-            hitSlop={12}
             onPress={() => router.push("/(app)/settings")}
+            style={styles.avatar}
           >
-            <Ionicons name="person-circle-outline" size={34} color="#fff" />
+            <Ionicons name="person" size={22} color={colors.brand} />
           </Pressable>
         </View>
 
@@ -100,37 +105,41 @@ export default function HomeScreen() {
               <Text style={styles.errorText}>Could not load dashboard. Tap to retry.</Text>
             </Pressable>
           ) : null}
-          {dash.isLoading ? <Text style={styles.muted}>Loading your farm… (first load can take up to a minute)</Text> : null}
 
-          <Text style={styles.section}>Vaccinations</Text>
+          <Text style={styles.section}>Overview</Text>
           <View style={styles.grid}>
-            <Metric label="Due today" value={d?.due_today ?? "—"} icon="today-outline" tone="warn" />
-            <Metric label="Overdue" value={d?.overdue_doses ?? "—"} icon="alert-circle-outline" tone="danger" />
-            <Metric label="Upcoming" value={d?.upcoming_doses ?? "—"} icon="time-outline" />
-            <Metric label="Compliance" value={compliance} icon="shield-checkmark-outline" tone="good" />
+            <StatCard label="Total birds" value={d?.active_birds ?? "—"} icon="analytics-outline" />
+            <StatCard label="Due today" value={d?.due_today ?? "—"} icon="today-outline" tone="warn" />
+            <StatCard label="Overdue" value={d?.overdue_doses ?? "—"} icon="alert-circle-outline" tone="danger" />
+            <StatCard label="Compliance" value={compliance} icon="shield-checkmark-outline" tone="info" />
           </View>
 
-          <Text style={styles.section}>Farm</Text>
-          <View style={styles.grid}>
-            <Metric label="Sheds" value={d?.active_sheds ?? "—"} icon="business-outline" />
-            <Metric label="Flocks" value={d?.active_flocks ?? "—"} icon="egg-outline" />
-            <Metric label="Birds" value={d?.active_birds ?? "—"} icon="analytics-outline" />
-            <Metric label="Farmers" value={d?.active_farmers ?? "—"} icon="people-outline" />
+          <Text style={styles.section}>Farm snapshot</Text>
+          <View style={[styles.snapshot, shadow.card]}>
+            <Row label="Active sheds" value={d?.active_sheds ?? "—"} />
+            <Row label="Active flocks" value={d?.active_flocks ?? "—"} />
+            <Row label="Farmers" value={d?.active_farmers ?? "—"} />
+            <Row label="Upcoming doses" value={d?.upcoming_doses ?? "—"} last />
           </View>
 
-          <Text style={styles.section}>Quick actions</Text>
-          <View style={styles.actions}>
-            <Action label="Doses due" icon="calendar-outline" href="/(app)/doses" />
-            <Action label="New flock" icon="add-circle-outline" href="/(app)/flocks/create" />
-            {membership?.role === "owner" ? (
-              <Action label="New shed" icon="business-outline" href="/(app)/sheds/create" />
-            ) : null}
-            <Action label="Vaccines" icon="medkit-outline" href="/(app)/vaccines" />
-            {isOwnerLike ? <Action label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
-          </View>
+          <Text style={styles.section}>Quick links</Text>
+          <QuickLink label="Vaccination tasks" icon="checkbox-outline" href="/(app)/doses" />
+          <QuickLink label="Manage sheds" icon="business-outline" href="/(app)/sheds" />
+          <QuickLink label="Birds & flocks" icon="egg-outline" href="/(app)/flocks" />
+          <QuickLink label="Vaccine catalogue" icon="medkit-outline" href="/(app)/vaccines" />
+          {isOwnerLike ? <QuickLink label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
         </View>
       </ScrollView>
     </Screen>
+  );
+}
+
+function Row({ label, value, last }: { label: string; value: number | string; last?: boolean }) {
+  return (
+    <View style={[styles.row, !last && styles.rowBorder]}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -147,12 +156,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: space.md,
   },
-  hello: { fontSize: 24, fontWeight: "800", color: "#fff" },
-  org: { fontSize: 14, color: "#CFE3D7", marginTop: 4, textTransform: "capitalize" },
+  brandMark: { color: "#B7E0C7", fontSize: 12, fontWeight: "800", letterSpacing: 1, textTransform: "uppercase" },
+  hello: { fontSize: 26, fontWeight: "800", color: "#fff", marginTop: 4 },
+  org: { fontSize: 14, color: "#CFE3D7", marginTop: 4 },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   body: { padding: space.lg, gap: space.md },
-  section: { fontSize: 13, fontWeight: "800", color: colors.inkMuted, textTransform: "uppercase", letterSpacing: 0.6 },
+  section: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: colors.inkMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginTop: space.xs,
+  },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  metric: {
+  stat: {
     flexBasis: "48%",
     flexGrow: 1,
     backgroundColor: colors.bgElevated,
@@ -162,31 +187,39 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     gap: 4,
   },
-  metricIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  metricValue: { fontSize: 26, fontWeight: "800", color: colors.ink, marginTop: 4 },
-  metricLabel: { fontSize: 13, color: colors.inkMuted },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
-  action: {
-    width: "31%",
-    flexGrow: 1,
+  statIcon: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  statValue: { fontSize: 26, fontWeight: "800", marginTop: 4 },
+  statLabel: { fontSize: 13, color: colors.inkMuted },
+  snapshot: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: space.md,
-    alignItems: "center",
-    gap: 6,
+    paddingHorizontal: space.md,
   },
-  actionIcon: {
+  row: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 14 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  rowLabel: { color: colors.inkMuted, fontSize: 14 },
+  rowValue: { color: colors.ink, fontWeight: "800", fontSize: 15 },
+  quick: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.md,
+    padding: space.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  quickIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: 12,
     backgroundColor: colors.brandSoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  actionLabel: { fontSize: 13, fontWeight: "700", color: colors.ink, textAlign: "center" },
-  muted: { color: colors.inkMuted },
+  quickLabel: { flex: 1, fontSize: 15, fontWeight: "700", color: colors.ink },
   errorBox: {
     flexDirection: "row",
     alignItems: "center",

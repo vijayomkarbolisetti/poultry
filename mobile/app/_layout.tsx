@@ -13,7 +13,6 @@ export default function RootLayout() {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Keep screens snappy — don't refetch on every tab switch.
             staleTime: 60_000,
             gcTime: 5 * 60_000,
             refetchOnWindowFocus: false,
@@ -31,8 +30,12 @@ export default function RootLayout() {
           <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="index" />
-            <Stack.Screen name="(auth)/login" options={{ headerShown: true, title: "Sign in" }} />
-            <Stack.Screen name="(auth)/register" options={{ headerShown: true, title: "Create farm account" }} />
+            <Stack.Screen name="(auth)/welcome" />
+            <Stack.Screen name="(auth)/login" options={{ headerShown: true, title: "Sign in", headerTintColor: colors.brand }} />
+            <Stack.Screen
+              name="(auth)/register"
+              options={{ headerShown: true, title: "Create farm", headerTintColor: colors.brand }}
+            />
             <Stack.Screen name="(app)" />
           </Stack>
         </AuthProvider>

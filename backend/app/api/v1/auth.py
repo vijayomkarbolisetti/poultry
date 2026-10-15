@@ -17,49 +17,7 @@ from app.services import auth_service
 router = APIRouter()
 
 
-@router.post("/register-owner", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-async def register_owner(body: RegisterOwnerRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
-    try:
-        _user, _owner, _membership, access, refresh = await auth_service.register_owner(
-            db,
-            email=body.email,
-            password=body.password,
-            full_name=body.full_name,
-            organization_name=body.organization_name,
-        )
-    except auth_service.AuthError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
-    return TokenResponse(access_token=access, refresh_token=refresh)
-
-
-@router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
-    try:
-        _user, access, refresh = await auth_service.login(db, email=body.email, password=body.password)
-    except auth_service.AuthError as exc:
-        code = status.HTTP_401_UNAUTHORIZED if exc.code == "INVALID_CREDENTIALS" else status.HTTP_403_FORBIDDEN
-        raise HTTPException(status_code=code, detail=exc.message) from exc
-    return TokenResponse(access_token=access, refresh_token=refresh)
-
-
-@router.post("/refresh", response_model=TokenResponse)
-async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
-    try:
-        _user, access, refresh_tok = await auth_service.refresh_session(db, refresh_token=body.refresh_token)
-    except auth_service.AuthError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message) from exc
-    return TokenResponse(access_token=access, refresh_token=refresh_tok)
-
-
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> None:
-    await auth_service.logout(db, refresh_token=body.refresh_token)
-
-
-@router.get("/me", response_model=UserOut)
-async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> UserOut:
-    loaded = await auth_service.get_user_with_memberships(db, user.id)
-    assert loaded is not None
+def _serialize_user(loaded: User) -> UserOut:
     memberships = [
         MembershipOut(
             id=m.id,
@@ -80,3 +38,53 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
         created_at=loaded.created_at,
         memberships=memberships,
     )
+
+
+@router.post("/register-owner", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def register_owner(body: RegisterOwnerRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    try:
+        user, _owner, _membership, access, refresh = await auth_service.register_owner(
+            db,
+            email=body.email,
+            password=body.password,
+            full_name=body.full_name,
+            organization_name=body.organization_name,
+        )
+    except auth_service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
+    loaded = await auth_service.get_user_with_memberships(db, user.id)
+    assert loaded is not None
+    return TokenResponse(access_token=access, refresh_token=refresh, user=_serialize_user(loaded))
+
+
+@router.post("/login", response_model=TokenResponse)
+async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    try:
+        user, access, refresh = await auth_service.login(db, email=body.email, password=body.password)
+    except auth_service.AuthError as exc:
+        code = status.HTTP_401_UNAUTHORIZED if exc.code == "INVALID_CREDENTIALS" else status.HTTP_403_FORBIDDEN
+        raise HTTPException(status_code=code, detail=exc.message) from exc
+    loaded = await auth_service.get_user_with_memberships(db, user.id)
+    assert loaded is not None
+    return TokenResponse(access_token=access, refresh_token=refresh, user=_serialize_user(loaded))
+
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    try:
+        _user, access, refresh_tok = await auth_service.refresh_session(db, refresh_token=body.refresh_token)
+    except auth_service.AuthError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message) from exc
+    return TokenResponse(access_token=access, refresh_token=refresh_tok)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(body: RefreshRequest, db: AsyncSession = Depends(get_db)) -> None:
+    await auth_service.logout(db, refresh_token=body.refresh_token)
+
+
+@router.get("/me", response_model=UserOut)
+async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> UserOut:
+    loaded = await auth_service.get_user_with_memberships(db, user.id)
+    assert loaded is not None
+    return _serialize_user(loaded)

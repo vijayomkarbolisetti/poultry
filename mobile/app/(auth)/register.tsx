@@ -1,17 +1,17 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { StyleSheet, Text, View } from "react-native";
 import { z } from "zod";
 
-import { registerOwner } from "../../src/api/auth";
+import { registerOwner, warmApi } from "../../src/api/auth";
 import { describeApiError } from "../../src/api/client";
 import { Button } from "../../src/components/ui/Button";
 import { Screen } from "../../src/components/ui/Screen";
 import { TextField } from "../../src/components/ui/TextField";
 import { useAuth } from "../../src/features/auth/AuthContext";
-import { colors, space } from "../../src/theme/tokens";
+import { colors, radius, space } from "../../src/theme/tokens";
 
 const schema = z.object({
   full_name: z.string().min(1, "Required"),
@@ -23,7 +23,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function RegisterScreen() {
-  const { refreshSession } = useAuth();
+  const { acceptSession } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const { control, handleSubmit } = useForm<FormValues>({
@@ -31,12 +31,21 @@ export default function RegisterScreen() {
     defaultValues: { full_name: "", organization_name: "", email: "", password: "" },
   });
 
+  useEffect(() => {
+    warmApi();
+  }, []);
+
   const onSubmit = handleSubmit(async (values) => {
     setLoading(true);
     setError(null);
     try {
-      await registerOwner(values);
-      await refreshSession();
+      const session = await registerOwner(values);
+      if (session.user) {
+        await acceptSession(session.user);
+      } else {
+        const { fetchMe } = await import("../../src/api/auth");
+        await acceptSession(await fetchMe());
+      }
       router.replace("/(app)/home");
     } catch (e: unknown) {
       setError(describeApiError(e, "register"));
@@ -46,26 +55,50 @@ export default function RegisterScreen() {
   });
 
   return (
-    <Screen scroll>
+    <Screen scroll edges={["top", "left", "right", "bottom"]}>
       <View style={styles.hero}>
         <Text style={styles.brand}>Create your farm</Text>
-        <Text style={styles.sub}>Registers you as the organization owner for this farm account.</Text>
+        <Text style={styles.sub}>You’ll be the owner of this PoultryTrack organization.</Text>
       </View>
 
-      <TextField control={control} name="full_name" label="Your name" placeholder="Alex Farmer" autoCapitalize="words" />
-      <TextField
-        control={control}
-        name="organization_name"
-        label="Farm / organization name"
-        placeholder="Green Valley Poultry"
-        autoCapitalize="words"
-      />
-      <TextField control={control} name="email" label="Email" placeholder="you@farm.com" keyboardType="email-address" />
-      <TextField control={control} name="password" label="Password" placeholder="••••••••" secureTextEntry />
+      <View style={styles.card}>
+        <TextField
+          control={control}
+          name="full_name"
+          label="Your name"
+          placeholder="Alex Farmer"
+          autoCapitalize="words"
+          leftIcon="person-outline"
+        />
+        <TextField
+          control={control}
+          name="organization_name"
+          label="Farm / organization"
+          placeholder="Green Valley Poultry"
+          autoCapitalize="words"
+          leftIcon="leaf-outline"
+        />
+        <TextField
+          control={control}
+          name="email"
+          label="Email"
+          placeholder="you@farm.com"
+          keyboardType="email-address"
+          leftIcon="mail-outline"
+        />
+        <TextField
+          control={control}
+          name="password"
+          label="Password"
+          placeholder="••••••••"
+          secureTextEntry
+          leftIcon="lock-closed-outline"
+        />
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      <Button label="Create account" onPress={onSubmit} loading={loading} />
+        <Button label="Create account" onPress={onSubmit} loading={loading} />
+      </View>
 
       <Text style={styles.footer}>
         Already have an account?{" "}
@@ -78,10 +111,18 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { gap: space.sm, marginBottom: space.sm },
-  brand: { fontSize: 26, fontWeight: "800", color: colors.brand },
+  hero: { gap: space.sm, marginBottom: space.sm, marginTop: space.md },
+  brand: { fontSize: 28, fontWeight: "800", color: colors.brand, letterSpacing: -0.4 },
   sub: { fontSize: 15, color: colors.inkMuted, lineHeight: 22 },
+  card: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    gap: space.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   error: { color: colors.danger, fontSize: 14 },
-  footer: { color: colors.inkMuted, fontSize: 15, marginTop: space.sm },
+  footer: { color: colors.inkMuted, fontSize: 15, textAlign: "center", marginTop: space.sm },
   link: { color: colors.brand, fontWeight: "700" },
 });

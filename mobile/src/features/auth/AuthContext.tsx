@@ -17,6 +17,8 @@ type AuthState = {
   loading: boolean;
   ownerAccountId: string | null;
   refreshSession: () => Promise<void>;
+  /** Instant path after login/register — seed cache and skip waiting on /auth/me. */
+  acceptSession: (user: UserMe) => Promise<void>;
   signOut: () => Promise<void>;
   setActiveOwner: (ownerId: string) => Promise<void>;
 };
@@ -47,7 +49,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
-  // Prefer stored owner; fall back to first membership immediately (avoids dashboard fetch with null owner).
   const resolvedOwner =
     ownerAccountId ?? meQuery.data?.memberships[0]?.owner_account_id ?? null;
 
@@ -66,6 +67,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
   }, [queryClient]);
 
+  const acceptSession = useCallback(
+    async (user: UserMe) => {
+      const first = user.memberships[0]?.owner_account_id ?? null;
+      if (first) {
+        setOwnerAccountId(first);
+        await tokenStore.setOwnerId(first);
+      }
+      queryClient.setQueryData(["auth", "me"], user);
+      setHasToken(true);
+    },
+    [queryClient],
+  );
+
   const signOut = useCallback(async () => {
     await apiLogout();
     setHasToken(false);
@@ -73,20 +87,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
-  const setActiveOwner = useCallback(async (ownerId: string) => {
-    // Memory first so the next request interceptor sees the new owner immediately.
-    setOwnerAccountId(ownerId);
-    await tokenStore.setOwnerId(ownerId);
-    queryClient.clear();
-  }, [queryClient]);
+  const setActiveOwner = useCallback(
+    async (ownerId: string) => {
+      setOwnerAccountId(ownerId);
+      await tokenStore.setOwnerId(ownerId);
+      queryClient.clear();
+    },
+    [queryClient],
+  );
 
   const value = useMemo<AuthState>(
     () => ({
       user: meQuery.data ?? null,
-      // Keep shell loading until owner is known — prevents a wasted dashboard call with null owner.
       loading: !bootstrapped || (hasToken && (meQuery.isLoading || (!!meQuery.data && !resolvedOwner))),
       ownerAccountId: resolvedOwner,
       refreshSession,
+      acceptSession,
       signOut,
       setActiveOwner,
     }),
@@ -97,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasToken,
       resolvedOwner,
       refreshSession,
+      acceptSession,
       signOut,
       setActiveOwner,
     ],

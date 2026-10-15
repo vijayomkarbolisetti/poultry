@@ -28,13 +28,8 @@ function HeaderButton({ icon, onPress, label }: { icon: IconName; onPress: () =>
   );
 }
 
-const accountButton = () => (
-  <HeaderButton icon="person-circle-outline" label="Account" onPress={() => router.push("/(app)/settings")} />
-);
 const backButton = () => <HeaderButton icon="arrow-back" label="Back" onPress={() => router.back()} />;
-
-/** Screens reachable by navigation but not shown in the tab bar. */
-const hidden = (title: string) => ({ href: null, title, headerLeft: backButton });
+const hidden = (title: string) => ({ href: null as null, title, headerLeft: backButton });
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
@@ -46,7 +41,7 @@ export default function AppLayout() {
       </View>
     );
   }
-  if (!user) return <Redirect href="/(auth)/login" />;
+  if (!user) return <Redirect href="/(auth)/welcome" />;
 
   return (
     <Tabs
@@ -54,12 +49,16 @@ export default function AppLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.bgElevated },
         headerShadowVisible: false,
-        headerTitleStyle: { fontWeight: "800", color: colors.ink, fontSize: 20 },
-        headerRight: accountButton,
+        headerTitleStyle: { fontWeight: "800", color: colors.ink, fontSize: 18 },
         tabBarActiveTintColor: colors.brand,
         tabBarInactiveTintColor: colors.inkMuted,
-        tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
-        tabBarStyle: { backgroundColor: colors.bgElevated, borderTopColor: colors.border },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "700" },
+        tabBarStyle: {
+          backgroundColor: colors.bgElevated,
+          borderTopColor: colors.border,
+          height: 62,
+          paddingTop: 4,
+        },
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
@@ -68,16 +67,20 @@ export default function AppLayout() {
         options={{ title: "Home", headerShown: false, tabBarIcon: tabIcon("home", "home-outline") }}
       />
       <Tabs.Screen name="sheds/index" options={{ title: "Sheds", tabBarIcon: tabIcon("business", "business-outline") }} />
-      <Tabs.Screen name="flocks/index" options={{ title: "Flocks", tabBarIcon: tabIcon("egg", "egg-outline") }} />
       <Tabs.Screen
-        name="vaccines/index"
-        options={{ title: "Vaccines", tabBarIcon: tabIcon("medkit", "medkit-outline") }}
+        name="flocks/index"
+        options={{ title: "Birds", tabBarLabel: "Birds", tabBarIcon: tabIcon("egg", "egg-outline") }}
       />
       <Tabs.Screen
         name="doses/index"
-        options={{ title: "Doses", tabBarIcon: tabIcon("calendar", "calendar-outline") }}
+        options={{ title: "Tasks", tabBarLabel: "Tasks", tabBarIcon: tabIcon("checkbox", "checkbox-outline") }}
+      />
+      <Tabs.Screen
+        name="settings"
+        options={{ title: "More", tabBarLabel: "More", tabBarIcon: tabIcon("menu", "menu-outline") }}
       />
 
+      <Tabs.Screen name="vaccines/index" options={hidden("Vaccines")} />
       <Tabs.Screen name="sheds/[id]" options={hidden("Shed")} />
       <Tabs.Screen name="sheds/create" options={hidden("New shed")} />
       <Tabs.Screen name="flocks/[id]" options={hidden("Flock")} />
@@ -85,7 +88,6 @@ export default function AppLayout() {
       <Tabs.Screen name="farmers/index" options={hidden("Farmers")} />
       <Tabs.Screen name="farmers/create" options={hidden("Add farmer")} />
       <Tabs.Screen name="farmers/[id]" options={hidden("Farmer")} />
-      <Tabs.Screen name="settings" options={{ ...hidden("Account"), headerRight: undefined }} />
     </Tabs>
   );
 }

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -43,9 +44,11 @@ async def register_owner(
         if existing:
             raise AuthError("Email already registered", "EMAIL_EXISTS")
 
+        # bcrypt is CPU-bound — run off the event loop so the API stays responsive.
+        password_hash = await asyncio.to_thread(hash_password, password)
         user = User(
             email=email.lower(),
-            password_hash=hash_password(password),
+            password_hash=password_hash,
             full_name=full_name,
             is_active=True,
         )
@@ -91,7 +94,10 @@ async def register_owner(
 async def login(session: AsyncSession, *, email: str, password: str) -> tuple[User, str, str]:
     await set_rls_bypass(session, True)
     user = await session.scalar(select(User).where(User.email == email.lower()))
-    if not user or not verify_password(password, user.password_hash):
+    if not user:
+        raise AuthError("Invalid email or password", "INVALID_CREDENTIALS")
+    ok = await asyncio.to_thread(verify_password, password, user.password_hash)
+    if not ok:
         raise AuthError("Invalid email or password", "INVALID_CREDENTIALS")
     if not user.is_active:
         raise AuthError("Account is deactivated", "ACCOUNT_INACTIVE")

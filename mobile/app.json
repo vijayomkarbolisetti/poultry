@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Poultry Vaccine Tracker",
+    "name": "PoultryTrack",
     "slug": "poultry-vaccine-tracker",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,7 +13,7 @@
     "android": {
       "package": "com.vijayomkar.poultrytracker",
       "adaptiveIcon": {
-        "backgroundColor": "#1B4332",
+        "backgroundColor": "#107B43",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

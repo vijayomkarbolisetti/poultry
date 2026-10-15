@@ -22,6 +22,7 @@ export type TokenPair = {
   access_token: string;
   refresh_token: string;
   token_type: string;
+  user?: UserMe | null;
 };
 
 export async function registerOwner(input: {
@@ -53,4 +54,11 @@ export async function logout(): Promise<void> {
   } finally {
     await tokenStore.clear();
   }
+}
+
+/** Fire-and-forget wake-up for free-tier hosts so login feels faster. */
+export function warmApi(): void {
+  const base = api.defaults.baseURL?.replace(/\/api\/v1\/?$/, "") ?? "";
+  if (!base) return;
+  void fetch(`${base}/health`).catch(() => undefined);
 }

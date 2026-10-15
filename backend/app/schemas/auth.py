@@ -22,12 +22,6 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-
-
 class MembershipOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -48,6 +42,14 @@ class UserOut(BaseModel):
     is_platform_super_admin: bool
     created_at: datetime
     memberships: list[MembershipOut] = []
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    # Included on login/register so the app can skip a follow-up /auth/me round-trip.
+    user: UserOut | None = None
 
 
 class OwnerAccountOut(BaseModel):
