@@ -5,8 +5,6 @@ from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from app.core.database import get_db, set_rls_bypass, set_rls_context
 from app.core.security import decode_access_token
 from app.models.enums import MembershipRole
@@ -35,13 +33,10 @@ async def get_current_user(
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
-    # Bootstrap read of the authenticated principal under RLS.
-    await set_rls_context(db, user_id=user_id)
+    # JWT already verified — bootstrap user read under bypass (1 round-trip, no RLS GUC yet).
+    await set_rls_bypass(db, True)
     user = await db.get(User, user_id)
-    if user is None:
-        await set_rls_bypass(db, True)
-        user = await db.get(User, user_id)
-        await set_rls_bypass(db, False)
+    await set_rls_bypass(db, False)
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
     return user
@@ -62,18 +57,20 @@ async def get_auth_context(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid X-Owner-Account-Id") from exc
 
+        # Membership lookup under bypass so we don't need a prior RLS GUC set.
+        await set_rls_bypass(db, True)
         membership = await db.scalar(
-            select(OwnerMembership)
-            .where(
+            select(OwnerMembership).where(
                 OwnerMembership.user_id == user.id,
                 OwnerMembership.owner_account_id == owner_id,
                 OwnerMembership.is_active.is_(True),
             )
-            .options(selectinload(OwnerMembership.owner_account))
         )
+        await set_rls_bypass(db, False)
         if membership is None and not user.is_platform_super_admin:
             raise HTTPException(status_code=403, detail="No active membership for this organization")
 
+    # Single RLS context set for the remainder of the request.
     await set_rls_context(
         db,
         user_id=user.id,

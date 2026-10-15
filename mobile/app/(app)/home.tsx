@@ -54,7 +54,11 @@ export default function HomeScreen() {
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
   const isOwnerLike = membership?.role === "owner" || membership?.role === "org_admin";
-  const dash = useQuery({ queryKey: ["dashboard", ownerAccountId], queryFn: fetchDashboard });
+  const dash = useQuery({
+    queryKey: ["dashboard", ownerAccountId],
+    queryFn: fetchDashboard,
+    enabled: Boolean(ownerAccountId),
+  });
   const d = dash.data;
   const compliance =
     d && d.compliance_denominator > 0

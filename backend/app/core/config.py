@@ -35,7 +35,8 @@ class Settings(BaseSettings):
 
     jwt_secret: str = "change-me-local-only-not-for-production"
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 15
+    # Longer access TTL = fewer refresh round-trips (refresh hits DB + token rotate).
+    access_token_expire_minutes: int = 120
     refresh_token_expire_days: int = 14
 
     cors_origins: str = "*"

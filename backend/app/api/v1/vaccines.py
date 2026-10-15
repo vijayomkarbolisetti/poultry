@@ -112,6 +112,18 @@ async def list_doses(
     ctx: AuthContext = Depends(require_permission("vaccination.view")),
     db: AsyncSession = Depends(get_db),
 ) -> list[ScheduledDoseOut]:
-    await vaccine_service.refresh_dose_statuses(db, ctx)
+    # Same-transaction refresh (no mid-request commit) so RLS GUCs stay valid for the list.
+    await vaccine_service.refresh_dose_statuses(db, ctx, commit=False)
     rows = await vaccine_service.list_scheduled_doses(db, ctx, flock_id=flock_id, status=status_filter)
-    return [ScheduledDoseOut.model_validate(r) for r in rows]
+    out = [ScheduledDoseOut.model_validate(r) for r in rows]
+    await db.commit()
+    return out
+
+
+@router.post("/refresh-statuses")
+async def refresh_statuses(
+    ctx: AuthContext = Depends(require_permission("schedule.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    updated = await vaccine_service.refresh_dose_statuses(db, ctx, commit=True)
+    return {"updated": updated}

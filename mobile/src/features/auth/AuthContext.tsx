@@ -31,8 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     (async () => {
-      const access = await tokenStore.getAccess();
-      const owner = await tokenStore.getOwnerId();
+      await tokenStore.hydrate();
+      const [access, owner] = await Promise.all([tokenStore.getAccess(), tokenStore.getOwnerId()]);
       setHasToken(Boolean(access));
       setOwnerAccountId(owner);
       setBootstrapped(true);
@@ -44,13 +44,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryFn: fetchMe,
     enabled: bootstrapped && hasToken,
     retry: false,
+    staleTime: 5 * 60_000,
   });
+
+  // Prefer stored owner; fall back to first membership immediately (avoids dashboard fetch with null owner).
+  const resolvedOwner =
+    ownerAccountId ?? meQuery.data?.memberships[0]?.owner_account_id ?? null;
 
   useEffect(() => {
     if (!meQuery.data) return;
     const first = meQuery.data.memberships[0]?.owner_account_id;
     if (!ownerAccountId && first) {
-      void tokenStore.setOwnerId(first).then(() => setOwnerAccountId(first));
+      setOwnerAccountId(first);
+      void tokenStore.setOwnerId(first);
     }
   }, [meQuery.data, ownerAccountId]);
 
@@ -68,15 +74,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const setActiveOwner = useCallback(async (ownerId: string) => {
-    await tokenStore.setOwnerId(ownerId);
+    // Memory first so the next request interceptor sees the new owner immediately.
     setOwnerAccountId(ownerId);
-  }, []);
+    await tokenStore.setOwnerId(ownerId);
+    queryClient.clear();
+  }, [queryClient]);
 
   const value = useMemo<AuthState>(
     () => ({
       user: meQuery.data ?? null,
-      loading: !bootstrapped || (hasToken && meQuery.isLoading),
-      ownerAccountId,
+      // Keep shell loading until owner is known — prevents a wasted dashboard call with null owner.
+      loading: !bootstrapped || (hasToken && (meQuery.isLoading || (!!meQuery.data && !resolvedOwner))),
+      ownerAccountId: resolvedOwner,
       refreshSession,
       signOut,
       setActiveOwner,
@@ -86,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       meQuery.isLoading,
       bootstrapped,
       hasToken,
-      ownerAccountId,
+      resolvedOwner,
       refreshSession,
       signOut,
       setActiveOwner,

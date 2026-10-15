@@ -8,7 +8,21 @@ import { AuthProvider } from "../src/features/auth/AuthContext";
 import { colors } from "../src/theme/tokens";
 
 export default function RootLayout() {
-  const [client] = useState(() => new QueryClient());
+  const [client] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            // Keep screens snappy — don't refetch on every tab switch.
+            staleTime: 60_000,
+            gcTime: 5 * 60_000,
+            refetchOnWindowFocus: false,
+            refetchOnReconnect: true,
+            retry: 1,
+          },
+        },
+      }),
+  );
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

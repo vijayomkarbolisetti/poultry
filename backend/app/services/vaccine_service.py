@@ -289,30 +289,64 @@ async def list_scheduled_doses(
     return list(await db.scalars(stmt.order_by(ScheduledDose.due_date)))
 
 
-async def refresh_dose_statuses(db: AsyncSession, ctx: AuthContext) -> int:
+async def refresh_dose_statuses(
+    db: AsyncSession,
+    ctx: AuthContext,
+    *,
+    commit: bool = False,
+) -> int:
+    """Bulk-update open dose statuses in one SQL statement (no per-row Python loop).
+
+    Default ``commit=False`` keeps the update in the current transaction so RLS GUCs
+    (transaction-local) are not cleared mid-request. Callers that own the request
+    lifecycle may pass ``commit=True`` (e.g. dedicated refresh endpoint).
+    """
+    from sqlalchemy import text
+
     owner = await db.get(OwnerAccount, ctx.owner_account_id)
     today = farm_local_today(owner.timezone if owner else None)
-    doses = list(
-        await db.scalars(
-            select(ScheduledDose).where(
-                ScheduledDose.owner_account_id == ctx.owner_account_id,
-                ScheduledDose.is_active.is_(True),
-            )
-        )
+    result = await db.execute(
+        text(
+            """
+            UPDATE scheduled_doses AS d
+            SET status = v.new_status
+            FROM (
+              SELECT id,
+                     CASE
+                       WHEN needs_review THEN 'needs_review'
+                       WHEN CAST(:today AS date) < (due_date - reminder_lead_days) THEN 'upcoming'
+                       WHEN CAST(:today AS date) < due_date THEN 'due_soon'
+                       WHEN CAST(:today AS date) = due_date THEN 'due_today'
+                       WHEN grace_period_days > 0
+                            AND CAST(:today AS date) > due_date
+                            AND CAST(:today AS date) <= (due_date + grace_period_days)
+                         THEN 'due_today'
+                       WHEN CAST(:today AS date) > (due_date + GREATEST(grace_period_days, 0))
+                         THEN 'overdue'
+                       ELSE 'due_today'
+                     END AS new_status
+              FROM scheduled_doses
+              WHERE owner_account_id = CAST(:oid AS uuid)
+                AND is_active IS TRUE
+                AND status NOT LIKE 'completed%'
+                AND status NOT IN ('skipped', 'inactive')
+            ) AS v
+            WHERE d.id = v.id
+              AND d.status IS DISTINCT FROM v.new_status
+            """
+        ),
+        {"today": today, "oid": str(ctx.owner_account_id)},
     )
-    updated = 0
-    for dose in doses:
-        if dose.status.startswith("completed") or dose.status in {"skipped", "inactive"}:
-            continue
-        new_status = compute_dose_status(
-            due_date=dose.due_date,
-            grace_period_days=dose.grace_period_days,
-            reminder_lead_days=dose.reminder_lead_days,
-            today=today,
-            has_uncertain_history=dose.needs_review,
+    updated = result.rowcount or 0
+    if commit and updated:
+        await db.commit()
+        # Commit ends the transaction and clears local RLS GUCs — restore for any follow-up work.
+        from app.core.database import set_rls_context
+
+        await set_rls_context(
+            db,
+            user_id=ctx.user.id,
+            owner_account_id=ctx.owner_account_id,
+            role=ctx.membership.role.value if ctx.membership else None,
         )
-        if new_status != dose.status:
-            dose.status = new_status
-            updated += 1
-    await db.commit()
     return updated
