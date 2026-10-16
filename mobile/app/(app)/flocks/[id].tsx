@@ -6,6 +6,7 @@ import { StyleSheet, Text, TextInput, View } from "react-native";
 import { bulkImportBirds, createBird, getFlock, listBirds, recordLifecycle } from "../../../src/api/flocks";
 import { describeApiError } from "../../../src/api/client";
 import { Button } from "../../../src/components/ui/Button";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { colors, radius, space } from "../../../src/theme/tokens";
@@ -35,7 +36,7 @@ export default function FlockDetailScreen() {
       await createBird({ flock_id: id, band_id: bandId, dob_confidence: "unknown" });
       setBandId("");
       await refresh();
-      setMsg("Bird added");
+      setMsg("Hen added");
     } catch (e: unknown) {
       setMsg(describeApiError(e, "save"));
     } finally {
@@ -82,7 +83,7 @@ export default function FlockDetailScreen() {
     }
   };
 
-  if (flock.isLoading) return <Screen><Text>Loading…</Text></Screen>;
+  if (flock.isLoading) return <Screen><HenLoader label="Loading this flock…" /></Screen>;
   if (!flock.data) return <Screen><Text style={styles.error}>Flock not found</Text></Screen>;
   const f = flock.data;
 
@@ -102,15 +103,15 @@ export default function FlockDetailScreen() {
         {f.count_mismatch ? <Text style={styles.error}>Count mismatch flagged</Text> : null}
       </View>
 
-      <Text style={styles.section}>Add banded bird</Text>
+      <Text style={styles.section}>Add banded hen</Text>
       <TextInput style={styles.input} value={bandId} onChangeText={setBandId} placeholder="Band ID" autoCapitalize="characters" />
-      <Button label="Add bird" onPress={onAddBird} loading={busy} disabled={!bandId} />
+      <Button label="Add hen" onPress={onAddBird} loading={busy} disabled={!bandId} />
 
       <Text style={styles.section}>Bulk import (one band ID per line)</Text>
       <TextInput style={[styles.input, { minHeight: 90 }]} multiline value={bulkText} onChangeText={setBulkText} />
       <Button label="Import bands" onPress={onBulk} loading={busy} variant="secondary" />
 
-      <Text style={styles.section}>Birds ({birds.data?.length ?? 0})</Text>
+      <Text style={styles.section}>Hens ({birds.data?.length ?? 0})</Text>
       {(birds.data ?? []).map((b) => (
         <View key={b.id} style={styles.card}>
           <Text style={styles.name}>{b.band_id ?? b.id.slice(0, 8)}</Text>

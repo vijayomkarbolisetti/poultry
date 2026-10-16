@@ -6,6 +6,7 @@ import { createVaccine, listVaccines } from "../../../src/api/vaccines";
 import { describeApiError } from "../../../src/api/client";
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -66,7 +67,7 @@ export default function VaccinesScreen() {
             value={name}
             onChangeText={setName}
           />
-          <Text style={styles.label}>Give at bird age (days)</Text>
+          <Text style={styles.label}>Give at hen age (days)</Text>
           <TextInput
             style={styles.input}
             placeholder="e.g. 7"
@@ -89,7 +90,7 @@ export default function VaccinesScreen() {
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
         ListEmptyComponent={
           vaccines.isLoading ? (
-            <Text style={styles.meta}>Loading…</Text>
+            <HenLoader label="Loading vaccines…" />
           ) : (
             <EmptyState
               title="No vaccines yet"

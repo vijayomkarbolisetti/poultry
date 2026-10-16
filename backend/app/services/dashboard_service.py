@@ -1,4 +1,4 @@
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authorization.deps import AuthContext
@@ -42,36 +42,6 @@ async def summary(db: AsyncSession, ctx: AuthContext) -> dict:
     if assigned is not None:
         shed_filter.append(Shed.id.in_(assigned))
 
-    # One round-trip for shed metrics instead of three COUNT queries.
-    shed_row = (
-        await db.execute(
-            select(
-                func.count().label("active_sheds"),
-                func.coalesce(func.sum(case((Shed.is_owner_managed.is_(True), 1), else_=0)), 0).label(
-                    "owner_managed"
-                ),
-                func.coalesce(func.sum(case((Shed.is_owner_managed.is_(False), 1), else_=0)), 0).label(
-                    "farmer_managed"
-                ),
-            ).where(*shed_filter)
-        )
-    ).one()
-
-    active_farmers = 0
-    if ctx.membership.role != MembershipRole.farmer:
-        active_farmers = (
-            await db.scalar(
-                select(func.count())
-                .select_from(OwnerMembership)
-                .where(
-                    OwnerMembership.owner_account_id == ctx.owner_account_id,
-                    OwnerMembership.is_active.is_(True),
-                    OwnerMembership.role == MembershipRole.farmer,
-                )
-            )
-            or 0
-        )
-
     flock_filter = [
         Flock.owner_account_id == ctx.owner_account_id,
         Flock.status == FlockStatus.active,
@@ -81,44 +51,66 @@ async def summary(db: AsyncSession, ctx: AuthContext) -> dict:
         Bird.is_active.is_(True),
         Bird.lifecycle_status == BirdLifecycleStatus.active,
     ]
-    if assigned is not None:
-        flock_filter.append(Flock.shed_id.in_(assigned))
-        bird_filter.append(Bird.shed_id.in_(assigned))
-
-    active_flocks = await db.scalar(select(func.count()).select_from(Flock).where(*flock_filter)) or 0
-    active_birds = await db.scalar(select(func.count()).select_from(Bird).where(*bird_filter)) or 0
-
     dose_filter = [
         ScheduledDose.owner_account_id == ctx.owner_account_id,
         ScheduledDose.is_active.is_(True),
     ]
+    farmer_filter = [
+        OwnerMembership.owner_account_id == ctx.owner_account_id,
+        OwnerMembership.is_active.is_(True),
+        OwnerMembership.role == MembershipRole.farmer,
+    ]
     if assigned is not None:
+        flock_filter.append(Flock.shed_id.in_(assigned))
+        bird_filter.append(Bird.shed_id.in_(assigned))
         dose_filter.append(ScheduledDose.shed_id.in_(assigned))
 
-    # Aggregate in SQL — never pull every dose row into Python.
-    dose_rows = (
+    def _count(model, *filters):
+        return select(func.count()).select_from(model).where(*filters).scalar_subquery()
+
+    # One round trip for every home-screen number.
+    totals = (
         await db.execute(
-            select(ScheduledDose.status, func.count().label("n"))
-            .where(*dose_filter)
-            .group_by(ScheduledDose.status)
+            select(
+                _count(Shed, *shed_filter).label("active_sheds"),
+                select(func.coalesce(func.sum(case((Shed.is_owner_managed.is_(True), 1), else_=0)), 0))
+                .where(*shed_filter)
+                .scalar_subquery()
+                .label("owner_managed"),
+                select(func.coalesce(func.sum(case((Shed.is_owner_managed.is_(False), 1), else_=0)), 0))
+                .where(*shed_filter)
+                .scalar_subquery()
+                .label("farmer_managed"),
+                (
+                    _count(OwnerMembership, *farmer_filter)
+                    if ctx.membership.role != MembershipRole.farmer
+                    else select(literal(0)).scalar_subquery()
+                ).label("active_farmers"),
+                _count(Flock, *flock_filter).label("active_flocks"),
+                _count(Bird, *bird_filter).label("active_birds"),
+                _count(ScheduledDose, *dose_filter, ScheduledDose.status == STATUS_UPCOMING).label("upcoming"),
+                _count(ScheduledDose, *dose_filter, ScheduledDose.status == STATUS_DUE_TODAY).label("due_today"),
+                _count(ScheduledDose, *dose_filter, ScheduledDose.status == STATUS_OVERDUE).label("overdue"),
+                _count(ScheduledDose, *dose_filter, ScheduledDose.status == STATUS_COMPLETED_ON_TIME).label("on_time"),
+                _count(ScheduledDose, *dose_filter, ScheduledDose.status == STATUS_COMPLETED_LATE).label("late"),
+            )
         )
-    ).all()
-    by_status = {row.status: int(row.n) for row in dose_rows}
-    on_time = by_status.get(STATUS_COMPLETED_ON_TIME, 0)
-    late = by_status.get(STATUS_COMPLETED_LATE, 0)
-    overdue = by_status.get(STATUS_OVERDUE, 0)
-    due_today = by_status.get(STATUS_DUE_TODAY, 0)
-    upcoming = by_status.get(STATUS_UPCOMING, 0)
+    ).one()
+    on_time = int(totals.on_time)
+    late = int(totals.late)
+    overdue = int(totals.overdue)
+    due_today = int(totals.due_today)
+    upcoming = int(totals.upcoming)
     num = on_time
     den = on_time + late + overdue
 
     return {
-        "active_sheds": int(shed_row.active_sheds),
-        "active_farmers": int(active_farmers),
-        "owner_managed_sheds": int(shed_row.owner_managed),
-        "farmer_managed_sheds": int(shed_row.farmer_managed),
-        "active_flocks": int(active_flocks),
-        "active_birds": int(active_birds),
+        "active_sheds": int(totals.active_sheds),
+        "active_farmers": int(totals.active_farmers),
+        "owner_managed_sheds": int(totals.owner_managed),
+        "farmer_managed_sheds": int(totals.farmer_managed),
+        "active_flocks": int(totals.active_flocks),
+        "active_birds": int(totals.active_birds),
         "upcoming_doses": upcoming,
         "due_today": due_today,
         "overdue_doses": overdue,

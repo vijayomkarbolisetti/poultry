@@ -14,6 +14,7 @@ import {
   recordVaccination,
 } from "../../../src/api/vaccines";
 import { Button } from "../../../src/components/ui/Button";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { SelectField } from "../../../src/components/ui/SelectField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -44,7 +45,7 @@ const STATUS_META: Record<
   completed_on_time: { label: "Done on time", hint: "Recorded on or before due date", tone: "good" },
   completed_late: { label: "Done late", hint: "Recorded after the due date", tone: "warn" },
   completed_timing_unknown: { label: "Done", hint: "Completed (timing unknown)", tone: "good" },
-  needs_review: { label: "Needs review", hint: "Check bird age / history before vaccinating", tone: "warn" },
+  needs_review: { label: "Needs review", hint: "Check hen age / history before vaccinating", tone: "warn" },
   skipped: { label: "Skipped", hint: "Marked as not required", tone: "neutral" },
   inactive: { label: "Inactive", hint: "Flock closed or dose inactive", tone: "neutral" },
 };
@@ -81,7 +82,7 @@ function matchesFilter(status: string, filter: StatusKey) {
 }
 
 function flockLabel(f: Flock) {
-  const birds = `${f.current_count} birds`;
+  const birds = `${f.current_count} hens`;
   const breed = f.breed ? ` · ${f.breed}` : "";
   return `${f.batch_code}${breed} · ${birds}`;
 }
@@ -312,13 +313,15 @@ export default function DosesScreen() {
         initialNumToRender={12}
         contentContainerStyle={{ gap: space.sm, paddingBottom: 100 }}
         ListEmptyComponent={
-          <Text style={styles.meta}>
-            {doses.isLoading
-              ? "Loading tasks…"
-              : canManage
+          doses.isLoading ? (
+            <HenLoader label="Loading vaccination tasks…" />
+          ) : (
+            <Text style={styles.meta}>
+              {canManage
                 ? "No tasks in this view. Create a plan above, or change the filter."
                 : "No tasks assigned yet. Ask your farm owner to create a vaccination plan."}
-          </Text>
+            </Text>
+          )
         }
         renderItem={({ item }) => {
           const st = statusInfo(item.status);
@@ -338,13 +341,13 @@ export default function DosesScreen() {
               <Text style={styles.meta}>Flock: {flock ? flockLabel(flock) : "Unknown flock"}</Text>
               <Text style={styles.meta}>Due date: {item.due_date}</Text>
               <Text style={styles.meta}>
-                Progress: {item.completed_count} of {item.eligible_count} birds done
+                Progress: {item.completed_count} of {item.eligible_count} hens done
                 {remaining > 0 ? ` · ${remaining} left` : ""}
               </Text>
               {st.hint ? <Text style={styles.hint}>{st.hint}</Text> : null}
               {canRecord && !item.status.startsWith("completed") && item.status !== "skipped" ? (
                 <Button
-                  label={remaining > 0 ? `Mark vaccinated (${remaining} birds)` : "Mark vaccinated"}
+                  label={remaining > 0 ? `Mark vaccinated (${remaining} hens)` : "Mark vaccinated"}
                   onPress={() => onRecord(item)}
                   loading={busy}
                 />

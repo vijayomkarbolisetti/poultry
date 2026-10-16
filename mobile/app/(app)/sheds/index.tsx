@@ -7,6 +7,7 @@ import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-na
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -74,7 +75,7 @@ export default function ShedsScreen() {
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
         ListEmptyComponent={
           sheds.isLoading ? (
-            <Text style={styles.meta}>Loading…</Text>
+            <HenLoader label="Loading sheds…" />
           ) : (
             <EmptyState
               title="No sheds yet"
@@ -91,7 +92,7 @@ export default function ShedsScreen() {
             subtitle={item.code}
             meta={item.is_owner_managed ? "Owner-managed" : "Farmer-managed"}
             imageUri={media.shedYard}
-            icon="business"
+            icon="egg"
             badge={item.is_active ? "Active" : "Inactive"}
             badgeTone={item.is_active ? "good" : "neutral"}
             onPress={() => router.push(`/(app)/sheds/${item.id}`)}

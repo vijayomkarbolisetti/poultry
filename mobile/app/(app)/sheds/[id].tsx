@@ -7,6 +7,7 @@ import { listFarmers } from "../../../src/api/farmers";
 import { describeApiError } from "../../../src/api/client";
 import { assignFarmer, getShed, listAssignments } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
@@ -47,7 +48,7 @@ export default function ShedDetailScreen() {
     }
   };
 
-  if (shed.isLoading) return <Screen><Text>Loading…</Text></Screen>;
+  if (shed.isLoading) return <Screen><HenLoader label="Loading this shed…" /></Screen>;
   if (shed.isError || !shed.data) return <Screen><Text style={styles.error}>Shed not found or access denied</Text></Screen>;
 
   const assignedIds = new Set((assignments.data ?? []).map((a) => a.owner_membership_id));

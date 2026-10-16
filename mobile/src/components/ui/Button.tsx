@@ -32,18 +32,21 @@ export function Button({ label, onPress, loading, variant = "primary", disabled,
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={isPrimary || isDanger ? "#fff" : colors.brand} />
-      ) : (
-        <Text
-          style={[
-            styles.label,
-            (isPrimary || isDanger) && styles.labelOnDark,
-            (variant === "secondary" || isGhost) && styles.labelBrand,
-          ]}
-        >
-          {label}
-        </Text>
-      )}
+        <ActivityIndicator
+          size="small"
+          color={isPrimary || isDanger ? "#fff" : colors.brand}
+          style={styles.spinner}
+        />
+      ) : null}
+      <Text
+        style={[
+          styles.label,
+          (isPrimary || isDanger) && styles.labelOnDark,
+          (variant === "secondary" || isGhost) && styles.labelBrand,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -54,8 +57,10 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
     paddingHorizontal: space.lg,
   },
+  spinner: { marginRight: space.sm },
   primary: { backgroundColor: colors.brand },
   secondary: {
     backgroundColor: colors.bgElevated,

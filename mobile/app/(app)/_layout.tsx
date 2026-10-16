@@ -1,8 +1,9 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { Redirect, router, Tabs } from "expo-router";
 import { ComponentProps } from "react";
-import { ActivityIndicator, ColorValue, Pressable, View } from "react-native";
+import { ColorValue, Pressable, View } from "react-native";
 
+import { HenLoader } from "../../src/components/ui/HenLoader";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
 import { colors } from "../../src/theme/tokens";
@@ -38,7 +39,7 @@ export default function AppLayout() {
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg }}>
-        <ActivityIndicator color={colors.brand} size="large" />
+        <HenLoader label="Opening your farm…" />
       </View>
     );
   }
@@ -82,8 +83,8 @@ export default function AppLayout() {
       <Tabs.Screen
         name="flocks/index"
         options={{
-          title: "Birds",
-          tabBarLabel: "Birds",
+          title: "Hens",
+          tabBarLabel: "Hens",
           href: canBirds ? undefined : null,
           tabBarIcon: tabIcon("egg", "egg-outline"),
         }}

@@ -5,6 +5,7 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 import { listFlocks } from "../../../src/api/flocks";
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -21,7 +22,7 @@ export default function FlocksScreen() {
     <Screen style={{ paddingTop: space.md }}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Birds & flocks</Text>
+          <Text style={styles.title}>Hens & flocks</Text>
           <Text style={styles.sub}>
             {flocks.data ? `${flocks.data.length} active flock${flocks.data.length === 1 ? "" : "s"}` : "Your hen groups"}
           </Text>
@@ -38,7 +39,7 @@ export default function FlocksScreen() {
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
         ListEmptyComponent={
           flocks.isLoading ? (
-            <Text style={styles.sub}>Loading flocks…</Text>
+            <HenLoader label="Loading flocks…" />
           ) : (
             <EmptyState
               title="No flocks yet"
@@ -53,7 +54,7 @@ export default function FlocksScreen() {
           <MediaCard
             title={item.batch_code}
             subtitle={item.breed ? `${item.breed}` : "Mixed / unknown breed"}
-            meta={`${item.current_count} birds · ${item.tracking_mode} · ${item.dob_confidence} age`}
+            meta={`${item.current_count} hens · ${item.tracking_mode} · ${item.dob_confidence} age`}
             imageUri={media.flockHen}
             icon="egg"
             badge={item.count_mismatch ? "Check count" : item.status}

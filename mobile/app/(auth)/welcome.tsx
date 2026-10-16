@@ -1,6 +1,6 @@
 import { router } from "expo-router";
 import { useEffect } from "react";
-import { ImageBackground, StyleSheet, Text, View } from "react-native";
+import { Image, ImageBackground, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { warmApi } from "../../src/api/auth";
@@ -19,9 +19,7 @@ export default function WelcomeScreen() {
         <View style={styles.scrim}>
           <SafeAreaView style={styles.safe} edges={["top", "bottom", "left", "right"]}>
             <View style={styles.top}>
-              <View style={styles.logoMark}>
-                <Text style={styles.logoMarkText}>PT</Text>
-              </View>
+              <Image source={require("../../assets/icon.png")} style={styles.logoMark} />
               <View>
                 <Text style={styles.brand}>PoultryTrack</Text>
                 <Text style={styles.brandSub}>Farm health, made simple</Text>
@@ -32,7 +30,7 @@ export default function WelcomeScreen() {
               <Text style={styles.eyebrow}>FOR MODERN POULTRY FARMS</Text>
               <Text style={styles.tagline}>Healthy Hens.{"\n"}Better Harvest.</Text>
               <Text style={styles.sub}>
-                Beautiful tools to track sheds, flocks, and vaccination tasks — so every bird stays on schedule.
+                Beautiful tools to track sheds, flocks, and vaccination tasks — so every hen stays on schedule.
               </Text>
               <Button label="Get Started" onPress={() => router.push("/(auth)/login")} />
               <Button
@@ -55,14 +53,10 @@ const styles = StyleSheet.create({
   safe: { flex: 1, justifyContent: "space-between", padding: space.lg },
   top: { flexDirection: "row", alignItems: "center", gap: space.sm, marginTop: space.md },
   logoMark: {
-    width: 44,
-    height: 44,
+    width: 48,
+    height: 48,
     borderRadius: 14,
-    backgroundColor: colors.brand,
-    alignItems: "center",
-    justifyContent: "center",
   },
-  logoMarkText: { color: "#fff", fontWeight: "800", fontSize: 16 },
   brand: { color: "#fff", fontSize: 22, fontWeight: "800" },
   brandSub: { color: "#C8E0D1", fontSize: 12, fontWeight: "600" },
   bottom: { gap: space.md, paddingBottom: space.md },

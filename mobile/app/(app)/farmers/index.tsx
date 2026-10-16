@@ -5,6 +5,7 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 import { listFarmers } from "../../../src/api/farmers";
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -34,7 +35,7 @@ export default function FarmersScreen() {
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
         ListEmptyComponent={
           farmers.isLoading ? (
-            <Text style={styles.sub}>Loading…</Text>
+            <HenLoader label="Loading farmers…" />
           ) : (
             <EmptyState
               title="No farmers yet"

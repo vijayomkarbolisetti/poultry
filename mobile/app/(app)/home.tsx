@@ -116,7 +116,7 @@ export default function HomeScreen() {
 
           <Text style={styles.section}>Overview</Text>
           <View style={styles.grid}>
-            <StatCard label="Total birds" value={d?.active_birds ?? "—"} icon="analytics-outline" />
+            <StatCard label="Hens" value={d?.active_birds ?? "—"} icon="egg-outline" />
             <StatCard label="Due today" value={d?.due_today ?? "—"} icon="today-outline" tone="warn" />
             <StatCard label="Overdue" value={d?.overdue_doses ?? "—"} icon="alert-circle-outline" tone="danger" />
             <StatCard label="Compliance" value={compliance} icon="shield-checkmark-outline" tone="info" />
@@ -133,7 +133,7 @@ export default function HomeScreen() {
           <Text style={styles.section}>Quick links</Text>
           {canTasks ? <QuickLink label="Vaccination tasks" icon="checkbox-outline" href="/(app)/doses" /> : null}
           {canSheds ? <QuickLink label="Manage sheds" icon="business-outline" href="/(app)/sheds" /> : null}
-          {canBirds ? <QuickLink label="Birds & flocks" icon="egg-outline" href="/(app)/flocks" /> : null}
+          {canBirds ? <QuickLink label="Hens & flocks" icon="egg-outline" href="/(app)/flocks" /> : null}
           {canVaccines ? <QuickLink label="Vaccine catalogue" icon="medkit-outline" href="/(app)/vaccines" /> : null}
           {canFarmers ? <QuickLink label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
           {!canTasks && !canSheds && !canBirds && !canVaccines && !canFarmers ? (

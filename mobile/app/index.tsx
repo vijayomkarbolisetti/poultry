@@ -1,6 +1,7 @@
 import { Redirect } from "expo-router";
-import { ActivityIndicator, View } from "react-native";
+import { View } from "react-native";
 
+import { HenLoader } from "../src/components/ui/HenLoader";
 import { useAuth } from "../src/features/auth/AuthContext";
 import { colors } from "../src/theme/tokens";
 
@@ -10,7 +11,7 @@ export default function Index() {
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg }}>
-        <ActivityIndicator color={colors.brand} size="large" />
+        <HenLoader label="Opening your farm…" />
       </View>
     );
   }

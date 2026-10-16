@@ -7,6 +7,7 @@ import { listFarmers, setFarmerPermissions, setFarmerSheds, updateFarmer } from 
 import { describeApiError } from "../../../src/api/client";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
+import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { FARMER_PERM_OPTIONS, PERMISSION_LABELS } from "../../../src/features/auth/permissions";
@@ -62,7 +63,7 @@ export default function FarmerDetailScreen() {
   if (farmers.isLoading) {
     return (
       <Screen>
-        <Text>Loading…</Text>
+        <HenLoader label="Loading this farmer…" />
       </Screen>
     );
   }

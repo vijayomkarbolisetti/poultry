@@ -3,9 +3,9 @@ from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db, set_rls_bypass, set_rls_context
+from app.core.database import get_db, set_rls_bypass
 from app.core.security import decode_access_token
 from app.models.enums import MembershipRole
 from app.models.membership import OwnerMembership
@@ -43,40 +43,109 @@ async def get_current_user(
 
 
 async def get_auth_context(
-    user: User = Depends(get_current_user),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
     x_owner_account_id: str | None = Header(default=None, alias="X-Owner-Account-Id"),
 ) -> AuthContext:
-    """Resolve optional active organization from header; verify membership server-side."""
-    membership: OwnerMembership | None = None
-    owner_id: UUID | None = None
+    """Resolve the user and org in one database round trip, then set RLS."""
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    try:
+        payload = decode_access_token(credentials.credentials)
+        user_id = UUID(payload["sub"])
+    except (ValueError, KeyError) as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token") from exc
 
+    owner_id: UUID | None = None
     if x_owner_account_id:
         try:
             owner_id = UUID(x_owner_account_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail="Invalid X-Owner-Account-Id") from exc
 
-        # Membership lookup under bypass so we don't need a prior RLS GUC set.
-        await set_rls_bypass(db, True)
-        membership = await db.scalar(
-            select(OwnerMembership).where(
-                OwnerMembership.user_id == user.id,
-                OwnerMembership.owner_account_id == owner_id,
-                OwnerMembership.is_active.is_(True),
-            )
+    row = (
+        await db.execute(
+            text(
+                """
+                WITH prep AS (
+                    SELECT set_config('app.rls_bypass', 'on', true) AS ok
+                )
+                SELECT
+                    set_config('app.rls_bypass', 'off', true) AS bypass_off,
+                    set_config('app.current_user_id', u.id::text, true) AS uid_set,
+                    set_config('app.current_owner_id', COALESCE(:oid, ''), true) AS oid_set,
+                    set_config(
+                        'app.current_role',
+                        COALESCE(
+                            m.role::text,
+                            CASE WHEN u.is_platform_super_admin THEN 'platform_super_admin' ELSE '' END
+                        ),
+                        true
+                    ) AS role_set,
+                    u.id AS user_id,
+                    u.email,
+                    u.password_hash,
+                    u.full_name,
+                    u.is_active,
+                    u.is_platform_super_admin,
+                    u.created_at AS user_created_at,
+                    u.updated_at AS user_updated_at,
+                    m.id AS membership_id,
+                    m.owner_account_id,
+                    m.user_id AS membership_user_id,
+                    m.role::text AS role,
+                    m.is_active AS membership_active,
+                    m.created_at AS membership_created_at,
+                    m.updated_at AS membership_updated_at
+                FROM prep
+                JOIN users u ON u.id = CAST(:uid AS uuid)
+                LEFT JOIN owner_memberships m
+                    ON CAST(:oid AS uuid) IS NOT NULL
+                   AND m.user_id = u.id
+                   AND m.owner_account_id = CAST(:oid AS uuid)
+                   AND m.is_active
+                """
+            ),
+            {"uid": str(user_id), "oid": str(owner_id) if owner_id else None},
         )
-        await set_rls_bypass(db, False)
-        if membership is None and not user.is_platform_super_admin:
-            raise HTTPException(status_code=403, detail="No active membership for this organization")
+    ).mappings().first()
 
-    # Single RLS context set for the remainder of the request.
-    await set_rls_context(
-        db,
-        user_id=user.id,
-        owner_account_id=owner_id,
-        role=membership.role.value if membership else ("platform_super_admin" if user.is_platform_super_admin else None),
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
+
+    user = await db.merge(
+        User(
+            id=row["user_id"],
+            email=row["email"],
+            password_hash=row["password_hash"],
+            full_name=row["full_name"],
+            is_active=row["is_active"],
+            is_platform_super_admin=row["is_platform_super_admin"],
+            created_at=row["user_created_at"],
+            updated_at=row["user_updated_at"],
+        ),
+        load=False,
     )
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
+
+    membership: OwnerMembership | None = None
+    if row["membership_id"] is not None:
+        membership = await db.merge(
+            OwnerMembership(
+                id=row["membership_id"],
+                owner_account_id=row["owner_account_id"],
+                user_id=row["membership_user_id"],
+                role=MembershipRole(row["role"]),
+                is_active=row["membership_active"],
+                created_at=row["membership_created_at"],
+                updated_at=row["membership_updated_at"],
+            ),
+            load=False,
+        )
+    elif owner_id is not None and not user.is_platform_super_admin:
+        raise HTTPException(status_code=403, detail="No active membership for this organization")
+
     return AuthContext(user=user, membership=membership, owner_account_id=owner_id)
 
 

@@ -10,13 +10,13 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://poultry-api-uv53.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://3.6.160.64.sslip.io"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://poultry-api-uv53.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://3.6.160.64.sslip.io"
       }
     }
   },
