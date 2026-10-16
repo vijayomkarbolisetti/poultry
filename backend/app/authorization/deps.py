@@ -3,8 +3,11 @@ from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import attributes
+from sqlalchemy.orm.util import identity_key
+
 from app.core.database import get_db, set_rls_bypass
 from app.core.security import decode_access_token
 from app.models.enums import MembershipRole
@@ -12,6 +15,18 @@ from app.models.membership import OwnerMembership
 from app.models.user import User
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _merge_loaded(db: AsyncSession, instance):
+    """Put an already-loaded row into the session without another SELECT.
+
+    merge(load=False) rejects a brand-new instance. Mark it detached and
+    unchanged first so SQLAlchemy treats the row as already persisted.
+    """
+    state = attributes.instance_state(instance)
+    state.key = identity_key(instance=instance)
+    state._commit_all(attributes.instance_dict(instance))
+    return db.merge(instance, load=False)
 
 
 @dataclass
@@ -117,7 +132,8 @@ async def get_auth_context(
     if row is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
 
-    user = await db.merge(
+    user = await _merge_loaded(
+        db,
         User(
             id=row["user_id"],
             email=row["email"],
@@ -128,14 +144,14 @@ async def get_auth_context(
             created_at=row["user_created_at"],
             updated_at=row["user_updated_at"],
         ),
-        load=False,
     )
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive or missing user")
 
     membership: OwnerMembership | None = None
     if row["membership_id"] is not None:
-        membership = await db.merge(
+        membership = await _merge_loaded(
+            db,
             OwnerMembership(
                 id=row["membership_id"],
                 owner_account_id=row["owner_account_id"],
@@ -145,7 +161,6 @@ async def get_auth_context(
                 created_at=row["membership_created_at"],
                 updated_at=row["membership_updated_at"],
             ),
-            load=False,
         )
     elif owner_id is not None and not user.is_platform_super_admin:
         raise HTTPException(status_code=403, detail="No active membership for this organization")
