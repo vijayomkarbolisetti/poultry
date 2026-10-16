@@ -73,7 +73,7 @@ async def get_auth_context(
                 SELECT
                     set_config('app.rls_bypass', 'off', true) AS bypass_off,
                     set_config('app.current_user_id', u.id::text, true) AS uid_set,
-                    set_config('app.current_owner_id', COALESCE(:oid, ''), true) AS oid_set,
+                    set_config('app.current_owner_id', :oid_text, true) AS oid_set,
                     set_config(
                         'app.current_role',
                         COALESCE(
@@ -100,13 +100,17 @@ async def get_auth_context(
                 FROM prep
                 JOIN users u ON u.id = CAST(:uid AS uuid)
                 LEFT JOIN owner_memberships m
-                    ON CAST(:oid AS uuid) IS NOT NULL
+                    ON CAST(:oid_uuid AS uuid) IS NOT NULL
                    AND m.user_id = u.id
-                   AND m.owner_account_id = CAST(:oid AS uuid)
+                   AND m.owner_account_id = CAST(:oid_uuid AS uuid)
                    AND m.is_active
                 """
             ),
-            {"uid": str(user_id), "oid": str(owner_id) if owner_id else None},
+            {
+                "uid": str(user_id),
+                "oid_text": str(owner_id) if owner_id else "",
+                "oid_uuid": str(owner_id) if owner_id else None,
+            },
         )
     ).mappings().first()
 
