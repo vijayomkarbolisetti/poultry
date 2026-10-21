@@ -33,10 +33,10 @@ export default function RootLayout() {
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)/welcome" />
-            <Stack.Screen name="(auth)/login" options={{ headerShown: true, title: "Sign in", headerTintColor: colors.brand }} />
+            <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
             <Stack.Screen
               name="(auth)/register"
-              options={{ headerShown: true, title: "Create farm", headerTintColor: colors.brand }}
+              options={{ headerShown: true, title: "Create farm", headerTintColor: colors.primary }}
             />
             <Stack.Screen name="(app)" />
           </Stack>

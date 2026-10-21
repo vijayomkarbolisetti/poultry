@@ -1,0 +1,143 @@
+{
+  "stamp": "235435",
+  "shed_id": "a127d7e3-25e6-485e-a8de-7e1fb90a2dc8",
+  "pass": 18,
+  "fail": 4,
+  "results": [
+    {
+      "step": "API create manager farmer",
+      "ok": true,
+      "detail": "2aff1e0b-5cc1-4075-8b43-4ef608bbd7eb"
+    },
+    {
+      "step": "API create verify shed",
+      "ok": true,
+      "detail": "a127d7e3-25e6-485e-a8de-7e1fb90a2dc8"
+    },
+    {
+      "step": "API seed batch",
+      "ok": true,
+      "detail": "a1004749-50bd-4734-aa45-2f050ded6531"
+    },
+    {
+      "step": "list/overview population match",
+      "ok": true,
+      "detail": "list=25/1 ov={'total_live_birds': 25, 'active_batch_count': 1, 'banded_birds': 0, 'unbanded_birds': 25}"
+    },
+    {
+      "step": "list/overview vax task keys present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "API edit name/code/notes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "replace manager demotes old preserves helper",
+      "ok": true,
+      "detail": "[{'id': '48381595-e68a-48ec-826e-de458eeccd03', 'shed_id': 'a127d7e3-25e6-485e-a8de-7e1fb90a2dc8', 'owner_membership_id': '2aff1e0b-5cc1-4075-8b43-4ef608bbd7eb', 'is_manager': Fals"
+    },
+    {
+      "step": "owner-managed revokes farmer overview",
+      "ok": true,
+      "detail": "asg=[] den=403"
+    },
+    {
+      "step": "dependencies before deactivate",
+      "ok": true,
+      "detail": {
+        "shed_id": "a127d7e3-25e6-485e-a8de-7e1fb90a2dc8",
+        "is_active": true,
+        "active_batch_count": 1,
+        "closed_batch_count": 0,
+        "total_live_birds": 25,
+        "banded_birds": 0,
+        "unbanded_birds": 25,
+        "count_mismatch": false,
+        "open_dose_tasks": 0,
+        "vaccination_event_count": 0,
+        "active_assignment_count": 1,
+        "can_deactivate": true,
+        "can_reactivate": false,
+        "note": "Deactivation preserves batches, birds, vaccination history, and schedules. Permanent deletion is not supported."
+      }
+    },
+    {
+      "step": "emulator sheds list",
+      "ok": true,
+      "detail": "['Sheds', 'Sheds', 'Search, filter, and open a shed overview', '\\uf563', 'Search by name or code', 'All modes', 'Owner', 'Farmer', 'Active', 'Inactive', 'All status', 'Add shed', 'OwnerOnly345316', 'Active', 'OM5316', 'Pilot Farm', 'Owner-managed \u00b7 Owner', '0 live \u00b7 0 active batches']"
+    },
+    {
+      "step": "emulator filters present",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "emulator card shows edited shed",
+      "ok": false,
+      "detail": "[]"
+    },
+    {
+      "step": "emulator overview open",
+      "ok": true,
+      "detail": "['\\uf127', 'Shed overview', 'VerifyShed235435Edit', 'Pilot Farm', 'VS5435E \u00b7 Farmer-managed', 'Managed by: VerifyMgr2235435', 'Notes235435-edited', 'Edit shed', 'Deactivate', 'LIVE BIRDS', '25', 'Across 1 active batch', '25', 'Unbanded', '0', 'Banded']"
+    },
+    {
+      "step": "emulator owner has Edit/Deactivate",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "emulator Add Batch visible while active",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "API deactivate",
+      "ok": true,
+      "detail": {
+        "id": "a127d7e3-25e6-485e-a8de-7e1fb90a2dc8",
+        "owner_account_id": "6dcb0f46-b3bc-4d1b-b46f-9879ca0b6afc",
+        "name": "VerifyShed235435Edit",
+        "code": "VS5435E",
+        "location_notes": "Notes235435-edited",
+        "is_owner_managed": false,
+        "is_active": false,
+        "created_at": "2026-10-18T18:24:35.315278Z",
+        "updated_at": "2026-10-18T18:24:51.329072Z"
+      }
+    },
+    {
+      "step": "inactive hidden from active list",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "emulator inactive overview banner / no Add Batch",
+      "ok": false,
+      "detail": "['\\uf127', 'Shed overview', 'VerifyShed235435Edit', 'Pilot Farm', 'VS5435E \u00b7 Farmer-managed', 'Managed by: VerifyMgr2235435', 'Notes235435-edited', 'Edit shed', 'Deactivate', 'LIVE BIRDS', '25', 'Across 1 active batch', '25', 'Unbanded', '0', 'Banded', 'VACCINATION TASKS', 'Dose-task counts for this shed (not bird counts)']"
+    },
+    {
+      "step": "emulator Reactivate control",
+      "ok": false,
+      "detail": ""
+    },
+    {
+      "step": "pilot farmer denied edit/deactivate/reactivate",
+      "ok": true,
+      "detail": "patch=403 deact=403 react=403"
+    },
+    {
+      "step": "reactivate restores active + history + memberships",
+      "ok": true,
+      "detail": "asg=1 live=25"
+    },
+    {
+      "step": "emulator reactivated shed on list",
+      "ok": false,
+      "detail": "[]"
+    }
+  ]
+}

@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.authorization.deps import AuthContext
-from app.authorization.permissions import assert_shed_access
+from app.authorization.permissions import assert_shed_access, list_assigned_shed_ids
 from app.models.audit import AuditLog
-from app.models.enums import DobConfidence, FlockStatus
+from app.models.enums import DobConfidence, FlockStatus, MembershipRole
 from app.models.flock import Bird, Flock
 from app.models.owner import OwnerAccount
 from app.models.vaccine import ScheduledDose, ScheduleRule, VaccineDefinition, VaccineScheduleVersion
@@ -175,6 +175,12 @@ async def generate_schedules_for_flock(
     if not flock:
         raise VaccineError("Flock not found", "NOT_FOUND")
     await assert_shed_access(db, ctx, flock.shed_id, permission_code="schedule.view")
+    from app.services import shed_service
+
+    try:
+        await shed_service.assert_shed_accepts_new_records(db, ctx, flock.shed_id)
+    except shed_service.ShedError as exc:
+        raise VaccineError(exc.message, exc.code) from exc
 
     owner = await db.get(OwnerAccount, ctx.owner_account_id)
     today = farm_local_today(owner.timezone if owner else None)
@@ -276,17 +282,44 @@ async def list_scheduled_doses(
     ctx: AuthContext,
     *,
     flock_id: UUID | None = None,
+    shed_id: UUID | None = None,
     status: str | None = None,
     limit: int = 200,
 ) -> list[ScheduledDose]:
+    """List active scheduled doses.
+
+    When the caller scopes to a shed (or a flock's shed), refresh open-dose statuses
+    for that shed only so filtered task lists stay consistent with shed overview
+    aggregates. Unfiltered org-wide reads remain pure (use POST /refresh-statuses).
+    """
+    assert ctx.owner_account_id is not None and ctx.membership is not None
     stmt = select(ScheduledDose).where(
         ScheduledDose.owner_account_id == ctx.owner_account_id,
         ScheduledDose.is_active.is_(True),
     )
+    refresh_shed_id: UUID | None = None
+    if shed_id is not None:
+        await assert_shed_access(db, ctx, shed_id, permission_code="vaccination.view")
+        stmt = stmt.where(ScheduledDose.shed_id == shed_id)
+        refresh_shed_id = shed_id
+    elif ctx.membership.role == MembershipRole.farmer:
+        assigned = await list_assigned_shed_ids(db, ctx.membership.id)
+        if not assigned:
+            return []
+        stmt = stmt.where(ScheduledDose.shed_id.in_(assigned))
     if flock_id:
+        flock = await db.scalar(
+            select(Flock).where(Flock.id == flock_id, Flock.owner_account_id == ctx.owner_account_id)
+        )
+        if flock is None:
+            return []
+        await assert_shed_access(db, ctx, flock.shed_id, permission_code="vaccination.view")
         stmt = stmt.where(ScheduledDose.flock_id == flock_id)
+        refresh_shed_id = flock.shed_id
     if status:
         stmt = stmt.where(ScheduledDose.status == status)
+    if refresh_shed_id is not None:
+        await refresh_dose_statuses(db, ctx, shed_id=refresh_shed_id, commit=False)
     return list(await db.scalars(stmt.order_by(ScheduledDose.due_date).limit(limit)))
 
 
@@ -295,20 +328,28 @@ async def refresh_dose_statuses(
     ctx: AuthContext,
     *,
     commit: bool = False,
+    shed_id: UUID | None = None,
 ) -> int:
     """Bulk-update open dose statuses in one SQL statement (no per-row Python loop).
 
     Default ``commit=False`` keeps the update in the current transaction so RLS GUCs
     (transaction-local) are not cleared mid-request. Callers that own the request
     lifecycle may pass ``commit=True`` (e.g. dedicated refresh endpoint).
+
+    Optional ``shed_id`` scopes the update to one shed (shed overview freshness).
     """
     from sqlalchemy import text
 
     owner = await db.get(OwnerAccount, ctx.owner_account_id)
     today = farm_local_today(owner.timezone if owner else None)
+    shed_clause = ""
+    params: dict = {"today": today, "oid": str(ctx.owner_account_id)}
+    if shed_id is not None:
+        shed_clause = "AND shed_id = CAST(:shed_id AS uuid)"
+        params["shed_id"] = str(shed_id)
     result = await db.execute(
         text(
-            """
+            f"""
             UPDATE scheduled_doses AS d
             SET status = v.new_status
             FROM (
@@ -331,12 +372,13 @@ async def refresh_dose_statuses(
                 AND is_active IS TRUE
                 AND status NOT LIKE 'completed%'
                 AND status NOT IN ('skipped', 'inactive')
+                {shed_clause}
             ) AS v
             WHERE d.id = v.id
               AND d.status IS DISTINCT FROM v.new_status
             """
         ),
-        {"today": today, "oid": str(ctx.owner_account_id)},
+        params,
     )
     updated = result.rowcount or 0
     if commit and updated:

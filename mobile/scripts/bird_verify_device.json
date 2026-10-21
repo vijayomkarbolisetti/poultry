@@ -1,0 +1,72 @@
+{
+  "results": [
+    {
+      "step": "metro_reload",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "open_find_bird",
+      "ok": true,
+      "detail": "['Tools', '\\uf127', 'Find a bird', 'Find a bird', 'Search by wing or leg band number (exact or partial).', 'Band number', 'Search', 'Enter a band number to find registered birds in this farm.', '\\uf383', 'Home', '\\uf1c7', 'Sheds']"
+    },
+    {
+      "step": "search_exact",
+      "ok": true,
+      "detail": "['\\uf127', 'Find a bird', 'Find a bird', 'Search by wing or leg band number (exact or partial).', 'VB-EXACT-075538VB-EXACT-075538', 'Search', 'No birds found', 'No registered bird matches \u201cVB-EXACT-075538VB-EXACT-075538\u201d. Unbanded flock counts are not searchable \u2014 band a bird first from its batch.', '\\uf383', 'Home', '\\uf1c7', 'Sheds', '\\uf2c9', 'Batches', '\\uf21b', 'Tasks']"
+    },
+    {
+      "step": "open_profile",
+      "ok": true,
+      "detail": "['\\uf127', 'Find a bird', 'Find a bird', 'Search by wing or leg band number (exact or partial).', 'VB-EXACT-075538VB-EXACT-075538', 'Search', 'No birds found', 'No registered bird matches \u201cVB-EXACT-075538VB-EXACT-075538\u201d. Unbanded flock counts are not searchable \u2014 band a bird first from its batch.', '\\uf383', 'Home', '\\uf1c7', 'Sheds', '\\uf2c9', 'Batches', '\\uf21b', 'Tasks', '\\uf452', 'More']"
+    },
+    {
+      "step": "individual_history",
+      "ok": false,
+      "detail": "[]"
+    },
+    {
+      "step": "batch_upcoming_label",
+      "ok": false,
+      "detail": "['Batches']"
+    },
+    {
+      "step": "back_to_search",
+      "ok": true,
+      "detail": "['POULTRYTRACK', 'Hello, Pilot', 'Pilot Farm \u00b7 healthy hens', '\\uf4a5', 'OVERVIEW', '\\uf2c9', '244', 'Live birds', '\\uf5e4', '0', 'Due today', '\\uf114']"
+    },
+    {
+      "step": "search_partial",
+      "ok": true,
+      "detail": "['\\uf127', 'Find a bird', 'Find a bird', 'Search by wing or leg band number (exact or partial).', 'VB-PART-075538', 'Search', 'No birds found', 'No registered bird matches \u201cVB-PART-075538\u201d. Unbanded flock counts are not searchable \u2014 band a bird first from its batch.', '\\uf383', 'Home', '\\uf1c7', 'Sheds', '\\uf2c9', 'Batches', '\\uf21b', 'Tasks']"
+    },
+    {
+      "step": "home_find_link",
+      "ok": true,
+      "detail": "['Live birds', 'Find a bird']"
+    },
+    {
+      "step": "more_find_link",
+      "ok": true,
+      "detail": "['Find a bird']"
+    }
+  ],
+  "pass": 8,
+  "fail": 2,
+  "seed": {
+    "bands": [
+      "VB-EXACT-075538",
+      "VB-PART-075538A",
+      "VB-PART-075538B"
+    ],
+    "ids": [
+      "9eca753d-28ff-4062-8454-4e038be1a304",
+      "80b31891-abb3-4e62-9487-a5f79f43182a",
+      "123228e8-fbc8-4c61-8fc7-55f3e2e55c1e"
+    ],
+    "shed_id": "65523303-ca27-4de9-8b03-8f5b5da2f6ae",
+    "flock_id": "8dddf27f-c6b4-41c6-acba-492f3629c0b3",
+    "farmer_email": "verf.075538@example.com",
+    "stamp": "075538"
+  }
+}

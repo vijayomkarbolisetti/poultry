@@ -1,0 +1,28 @@
+/** Shared mint/emerald tokens for Birds management (9-screen reference). */
+
+export const birdUi = {
+  bg: "#F0F8F4",
+  white: "#FFFFFF",
+  paleMint: "#E3F5EE",
+  iconCircle: "#DDF4EA",
+  primary: "#07835D",
+  deepGreen: "#15342C",
+  teal: "#0F766E",
+  text: "#15342C",
+  textSecondary: "#71837C",
+  muted: "#71837C",
+  border: "#D7E8E0",
+  divider: "#E4EEE9",
+  successBg: "#DDF4EA",
+  successText: "#087F50",
+  blue: "#2563EB",
+  bluePale: "#E5F0FA",
+  orange: "#F59E0B",
+  orangePale: "#FFF1E6",
+  error: "#DC2626",
+  errorPale: "#FEE7E5",
+  warning: "#F59E0B",
+  cardRadius: 16,
+  buttonHeight: 52,
+  horizontal: 20,
+} as const;

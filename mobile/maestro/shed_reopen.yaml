@@ -1,0 +1,14 @@
+﻿appId: com.vijayomkar.poultrytracker
+---
+- launchApp
+- tapOn:
+    point: "30%,95%"
+- extendedWaitUntil:
+    visible: "QA-SHED-1019A"
+    timeout: 10000
+- tapOn: "QA-SHED-1019A"
+- extendedWaitUntil:
+    visible: "Shed overview"
+    timeout: 15000
+- takeScreenshot: reopen_detail
+- assertVisible: "QA-SHED-1019A"

@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
-import { useState } from "react";
+import { Redirect, router } from "expo-router";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { z } from "zod";
@@ -10,10 +10,11 @@ import { createFarmer } from "../../../src/api/farmers";
 import { describeApiError } from "../../../src/api/client";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
+import { MultiSelectField } from "../../../src/components/ui/MultiSelectField";
 import { Screen } from "../../../src/components/ui/Screen";
 import { TextField } from "../../../src/components/ui/TextField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
-import { FARMER_PERM_OPTIONS, PERMISSION_LABELS } from "../../../src/features/auth/permissions";
+import { FARMER_PERM_OPTIONS, PERMISSION_LABELS, hasPermission } from "../../../src/features/auth/permissions";
 import { colors, radius, shadow, space } from "../../../src/theme/tokens";
 
 const DEFAULT_FARMER_PERMS = [
@@ -35,9 +36,14 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 export default function CreateFarmerScreen() {
-  const { ownerAccountId } = useAuth();
+  const { ownerAccountId, user } = useAuth();
+  const canManage = hasPermission(user, ownerAccountId, "farmer.manage");
   const qc = useQueryClient();
-  const sheds = useQuery({ queryKey: ["sheds", ownerAccountId], queryFn: listSheds });
+  const sheds = useQuery({
+    queryKey: ["sheds", ownerAccountId],
+    queryFn: () => listSheds(),
+    enabled: canManage,
+  });
   const [selectedSheds, setSelectedSheds] = useState<string[]>([]);
   const [perms, setPerms] = useState<string[]>(DEFAULT_FARMER_PERMS);
   const [error, setError] = useState<string | null>(null);
@@ -47,9 +53,13 @@ export default function CreateFarmerScreen() {
     defaultValues: { full_name: "", email: "", password: "" },
   });
 
-  const toggleShed = (id: string) => {
-    setSelectedSheds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
+  const shedOptions = useMemo(
+    () =>
+      (sheds.data ?? [])
+        .filter((s) => s.is_active)
+        .map((s) => ({ value: s.id, label: s.name, hint: s.code })),
+    [sheds.data],
+  );
 
   const togglePerm = (code: string) => {
     setPerms((prev) => (prev.includes(code) ? prev.filter((x) => x !== code) : [...prev, code]));
@@ -59,11 +69,12 @@ export default function CreateFarmerScreen() {
     setLoading(true);
     setError(null);
     try {
+      const validShedIds = selectedSheds.filter((id) => shedOptions.some((o) => o.value === id));
       const farmer = await createFarmer({
         ...values,
         role: "farmer",
         permission_codes: perms,
-        shed_ids: selectedSheds,
+        shed_ids: validShedIds,
       });
       void qc.invalidateQueries({ queryKey: ["farmers", ownerAccountId] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
@@ -75,6 +86,8 @@ export default function CreateFarmerScreen() {
     }
   });
 
+  if (!canManage) return <Redirect href="/(app)/home" />;
+
   return (
     <Screen scroll>
       <Text style={styles.hint}>
@@ -85,20 +98,15 @@ export default function CreateFarmerScreen() {
       <TextField control={control} name="email" label="Email" keyboardType="email-address" leftIcon="mail-outline" />
       <TextField control={control} name="password" label="Temp password" secureTextEntry leftIcon="lock-closed-outline" />
 
-      <Text style={styles.section}>Assign sheds</Text>
-      <Text style={styles.meta}>Farmers only see sheds you assign here.</Text>
-      {(sheds.data ?? []).map((s) => {
-        const on = selectedSheds.includes(s.id);
-        return (
-          <Pressable key={s.id} style={[styles.chip, on && styles.chipOn]} onPress={() => toggleShed(s.id)}>
-            <Text style={[styles.chipText, on && styles.chipTextOn]}>
-              {on ? "✓ " : ""}
-              {s.name} ({s.code})
-            </Text>
-          </Pressable>
-        );
-      })}
-      {(sheds.data ?? []).length === 0 ? <Text style={styles.meta}>No sheds yet — create a shed first.</Text> : null}
+      <MultiSelectField
+        label="Assign sheds"
+        helper="Farmers only see sheds you assign here."
+        values={selectedSheds}
+        options={shedOptions}
+        onChange={setSelectedSheds}
+        searchable
+        emptyMessage={sheds.isLoading ? "Loading sheds…" : "No sheds yet — create a shed first."}
+      />
 
       <Text style={styles.section}>Permissions</Text>
       <Text style={styles.meta}>Toggle on only what this farmer should access.</Text>
@@ -128,16 +136,6 @@ const styles = StyleSheet.create({
   hint: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
   section: { fontSize: 13, fontWeight: "800", color: colors.inkMuted, textTransform: "uppercase", marginTop: space.sm },
   meta: { color: colors.inkMuted, fontSize: 13, marginTop: -space.sm },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: space.md,
-    backgroundColor: colors.bgElevated,
-  },
-  chipOn: { backgroundColor: colors.brandSoft, borderColor: colors.brand },
-  chipText: { color: colors.ink, fontWeight: "600" },
-  chipTextOn: { color: colors.brand, fontWeight: "800" },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.lg,

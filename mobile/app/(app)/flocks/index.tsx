@@ -1,51 +1,104 @@
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
+import { useMemo, useState } from "react";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import { listFlocks } from "../../../src/api/flocks";
+import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
+import { SelectField } from "../../../src/components/ui/SelectField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { media } from "../../../src/theme/media";
 import { colors, space } from "../../../src/theme/tokens";
 
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "active", label: "Active" },
+  { value: "closed", label: "Closed" },
+];
+
 export default function FlocksScreen() {
   const { ownerAccountId, user } = useAuth();
   const canCreate = hasPermission(user, ownerAccountId, "flock.create");
-  const flocks = useQuery({ queryKey: ["flocks", ownerAccountId], queryFn: () => listFlocks() });
+  const [shedFilter, setShedFilter] = useState<string | null>("all");
+  const [statusFilter, setStatusFilter] = useState<string | null>("active");
+
+  const sheds = useQuery({ queryKey: ["sheds", ownerAccountId], queryFn: () => listSheds() });
+  const shedIdParam = shedFilter && shedFilter !== "all" ? shedFilter : undefined;
+  const flocks = useQuery({
+    queryKey: ["flocks", ownerAccountId, shedIdParam ?? "all"],
+    queryFn: () => listFlocks(shedIdParam),
+  });
+
+  const shedOptions = useMemo(
+    () => [
+      { value: "all", label: "All sheds", hint: "Every accessible shed" },
+      ...(sheds.data ?? [])
+        .filter((s) => s.is_active)
+        .map((s) => ({ value: s.id, label: s.name, hint: s.code })),
+    ],
+    [sheds.data],
+  );
+
+  const data = useMemo(() => {
+    let rows = flocks.data ?? [];
+    if (statusFilter && statusFilter !== "all") {
+      rows = rows.filter((f) => f.status === statusFilter);
+    }
+    return rows;
+  }, [flocks.data, statusFilter]);
 
   return (
     <Screen style={{ paddingTop: space.md }}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Hens & flocks</Text>
+          <Text style={styles.title}>Batches</Text>
           <Text style={styles.sub}>
-            {flocks.data ? `${flocks.data.length} active flock${flocks.data.length === 1 ? "" : "s"}` : "Your hen groups"}
+            {data ? `${data.length} batch${data.length === 1 ? "" : "es"}` : "Your bird groups"}
           </Text>
         </View>
-        {canCreate ? <Button label="Add flock" onPress={() => router.push("/(app)/flocks/create")} /> : null}
+        {canCreate ? <Button label="Add batch" onPress={() => router.push("/(app)/flocks/create")} /> : null}
       </View>
 
-      {flocks.isError ? <Text style={styles.error}>Could not load flocks</Text> : null}
+      <SelectField
+        label="Shed"
+        value={shedFilter}
+        options={shedOptions}
+        onChange={setShedFilter}
+        allowValues={["all"]}
+        searchable
+        loading={sheds.isLoading}
+      />
+      <SelectField
+        label="Status"
+        value={statusFilter}
+        options={STATUS_OPTIONS}
+        onChange={setStatusFilter}
+        allowValues={["all"]}
+        clearStale={false}
+      />
+
+      {flocks.isError ? <Text style={styles.error}>Could not load batches</Text> : null}
 
       <FlatList
         style={{ flex: 1 }}
-        data={flocks.data ?? []}
+        data={data}
         keyExtractor={(i) => i.id}
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
         ListEmptyComponent={
           flocks.isLoading ? (
-            <HenLoader label="Loading flocks…" />
+            <HenLoader label="Loading batches…" />
           ) : (
             <EmptyState
-              title="No flocks yet"
-              body="Start a flock to track hens, ages, and vaccination plans in one place."
+              title="No batches yet"
+              body="Start a batch to track birds, ages, and vaccination plans in one place."
               imageUri={media.flockHen}
-              actionLabel={canCreate ? "Onboard first flock" : undefined}
+              actionLabel={canCreate ? "Onboard first batch" : undefined}
               onAction={canCreate ? () => router.push("/(app)/flocks/create") : undefined}
             />
           )

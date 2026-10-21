@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { FlatList, StyleSheet, Text, View } from "react-native";
 
 import { listFarmers } from "../../../src/api/farmers";
@@ -9,12 +9,20 @@ import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
+import { hasPermission } from "../../../src/features/auth/permissions";
 import { media } from "../../../src/theme/media";
 import { colors, space } from "../../../src/theme/tokens";
 
 export default function FarmersScreen() {
-  const { ownerAccountId } = useAuth();
-  const farmers = useQuery({ queryKey: ["farmers", ownerAccountId], queryFn: listFarmers });
+  const { ownerAccountId, user } = useAuth();
+  const canManage = hasPermission(user, ownerAccountId, "farmer.manage");
+  const farmers = useQuery({
+    queryKey: ["farmers", ownerAccountId],
+    queryFn: listFarmers,
+    enabled: canManage,
+  });
+
+  if (!canManage) return <Redirect href="/(app)/home" />;
 
   return (
     <Screen style={{ paddingTop: space.md }}>
@@ -26,7 +34,7 @@ export default function FarmersScreen() {
         <Button label="Add" onPress={() => router.push("/(app)/farmers/create")} />
       </View>
 
-      {farmers.isError ? <Text style={styles.error}>Need farmer manage permission</Text> : null}
+      {farmers.isError ? <Text style={styles.error}>Could not load farmers</Text> : null}
 
       <FlatList
         style={{ flex: 1 }}

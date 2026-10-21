@@ -1,11 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Redirect, router, Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 import { ComponentProps } from "react";
-import { ColorValue, Pressable, View } from "react-native";
+import { ColorValue, Pressable, StyleSheet, View } from "react-native";
 
 import { HenLoader } from "../../src/components/ui/HenLoader";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
+import { safeBack } from "../../src/navigation/safeBack";
 import { colors } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -30,8 +31,15 @@ function HeaderButton({ icon, onPress, label }: { icon: IconName; onPress: () =>
   );
 }
 
-const backButton = () => <HeaderButton icon="arrow-back" label="Back" onPress={() => router.back()} />;
-const hidden = (title: string) => ({ href: null as null, title, headerLeft: backButton });
+const backButton = () => <HeaderButton icon="arrow-back" label="Back" onPress={() => safeBack()} />;
+/** Hidden routes use in-screen headers — never stack a second Tab header/back button. */
+const hidden = (title: string) => ({
+  href: null as null,
+  title,
+  headerShown: false as const,
+  // Keep headerLeft for any future headerShown:true callers; unused while headerShown is false.
+  headerLeft: backButton,
+});
 
 export default function AppLayout() {
   const { user, loading, ownerAccountId } = useAuth();
@@ -43,11 +51,9 @@ export default function AppLayout() {
       </View>
     );
   }
-  if (!user) return <Redirect href="/(auth)/welcome" />;
+  if (!user) return <Redirect href="/(auth)/login" />;
 
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
-  const canBirds = hasPermission(user, ownerAccountId, "flock.view");
-  const canTasks = hasPermission(user, ownerAccountId, "vaccination.view");
 
   return (
     <Tabs
@@ -56,16 +62,28 @@ export default function AppLayout() {
         headerStyle: { backgroundColor: colors.bgElevated },
         headerShadowVisible: false,
         headerTitleStyle: { fontWeight: "800", color: colors.ink, fontSize: 18 },
-        tabBarActiveTintColor: colors.brand,
-        tabBarInactiveTintColor: colors.inkMuted,
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "700" },
+        tabBarActiveTintColor: "#07835D",
+        tabBarInactiveTintColor: "#8A9A93",
+        tabBarActiveBackgroundColor: "#E5F5EF",
+        tabBarItemStyle: { borderRadius: 14, marginHorizontal: 2, marginVertical: 4 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "700", marginBottom: 4 },
+        tabBarIconStyle: { marginTop: 2 },
         tabBarStyle: {
-          backgroundColor: colors.bgElevated,
-          borderTopColor: colors.border,
-          height: 62,
-          paddingTop: 4,
+          backgroundColor: "#FFFFFF",
+          borderTopColor: "#E8F0EB",
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopLeftRadius: 18,
+          borderTopRightRadius: 18,
+          height: 68,
+          paddingTop: 6,
+          paddingBottom: 6,
+          elevation: 10,
+          shadowColor: "#022C22",
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.08,
+          shadowRadius: 12,
         },
-        sceneStyle: { backgroundColor: colors.bg },
+        sceneStyle: { backgroundColor: "#F1F8F5" },
       }}
     >
       <Tabs.Screen
@@ -76,6 +94,7 @@ export default function AppLayout() {
         name="sheds/index"
         options={{
           title: "Sheds",
+          headerShown: false,
           href: canSheds ? undefined : null,
           tabBarIcon: tabIcon("business", "business-outline"),
         }}
@@ -83,19 +102,11 @@ export default function AppLayout() {
       <Tabs.Screen
         name="flocks/index"
         options={{
-          title: "Hens",
-          tabBarLabel: "Hens",
-          href: canBirds ? undefined : null,
+          title: "Batches",
+          tabBarLabel: "Batches",
+          // Groups/batches stay reachable from deep links / manage flows, not the primary tab bar.
+          href: null,
           tabBarIcon: tabIcon("egg", "egg-outline"),
-        }}
-      />
-      <Tabs.Screen
-        name="doses/index"
-        options={{
-          title: "Tasks",
-          tabBarLabel: "Tasks",
-          href: canTasks ? undefined : null,
-          tabBarIcon: tabIcon("checkbox", "checkbox-outline"),
         }}
       />
       <Tabs.Screen
@@ -103,11 +114,30 @@ export default function AppLayout() {
         options={{ title: "More", tabBarLabel: "More", tabBarIcon: tabIcon("menu", "menu-outline") }}
       />
 
-      <Tabs.Screen name="vaccines/index" options={hidden("Vaccines")} />
-      <Tabs.Screen name="sheds/[id]" options={hidden("Shed")} />
+      {/* Vaccination / Tasks — unmounted from product UI (kept as hidden files for future rebuild). */}
+      <Tabs.Screen name="doses/index" options={{ ...hidden("Tasks"), href: null }} />
+      <Tabs.Screen name="vaccines/index" options={{ ...hidden("Vaccines"), href: null }} />
+
+      <Tabs.Screen name="sheds/[id]/index" options={hidden("Shed overview")} />
+      <Tabs.Screen name="sheds/[id]/groups" options={hidden("Groups")} />
+      <Tabs.Screen name="sheds/[id]/birds" options={hidden("Birds")} />
       <Tabs.Screen name="sheds/create" options={hidden("New shed")} />
-      <Tabs.Screen name="flocks/[id]" options={hidden("Flock")} />
-      <Tabs.Screen name="flocks/create" options={hidden("Onboard flock")} />
+      <Tabs.Screen name="sheds/edit/[id]" options={hidden("Edit shed")} />
+      <Tabs.Screen name="flocks/[id]" options={hidden("Batch")} />
+      <Tabs.Screen name="flocks/create" options={hidden("Onboard batch")} />
+      <Tabs.Screen name="search" options={hidden("Search")} />
+      <Tabs.Screen name="birds/search" options={hidden("Search")} />
+      <Tabs.Screen name="birds/[id]" options={hidden("Bird profile")} />
+      <Tabs.Screen name="birds/add" options={hidden("Register banded birds")} />
+      <Tabs.Screen name="birds/add-unbanded" options={hidden("Add unbanded birds")} />
+      <Tabs.Screen name="birds/band-from-unbanded" options={hidden("Register band from unbanded")} />
+      <Tabs.Screen name="birds/transfer" options={hidden("Transfer birds")} />
+      <Tabs.Screen name="birds/new-group" options={hidden("New group")} />
+      <Tabs.Screen name="birds/group-created" options={hidden("Group created")} />
+      <Tabs.Screen name="birds/bird-added" options={hidden("Bird added")} />
+      <Tabs.Screen name="birds/edit/[id]" options={hidden("Change band number")} />
+      <Tabs.Screen name="lifecycle-bulk" options={hidden("Bulk lifecycle")} />
+      <Tabs.Screen name="lifecycle-batch" options={hidden("Batch lifecycle")} />
       <Tabs.Screen name="farmers/index" options={hidden("Farmers")} />
       <Tabs.Screen name="farmers/create" options={hidden("Add farmer")} />
       <Tabs.Screen name="farmers/[id]" options={hidden("Farmer")} />

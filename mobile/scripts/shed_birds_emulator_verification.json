@@ -1,0 +1,112 @@
+{
+  "authenticated": true,
+  "backend": "http://10.0.2.2:8002",
+  "seed": {
+    "shed_id": "6f5bda54-9468-475a-9295-2b03b90a7e49",
+    "tag": "SBM1210"
+  },
+  "results": [
+    {
+      "step": "emulator_network",
+      "status": "passed",
+      "detail": "{\"status\":\"ok\",\"environment\":\"local\"}"
+    },
+    {
+      "step": "owner_session",
+      "status": "passed",
+      "detail": "['POULTRYTRACK', 'Hello, Pilot', 'Pilot Farm \u00b7 healthy hens', '\\uf563', '\\uf4a5', 'OVERVIEW', '\\uf2c9', '285', 'Live birds', '\\uf5e4']"
+    },
+    {
+      "step": "open_shed_overview",
+      "status": "passed",
+      "detail": "['\\uf127', 'Shed overview', '0', 'Overdue', '0', 'Due today', '0', 'Upcoming', '0', 'Needs review', 'Add Batch', 'Vaccination Tasks', 'BATCHES IN THIS SHED', 'BX-SBM1210']"
+    },
+    {
+      "step": "unbanded_summary",
+      "status": "passed",
+      "detail": "['Banded 4 \u00b7 Unbanded 8', 'Unbanded birds: 8', 'Unbanded birds are batch population counts \u2014 not individual profiles. Start banding on the correct batch.', 'BX-SBM1210: 8 unbanded']"
+    },
+    {
+      "step": "banded_list_visible",
+      "status": "passed",
+      "detail": "['\\uf127', 'Shed overview', '0', 'Overdue', '0', 'Due today', '0', 'Upcoming', '0', 'Needs review', 'Add Batch', 'Vaccination Tasks', 'BATCHES IN THIS SHED', 'BX-SBM1210', 'Mixed', 'Layer', 'Hatch: 2026-10-05', '12 live birds', 'Banded 4 \u00b7 Unbanded 8', 'Open batch', 'View tasks', 'BIRDS']"
+    },
+    {
+      "step": "ui_search_exact",
+      "status": "passed",
+      "detail": "['\\uf127', 'Shed overview', '0', 'Overdue', '0', 'Due today', '0', 'Upcoming', '0', 'Needs review', 'Add Batch', 'Vaccination Tasks', 'BATCHES IN THIS SHED', 'BX-SBM1210', 'Mixed', 'Layer']"
+    },
+    {
+      "step": "ui_search_partial",
+      "status": "passed",
+      "detail": "['\\uf127', 'Shed overview', '0', 'Overdue', '0', 'Due today', '0', 'Upcoming', '0', 'Needs review', 'Add Batch', 'Vaccination Tasks', 'BATCHES IN THIS SHED', 'BX-SBM1210', 'Mixed', 'Layer']"
+    },
+    {
+      "step": "open_bird_profile",
+      "status": "passed",
+      "detail": "['\\uf127', 'Bird profile', 'SBM1210-A1', 'Edit details', 'IDENTITY', 'Internal ID', 'da130d30-b13d-4fd9-b4ed-9cff60df7d49', 'Band', 'SBM1210-A1', 'Breed', 'Rhode Island', 'Sex', 'F', 'Hatch date', '2026-10-05', 'Age']"
+    },
+    {
+      "step": "no_hard_delete_label",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "profile_actions",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "back_to_shed",
+      "status": "passed",
+      "detail": "['\\uf127', 'Shed overview', '0', 'Overdue', '0', 'Due today', '0', 'Upcoming', '0', 'Needs review', 'Add Batch', 'Vaccination Tasks']"
+    },
+    {
+      "step": "open_add_bird",
+      "status": "passed",
+      "detail": "['\\uf127', 'Add bird', 'Add bird', 'Creates a registered (banded) bird in a batch belonging to this shed. Unbanded population counts are adjusted through existing reconciliation rules.', 'Batch', 'Select\u2026', '\\uf232', 'Band number *', 'SBM1210-UI1', 'Breed', 'Breed', 'Sex']"
+    },
+    {
+      "step": "add_bird_ui",
+      "status": "failed",
+      "detail": "corrected: Create did not persist (SBM1210-UI1 absent on API); earlier pass was false positive"
+    },
+    {
+      "step": "open_shed_overview",
+      "status": "passed",
+      "detail": "['Sheds', 'Sheds', 'Search, filter, and open a shed overview', '\\uf563', 'Search by name or code', 'All modes', 'Owner', 'Farmer', 'Active', 'Inactive', 'All status', 'Add shed', 'Could not load sheds. Check your internet connection and try again.', 'Retry']"
+    },
+    {
+      "step": "edit_bird_ui",
+      "status": "not_tested",
+      "detail": "could not open A2"
+    },
+    {
+      "step": "open_shed_overview",
+      "status": "failed",
+      "detail": "['Sheds', 'Sheds', 'Search, filter, and open a shed overview', '\\uf563', 'Search by name or code', 'All modes', 'Owner', 'Farmer', 'Active', 'Inactive', 'All status', 'Add shed', 'Could not load sheds. Check your internet connection and try again.', 'Retry', 'Owner-managed \u00b7 Owner', '5 live \u00b7 1 active batch', 'Banded 1 \u00b7 Unbanded 4', 'Dose tasks: n"
+    },
+    {
+      "step": "lifecycle_confirm_copy",
+      "status": "failed",
+      "detail": "shed reopen failed"
+    },
+    {
+      "step": "lifecycle_cancel",
+      "status": "not_tested",
+      "detail": ""
+    },
+    {
+      "step": "farmer_login",
+      "status": "failed",
+      "detail": "['Sheds', 'Sheds', 'Search, filter, and open a shed overview', '\\uf563', 'Search by name or code', 'All modes', 'Owner', 'Farmer', 'Active', 'Inactive', 'All status', 'Add shed']"
+    }
+  ],
+  "passed": 13,
+  "failed": 4,
+  "not_tested": [
+    "edit_bird_ui",
+    "lifecycle_cancel"
+  ],
+  "note": "add_bird_ui status corrected after API cross-check"
+}

@@ -1,0 +1,32 @@
+{
+  "results": [
+    {
+      "step": "open_shed_strict",
+      "status": "failed",
+      "detail": "['POULTRYTRACK', 'Hello, Pilot', 'Pilot Farm \u00b7 healthy hens', '\\uf563', '\\uf4a5', 'OVERVIEW', '\\uf2c9', '285', 'Live birds', '\\uf5e4', '0', 'Due today', '\\uf114', '2']"
+    },
+    {
+      "step": "open_shed_strict",
+      "status": "failed",
+      "detail": "['Sheds', 'Sheds', 'Search, filter, and open a shed overview', '\\uf563', 'Search by name or code', 'All modes', 'Owner', 'Farmer', 'Active', 'Inactive', 'All status', 'Add shed', '\\uf293', 'Edit']"
+    },
+    {
+      "step": "farmer_login",
+      "status": "passed",
+      "detail": "['POULTRYTRACK', 'Hello, SBM', 'Pilot Farm \u00b7 healthy hens', '\\uf563', '\\uf4a5', 'OVERVIEW', '\\uf2c9', '12', 'Live birds', '\\uf5e4']"
+    },
+    {
+      "step": "farmer_shed",
+      "status": "passed",
+      "detail": "['POULTRYTRACK', 'Hello, SBM', 'Pilot Farm \u00b7 healthy hens', '\\uf563', '\\uf4a5', 'OVERVIEW', '\\uf2c9', '12', 'Live birds', '\\uf5e4', '0', 'Due today', '\\uf114', '0']"
+    },
+    {
+      "step": "farmer_deny_other",
+      "status": "passed",
+      "detail": "['POULTRYTRACK', 'Hello, SBM', 'Pilot Farm \u00b7 healthy hens', '\\uf563', '\\uf4a5', 'OVERVIEW', '\\uf2c9', '12', 'Live birds', '\\uf5e4', '0', 'Due today']"
+    }
+  ],
+  "passed": 3,
+  "failed": 2,
+  "not_tested": []
+}

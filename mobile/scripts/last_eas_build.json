@@ -1,0 +1,37 @@
+﻿{
+  "id": "b756f911-1f32-493f-8b77-0dc8f403475f",
+  "status": "IN_QUEUE",
+  "platform": "ANDROID",
+  "artifacts": {},
+  "fingerprint": {
+    "id": "01a15560-c827-740e-a81c-8435c090e730",
+    "hash": "c1ed60eeadb06ca677e6bf1f0739700ce458c0da"
+  },
+  "initiatingActor": {
+    "id": "7300cdaa-aec9-45ce-a46a-cc9c89921f7c",
+    "displayName": "gopimaganti"
+  },
+  "logFiles": [],
+  "app": {
+    "id": "97545352-e386-4053-9a12-c187a7fcb305",
+    "name": "poultry-vaccine-tracker",
+    "slug": "poultry-vaccine-tracker",
+    "ownerAccount": {
+      "id": "a2d6cfc3-dde0-4b3b-b27a-71c46922221d",
+      "name": "gopimaganti"
+    }
+  },
+  "distribution": "INTERNAL",
+  "buildProfile": "preview",
+  "appIdentifier": "com.vijayomkar.poultrytracker",
+  "sdkVersion": "57.0.0",
+  "appVersion": "1.0.0",
+  "appBuildVersion": "1",
+  "gitCommitHash": "5db244312918a25a3f7040cb973bb6c7c6ce2cda",
+  "gitCommitMessage": "Fix failed data loads by attaching the signed-in user without a second query.\n\nSQLAlchemy rejected the loaded user row as unsaved, so every screen after login returned a server error.\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+  "priority": "NORMAL",
+  "createdAt": "2026-10-19T18:16:08.420Z",
+  "updatedAt": "2026-10-19T18:16:12.345Z",
+  "expirationDate": "2026-11-02T18:16:08.473Z",
+  "isForIosSimulator": false
+}

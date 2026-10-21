@@ -1,0 +1,22 @@
+{
+  "results": [
+    {
+      "step": "open_shed",
+      "status": "passed",
+      "detail": "['Sheds', 'Sheds', 'Search, filter, and open a shed overview', '\\uf563', 'Search by name or code', 'All modes', 'Owner', 'Farmer', 'Active', 'Inactive', 'All status', 'Add shed']"
+    },
+    {
+      "step": "add_bird_ui",
+      "status": "failed",
+      "detail": "no Add Bird"
+    },
+    {
+      "step": "open_shed",
+      "status": "failed",
+      "detail": "['Sheds', 'Sheds', 'Search, filter, and open a shed overview', '\\uf563', 'Search by name or code', 'All modes', 'Owner', 'Farmer', 'Active', 'Inactive', 'All status', 'Add shed', 'Could not load sheds. Check your internet connection and try again.', 'Retry', 'VB5538', 'Pilot Farm']"
+    }
+  ],
+  "passed": 1,
+  "failed": 2,
+  "not_tested": []
+}

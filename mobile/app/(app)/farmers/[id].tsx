@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { Redirect, useLocalSearchParams } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { listFarmers, setFarmerPermissions, setFarmerSheds, updateFarmer } from "../../../src/api/farmers";
@@ -8,17 +8,27 @@ import { describeApiError } from "../../../src/api/client";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
+import { MultiSelectField } from "../../../src/components/ui/MultiSelectField";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
-import { FARMER_PERM_OPTIONS, PERMISSION_LABELS } from "../../../src/features/auth/permissions";
+import { FARMER_PERM_OPTIONS, PERMISSION_LABELS, hasPermission } from "../../../src/features/auth/permissions";
 import { colors, radius, shadow, space } from "../../../src/theme/tokens";
 
 export default function FarmerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { ownerAccountId } = useAuth();
+  const { ownerAccountId, user } = useAuth();
+  const canManage = hasPermission(user, ownerAccountId, "farmer.manage");
   const qc = useQueryClient();
-  const farmers = useQuery({ queryKey: ["farmers", ownerAccountId], queryFn: listFarmers });
-  const sheds = useQuery({ queryKey: ["sheds", ownerAccountId], queryFn: listSheds });
+  const farmers = useQuery({
+    queryKey: ["farmers", ownerAccountId],
+    queryFn: listFarmers,
+    enabled: canManage,
+  });
+  const sheds = useQuery({
+    queryKey: ["sheds", ownerAccountId],
+    queryFn: () => listSheds(),
+    enabled: canManage,
+  });
   const farmer = (farmers.data ?? []).find((f) => f.membership_id === id);
 
   const [perms, setPerms] = useState<string[]>([]);
@@ -26,11 +36,28 @@ export default function FarmerDetailScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  const shedOptions = useMemo(
+    () =>
+      (sheds.data ?? [])
+        .filter((s) => s.is_active)
+        .map((s) => ({ value: s.id, label: s.name, hint: s.code })),
+    [sheds.data],
+  );
+
   useEffect(() => {
     if (!farmer) return;
     setPerms(farmer.permission_codes ?? []);
     setShedIds(farmer.assigned_shed_ids ?? []);
   }, [farmer?.membership_id, farmer?.permission_codes?.join(","), farmer?.assigned_shed_ids?.join(",")]);
+
+  // Drop shed IDs that are no longer in the active option list.
+  useEffect(() => {
+    if (shedOptions.length === 0) return;
+    setShedIds((prev) => {
+      const next = prev.filter((id) => shedOptions.some((o) => o.value === id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [shedOptions]);
 
   const toggleActive = useMutation({
     mutationFn: () => updateFarmer(id!, { is_active: !farmer?.is_active }),
@@ -51,7 +78,10 @@ export default function FarmerDetailScreen() {
   });
 
   const saveSheds = useMutation({
-    mutationFn: () => setFarmerSheds(id!, shedIds),
+    mutationFn: () => {
+      const valid = shedIds.filter((sid) => shedOptions.some((o) => o.value === sid));
+      return setFarmerSheds(id!, valid);
+    },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["farmers", ownerAccountId] });
       setMsg("Shed assignments saved");
@@ -59,6 +89,8 @@ export default function FarmerDetailScreen() {
     },
     onError: (e) => setErr(describeApiError(e, "save sheds")),
   });
+
+  if (!canManage) return <Redirect href="/(app)/home" />;
 
   if (farmers.isLoading) {
     return (
@@ -97,27 +129,15 @@ export default function FarmerDetailScreen() {
         onPress={() => toggleActive.mutate()}
       />
 
-      <Text style={styles.section}>Assigned sheds</Text>
-      <Text style={styles.hint}>Only these sheds appear for this farmer.</Text>
-      <View style={[styles.card, shadow.card]}>
-        {(sheds.data ?? []).map((s) => {
-          const on = shedIds.includes(s.id);
-          return (
-            <Pressable
-              key={s.id}
-              style={[styles.row, on && styles.rowOn]}
-              onPress={() =>
-                setShedIds((prev) => (prev.includes(s.id) ? prev.filter((x) => x !== s.id) : [...prev, s.id]))
-              }
-            >
-              <View style={[styles.check, on && styles.checkOn]}>{on ? <Text style={styles.checkMark}>✓</Text> : null}</View>
-              <Text style={styles.rowTitle}>
-                {s.name} ({s.code})
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <MultiSelectField
+        label="Assigned sheds"
+        helper="Only these sheds appear for this farmer."
+        values={shedIds}
+        options={shedOptions}
+        onChange={setShedIds}
+        searchable
+        emptyMessage={sheds.isLoading ? "Loading sheds…" : "No active sheds"}
+      />
       <Button
         label={shedsDirty ? "Save shed assignments" : "Sheds up to date"}
         disabled={!shedsDirty}

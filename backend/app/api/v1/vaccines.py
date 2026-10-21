@@ -108,14 +108,16 @@ async def generate_schedules(
 @router.get("/scheduled-doses", response_model=list[ScheduledDoseOut])
 async def list_doses(
     flock_id: UUID | None = None,
+    shed_id: UUID | None = None,
     status_filter: str | None = Query(None, alias="status"),
     limit: int = Query(200, ge=1, le=500),
     ctx: AuthContext = Depends(require_permission("vaccination.view")),
     db: AsyncSession = Depends(get_db),
 ) -> list[ScheduledDoseOut]:
-    # Pure read — status refresh is POST /vaccines/refresh-statuses (or schedule writes).
+    # Shed/flock-scoped lists refresh open statuses for that shed (matches overview).
+    # Org-wide unfiltered lists stay pure — use POST /vaccines/refresh-statuses.
     rows = await vaccine_service.list_scheduled_doses(
-        db, ctx, flock_id=flock_id, status=status_filter, limit=limit
+        db, ctx, flock_id=flock_id, shed_id=shed_id, status=status_filter, limit=limit
     )
     return [ScheduledDoseOut.model_validate(r) for r in rows]
 

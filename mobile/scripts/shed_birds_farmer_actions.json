@@ -1,0 +1,13 @@
+{
+  "actions": [
+    "Record Mortality",
+    "Record Sale",
+    "Record Transfer"
+  ],
+  "selected_copy": [
+    "20 selected \u00b7 20 eligible in loaded results"
+  ],
+  "hard_delete": false,
+  "passed_actions": true,
+  "artifact": "mobile/scripts/fa_selected.png"
+}

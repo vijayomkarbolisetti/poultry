@@ -9,10 +9,18 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { Screen } from "../../../src/components/ui/Screen";
+import { SelectField } from "../../../src/components/ui/SelectField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { media } from "../../../src/theme/media";
 import { colors, radius, shadow, space } from "../../../src/theme/tokens";
+
+/** Categories accepted as free-form strings by the API; curated for farm use. */
+const CATEGORY_OPTIONS = [
+  { value: "vaccine", label: "Vaccine", hint: "Standard poultry vaccine" },
+  { value: "deworming", label: "Deworming", hint: "Anthelmintic / dewormer" },
+  { value: "other", label: "Other", hint: "Other scheduleable treatment" },
+];
 
 export default function VaccinesScreen() {
   const { ownerAccountId, user } = useAuth();
@@ -20,20 +28,39 @@ export default function VaccinesScreen() {
   const qc = useQueryClient();
   const vaccines = useQuery({ queryKey: ["vaccines", ownerAccountId], queryFn: listVaccines });
   const [name, setName] = useState("");
+  const [category, setCategory] = useState<string | null>("vaccine");
   const [ageDays, setAgeDays] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const onCreate = async () => {
-    setBusy(true);
     setMsg(null);
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setFormError("Vaccine name is required");
+      return;
+    }
+    if (!category) {
+      setFormError("Select a category");
+      return;
+    }
+    const age = Number(ageDays);
+    if (!Number.isFinite(age) || !Number.isInteger(age) || age < 1) {
+      setFormError("Enter target age in whole days (1 or greater)");
+      return;
+    }
+    setFormError(null);
+    setBusy(true);
     try {
       await createVaccine({
-        name,
-        rules: [{ target_age_days: Number(ageDays) || 1, grace_period_days: 0, reminder_lead_days: 3 }],
+        name: trimmed,
+        category,
+        rules: [{ target_age_days: age, grace_period_days: 0, reminder_lead_days: 3 }],
       });
       setName("");
       setAgeDays("");
+      setCategory("vaccine");
       void qc.invalidateQueries({ queryKey: ["vaccines", ownerAccountId] });
       setMsg("Vaccine saved. Confirm the schedule with your vet.");
     } catch (e: unknown) {
@@ -46,7 +73,7 @@ export default function VaccinesScreen() {
   return (
     <Screen style={{ paddingTop: space.md }}>
       <Text style={styles.title}>Vaccine catalogue</Text>
-      <Text style={styles.sub}>Define vaccines once, then build flock plans from Tasks.</Text>
+      <Text style={styles.sub}>Define vaccines once, then build batch plans from Tasks.</Text>
 
       <View style={[styles.hero, shadow.card]}>
         <Image source={{ uri: media.vaccineCare }} style={styles.heroImg} />
@@ -65,7 +92,17 @@ export default function VaccinesScreen() {
             placeholder="e.g. Newcastle (Lasota)"
             placeholderTextColor={colors.inkMuted}
             value={name}
-            onChangeText={setName}
+            onChangeText={(t) => {
+              setName(t);
+              setFormError(null);
+            }}
+          />
+          <SelectField
+            label="Category"
+            required
+            value={category}
+            options={CATEGORY_OPTIONS}
+            onChange={setCategory}
           />
           <Text style={styles.label}>Give at hen age (days)</Text>
           <TextInput
@@ -73,10 +110,14 @@ export default function VaccinesScreen() {
             placeholder="e.g. 7"
             placeholderTextColor={colors.inkMuted}
             value={ageDays}
-            onChangeText={setAgeDays}
+            onChangeText={(t) => {
+              setAgeDays(t);
+              setFormError(null);
+            }}
             keyboardType="number-pad"
           />
           <Text style={styles.note}>We’ll remind 3 days before. Always confirm with your vet.</Text>
+          {formError ? <Text style={styles.error}>{formError}</Text> : null}
           <Button label="Add vaccine" onPress={onCreate} loading={busy} disabled={!name.trim()} />
           {msg ? <Text style={styles.meta}>{msg}</Text> : null}
         </View>
@@ -158,4 +199,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   meta: { color: colors.inkMuted, fontSize: 13 },
+  error: { color: colors.danger, fontSize: 13, marginBottom: space.sm },
 });

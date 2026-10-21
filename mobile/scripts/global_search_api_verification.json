@@ -1,0 +1,99 @@
+{
+  "base": "http://127.0.0.1:8002",
+  "steps": [
+    {
+      "step": "health",
+      "status": "passed",
+      "detail": "{\"status\":\"ok\",\"environment\":\"local\"}"
+    },
+    {
+      "step": "openapi_search",
+      "status": "passed",
+      "detail": "registered"
+    },
+    {
+      "step": "owner_auth",
+      "status": "passed",
+      "detail": "gs.verify.1100@example.com"
+    },
+    {
+      "step": "seed",
+      "status": "passed",
+      "detail": "bird=f50e5ee9-5e20-4374-b48f-ab6b129d809b"
+    },
+    {
+      "step": "exact_bird",
+      "status": "passed",
+      "detail": "1"
+    },
+    {
+      "step": "partial_bird",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "batch_code",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "shed_name_code",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "empty",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "types_birds_only",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "farmer_shed_scope",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "tenant_isolation",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "unauthorized_profile_404",
+      "status": "passed",
+      "detail": ""
+    }
+  ],
+  "passed": [
+    "health",
+    "openapi_search",
+    "owner_auth",
+    "seed",
+    "exact_bird",
+    "partial_bird",
+    "batch_code",
+    "shed_name_code",
+    "empty",
+    "types_birds_only",
+    "farmer_shed_scope",
+    "tenant_isolation",
+    "unauthorized_profile_404"
+  ],
+  "failed": [],
+  "seed": {
+    "band": "GB-1100",
+    "batch": "BX-1100",
+    "shed_name": "Alpha Shed 1100",
+    "shed_code": "AS1100",
+    "bird_id": "f50e5ee9-5e20-4374-b48f-ab6b129d809b",
+    "flock_id": "70d9cd3e-1e00-4ecb-8149-e9f97cbe4ae7",
+    "shed_id": "49fc609c-14d5-493e-bcf8-00c62c71e48b",
+    "owner_email": "gs.verify.1100@example.com",
+    "farmer_email": "gs.verify.farmer.1100@example.com",
+    "password": "password123",
+    "owner_account_id": "c7b32a2d-4761-4dda-8853-e489ca0c0d8a"
+  }
+}

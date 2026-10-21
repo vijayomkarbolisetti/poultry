@@ -1,0 +1,38 @@
+{
+  "authenticated": true,
+  "role": "farmer",
+  "results": [
+    {
+      "step": "farmer_login_screen",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "farmer_email_entry",
+      "status": "passed",
+      "detail": "email present check"
+    },
+    {
+      "step": "farmer_signin",
+      "status": "passed",
+      "detail": "['POULTRYTRACK', 'Hello, Pilot', 'Pilot Farm \u00b7 healthy hens', '\\uf563', '\\uf4a5', 'OVERVIEW', '\\uf2c9', '\u2014', 'Live birds', '\\uf5e4', '\u2014', 'Due today', '\\uf114', '\u2014', 'Overdue', '\\uf579']"
+    },
+    {
+      "step": "farmer_open_search",
+      "status": "passed",
+      "detail": ""
+    },
+    {
+      "step": "farmer_hides_owner_bird",
+      "status": "passed",
+      "detail": "['\\uf127', 'Search', '\\uf563', 'GB-1105', '\\uf24b', 'No matches', 'Nothing matched \u201cGB-1105\u201d in birds, batches, or sheds.', '\\uf383', 'Home', '\\uf1c7', 'Sheds', '\\uf2c9']"
+    },
+    {
+      "step": "farmer_own_shed_visible",
+      "status": "passed",
+      "detail": "['\\uf127', 'Search', '\\uf563', 'Pilot Shed', '\\uf24b', 'SHEDS', 'Pilot Shed', '\\uf1c7', 'Pilot Farm \u00b7 PS671 \u00b7 100 birds \u00b7 Active', '\\uf23b', 'Exact', '\\uf383', 'Home', '\\uf1c7']"
+    }
+  ],
+  "passed": 6,
+  "failed": 0
+}

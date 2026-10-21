@@ -1,0 +1,25 @@
+{
+  "visual": {
+    "sample_pages": 1,
+    "page1_png": "D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_094450_page1.png",
+    "page1_size": "1191x1684",
+    "has_brand": true,
+    "has_title": true,
+    "has_batch_note": true,
+    "has_page_footer": true,
+    "timezone_labeled": true,
+    "long_pages": 3,
+    "long_page1_png": "D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_long_page1.png",
+    "long_page2_png": "D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_long_page2.png",
+    "long_page3_png": "D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_long_page3.png"
+  },
+  "deploy": {
+    "health": 200,
+    "pdf_route": [
+      "/api/v1/birds/{bird_id}/vaccination-report.pdf"
+    ],
+    "openapi": 200,
+    "login_attempt": null
+  },
+  "leaks": []
+}

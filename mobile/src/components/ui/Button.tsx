@@ -1,6 +1,7 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, gradients, layout, radius, shadows, space, states, typography } from "../../theme/tokens";
 
 type Props = {
   label: string;
@@ -15,63 +16,111 @@ export function Button({ label, onPress, loading, variant = "primary", disabled,
   const isPrimary = variant === "primary";
   const isDanger = variant === "danger";
   const isGhost = variant === "ghost";
+  const isSecondary = variant === "secondary";
+  const inactive = Boolean(disabled || loading);
+
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={inactive}
       style={({ pressed }) => [
-        styles.base,
-        isPrimary && styles.primary,
-        variant === "secondary" && styles.secondary,
-        isDanger && styles.danger,
-        isGhost && styles.ghost,
-        (disabled || loading) && styles.disabled,
-        pressed && !disabled && !loading && styles.pressed,
+        styles.pressable,
+        pressed && !inactive && styles.pressed,
+        inactive && styles.disabled,
         style,
       ]}
     >
+      {({ pressed }) => (
+        <View style={styles.inner}>
+          {isPrimary ? (
+            <LinearGradient
+              colors={[...(pressed && !inactive ? gradients.primaryPressed : gradients.primary)]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={[styles.base, styles.primaryGradient, shadows.button]}
+            >
+              <ButtonLabel label={label} loading={loading} onDark />
+            </LinearGradient>
+          ) : (
+            <View
+              style={[
+                styles.base,
+                isSecondary && styles.secondary,
+                isDanger && styles.danger,
+                isGhost && styles.ghost,
+              ]}
+            >
+              <ButtonLabel
+                label={label}
+                loading={loading}
+                onDark={isDanger}
+                brand={!isDanger}
+              />
+            </View>
+          )}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function ButtonLabel({
+  label,
+  loading,
+  onDark,
+  brand,
+}: {
+  label: string;
+  loading?: boolean;
+  onDark?: boolean;
+  brand?: boolean;
+}) {
+  return (
+    <>
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={isPrimary || isDanger ? "#fff" : colors.brand}
+          color={onDark ? colors.textOnPrimary : colors.primary}
           style={styles.spinner}
         />
       ) : null}
       <Text
         style={[
           styles.label,
-          (isPrimary || isDanger) && styles.labelOnDark,
-          (variant === "secondary" || isGhost) && styles.labelBrand,
+          onDark && styles.labelOnDark,
+          brand && styles.labelBrand,
         ]}
       >
         {label}
       </Text>
-    </Pressable>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  pressable: { width: "100%" },
+  inner: { width: "100%" },
   base: {
-    minHeight: 52,
+    minHeight: layout.buttonMinHeight,
     borderRadius: radius.md,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     paddingHorizontal: space.lg,
   },
+  primaryGradient: { overflow: "hidden" },
   spinner: { marginRight: space.sm },
-  primary: { backgroundColor: colors.brand },
   secondary: {
-    backgroundColor: colors.bgElevated,
+    backgroundColor: colors.surface,
     borderWidth: 1.5,
-    borderColor: colors.brand,
+    borderColor: colors.primary,
   },
   danger: { backgroundColor: colors.danger },
   ghost: { backgroundColor: "transparent" },
-  disabled: { opacity: 0.55 },
-  pressed: { transform: [{ scale: 0.98 }], opacity: 0.92 },
-  label: { fontSize: 16, fontWeight: "700" },
-  labelOnDark: { color: "#fff" },
-  labelBrand: { color: colors.brand },
+  disabled: { opacity: states.disabledOpacity },
+  pressed: { transform: [{ scale: states.pressedScale }], opacity: states.pressedOpacity },
+  label: { ...typography.button },
+  labelOnDark: { color: colors.textOnPrimary },
+  labelBrand: { color: colors.primary },
 });

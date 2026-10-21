@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { listFlocks, type Flock } from "../../../src/api/flocks";
 import { describeApiError } from "../../../src/api/client";
@@ -14,15 +15,18 @@ import {
   recordVaccination,
 } from "../../../src/api/vaccines";
 import { Button } from "../../../src/components/ui/Button";
+import { DateField } from "../../../src/components/ui/DateField";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { SelectField } from "../../../src/components/ui/SelectField";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { colors, radius, shadow, space } from "../../../src/theme/tokens";
 
 type DoseRow = {
   id: string;
+  shed_id?: string;
   flock_id: string;
   vaccine_definition_id: string;
   dose_number: number;
@@ -47,7 +51,7 @@ const STATUS_META: Record<
   completed_timing_unknown: { label: "Done", hint: "Completed (timing unknown)", tone: "good" },
   needs_review: { label: "Needs review", hint: "Check hen age / history before vaccinating", tone: "warn" },
   skipped: { label: "Skipped", hint: "Marked as not required", tone: "neutral" },
-  inactive: { label: "Inactive", hint: "Flock closed or dose inactive", tone: "neutral" },
+  inactive: { label: "Inactive", hint: "Batch closed or dose inactive", tone: "neutral" },
 };
 
 const FILTER_OPTIONS = [
@@ -88,29 +92,48 @@ function flockLabel(f: Flock) {
 }
 
 export default function DosesScreen() {
+  const params = useLocalSearchParams<{ shedId?: string; flockId?: string }>();
+  const shedIdParam = typeof params.shedId === "string" && params.shedId ? params.shedId : undefined;
+  const flockIdParam = typeof params.flockId === "string" && params.flockId ? params.flockId : undefined;
   const { ownerAccountId, user } = useAuth();
   const canManage = hasPermission(user, ownerAccountId, "schedule.manage");
   const canRecord = hasPermission(user, ownerAccountId, "vaccination.record");
   const qc = useQueryClient();
 
   const [filter, setFilter] = useState<StatusKey>("needs_action");
-  const [flockFilter, setFlockFilter] = useState<string | null>("all");
-  const [planFlockId, setPlanFlockId] = useState<string | null>(null);
+  const [flockFilter, setFlockFilter] = useState<string | null>(flockIdParam ?? "all");
+  const [planFlockId, setPlanFlockId] = useState<string | null>(flockIdParam ?? null);
   const [planVaccineId, setPlanVaccineId] = useState<string | null>(null);
+  const [recordDoseId, setRecordDoseId] = useState<string | null>(null);
+  const [adminDate, setAdminDate] = useState<string>(todayIsoDate());
+  const [birdsCovered, setBirdsCovered] = useState<string>("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (flockIdParam) {
+      setFlockFilter(flockIdParam);
+      setPlanFlockId(flockIdParam);
+    }
+  }, [flockIdParam]);
+
+  const dosesQueryFlockId = flockFilter && flockFilter !== "all" ? flockFilter : undefined;
+
   const doses = useQuery({
-    queryKey: ["doses", ownerAccountId],
-    queryFn: () => listScheduledDoses() as Promise<DoseRow[]>,
+    queryKey: ["doses", ownerAccountId, shedIdParam ?? "all-sheds", dosesQueryFlockId ?? "all"],
+    queryFn: () =>
+      listScheduledDoses({
+        flockId: dosesQueryFlockId,
+        shedId: dosesQueryFlockId ? undefined : shedIdParam,
+      }) as Promise<DoseRow[]>,
   });
   const notes = useQuery({
     queryKey: ["notifications", ownerAccountId],
     queryFn: listNotifications,
   });
   const flocks = useQuery({
-    queryKey: ["flocks", ownerAccountId],
-    queryFn: () => listFlocks(),
+    queryKey: ["flocks", ownerAccountId, shedIdParam ?? "all"],
+    queryFn: () => listFlocks(shedIdParam),
   });
   const vaccines = useQuery({
     queryKey: ["vaccines", ownerAccountId],
@@ -118,10 +141,14 @@ export default function DosesScreen() {
     enabled: canManage,
   });
 
-  useEffect(() => {
-    if (!planFlockId && (flocks.data?.length ?? 0) > 0) setPlanFlockId(flocks.data![0].id);
-    if (!planVaccineId && (vaccines.data?.length ?? 0) > 0) setPlanVaccineId(vaccines.data![0].id);
-  }, [flocks.data, vaccines.data, planFlockId, planVaccineId]);
+  const activeFlocks = useMemo(
+    () => (flocks.data ?? []).filter((f) => f.status === "active"),
+    [flocks.data],
+  );
+  const activeVaccines = useMemo(
+    () => (vaccines.data ?? []).filter((v) => v.is_active),
+    [vaccines.data],
+  );
 
   const flockMap = useMemo(() => {
     const m = new Map<string, Flock>();
@@ -146,56 +173,64 @@ export default function DosesScreen() {
   }, [doses.data]);
 
   const filtered = useMemo(() => {
-    return (doses.data ?? []).filter((d) => {
-      if (!matchesFilter(d.status, filter)) return false;
-      if (flockFilter && flockFilter !== "all" && d.flock_id !== flockFilter) return false;
-      return true;
-    });
-  }, [doses.data, filter, flockFilter]);
+    return (doses.data ?? []).filter((d) => matchesFilter(d.status, filter));
+  }, [doses.data, filter]);
 
-  const flockOptions = useMemo(
+  const flockFilterOptions = useMemo(
     () => [
-      { value: "all", label: "All flocks", hint: "Show every flock’s tasks" },
-      ...(flocks.data ?? []).map((f) => ({
+      { value: "all", label: "All batches", hint: "Show every batch’s tasks" },
+      ...activeFlocks.map((f) => ({
         value: f.id,
         label: f.batch_code,
         hint: flockLabel(f),
       })),
     ],
-    [flocks.data],
+    [activeFlocks],
   );
 
   const planFlockOptions = useMemo(
     () =>
-      (flocks.data ?? []).map((f) => ({
+      activeFlocks.map((f) => ({
         value: f.id,
         label: f.batch_code,
         hint: flockLabel(f),
       })),
-    [flocks.data],
+    [activeFlocks],
   );
 
   const planVaccineOptions = useMemo(
     () =>
-      (vaccines.data ?? []).map((v) => ({
+      activeVaccines.map((v) => ({
         value: v.id,
         label: v.name,
         hint: v.category || "Vaccine",
       })),
-    [vaccines.data],
+    [activeVaccines],
   );
+
+  useEffect(() => {
+    if (recordDoseId) {
+      const dose = (doses.data ?? []).find((d) => d.id === recordDoseId);
+      if (dose) {
+        const remaining = Math.max(dose.eligible_count - dose.completed_count, 1);
+        setBirdsCovered(String(remaining));
+        setAdminDate(todayIsoDate());
+      }
+    }
+  }, [recordDoseId, doses.data]);
 
   const refresh = async () => {
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["doses", ownerAccountId] }),
       qc.invalidateQueries({ queryKey: ["notifications", ownerAccountId] }),
       qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] }),
+      qc.invalidateQueries({ queryKey: ["shed-overview"] }),
     ]);
   };
 
   const onCreatePlan = async () => {
     if (!planFlockId || !planVaccineId) {
-      setMsg("Please select a flock and a vaccine first.");
+      setMsg("Please select a batch and a vaccine first.");
       return;
     }
     setBusy(true);
@@ -215,16 +250,26 @@ export default function DosesScreen() {
   };
 
   const onRecord = async (dose: DoseRow) => {
+    const covered = Number(birdsCovered);
+    if (!Number.isFinite(covered) || covered < 1 || !Number.isInteger(covered)) {
+      setMsg("Enter how many hens were vaccinated (whole number ≥ 1).");
+      return;
+    }
+    if (!adminDate) {
+      setMsg("Choose an administration date.");
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {
       await recordVaccination({
         scheduled_dose_id: dose.id,
-        birds_covered: Math.max(dose.eligible_count - dose.completed_count, 1),
-        administration_date: new Date().toISOString().slice(0, 10),
-        idempotency_key: `ui-${dose.id}-${Date.now()}`,
+        birds_covered: covered,
+        administration_date: adminDate,
+        idempotency_key: `ui-${dose.id}-${adminDate}-${covered}-${Date.now()}`,
       });
       await refresh();
+      setRecordDoseId(null);
       setMsg("Vaccination recorded.");
     } catch (e: unknown) {
       setMsg(describeApiError(e, "record vaccination"));
@@ -237,8 +282,14 @@ export default function DosesScreen() {
     <Screen style={{ paddingTop: space.md }}>
       <Text style={styles.pageTitle}>Vaccination tasks</Text>
       <Text style={styles.pageSub}>
-        Each card is one vaccine dose for a flock. Open filters to focus on what needs action today.
+        Each card is one vaccine dose for a batch. Open filters to focus on what needs action today.
       </Text>
+      {shedIdParam ? (
+        <Text style={styles.scopeBanner}>
+          Showing tasks for this shed
+          {flockIdParam ? " · one batch selected" : ""}. Clear filters on Batches to see other sheds.
+        </Text>
+      ) : null}
 
       <View style={styles.summaryRow}>
         <SummaryChip label="Due today" value={summary.due_today} tone="warn" />
@@ -252,35 +303,51 @@ export default function DosesScreen() {
         helper="Pick what kind of work you want to see"
         value={filter}
         options={FILTER_OPTIONS}
-        onChange={(v) => setFilter(v as StatusKey)}
+        onChange={(v) => setFilter((v as StatusKey) ?? "needs_action")}
+        clearStale={false}
       />
       <SelectField
-        label="Flock"
-        helper="Optional — narrow to one flock"
+        label="Batch"
+        helper="Optional — narrow to one batch"
         value={flockFilter}
-        options={flockOptions}
+        options={flockFilterOptions}
         onChange={setFlockFilter}
+        allowValues={["all"]}
+        searchable
+        loading={flocks.isLoading}
+        emptyMessage="No active batches yet"
+        onRetry={() => flocks.refetch()}
       />
 
       {canManage ? (
         <View style={[styles.planCard, shadow.card]}>
           <Text style={styles.planTitle}>Create a vaccination plan</Text>
           <Text style={styles.planHint}>
-            Choose which flock and which vaccine. We’ll create the due dates (tasks) automatically.
+            Choose which batch and which vaccine. We’ll create the due dates (tasks) automatically.
           </Text>
           <SelectField
-            label="1. Select flock"
-            placeholder="Choose flock"
+            label="1. Select batch"
+            placeholder="Choose batch"
+            required
+            searchable
             value={planFlockId}
             options={planFlockOptions}
             onChange={setPlanFlockId}
+            loading={flocks.isLoading}
+            emptyMessage="No active batches available"
+            onRetry={() => flocks.refetch()}
           />
           <SelectField
             label="2. Select vaccine"
             placeholder="Choose vaccine"
+            required
+            searchable
             value={planVaccineId}
             options={planVaccineOptions}
             onChange={setPlanVaccineId}
+            loading={vaccines.isLoading}
+            emptyMessage="No active vaccines — add one in the catalogue"
+            onRetry={() => vaccines.refetch()}
           />
           <Button label="Create plan & reminders" onPress={onCreatePlan} loading={busy} />
           {msg ? <Text style={styles.msg}>{msg}</Text> : null}
@@ -328,6 +395,7 @@ export default function DosesScreen() {
           const flock = flockMap.get(item.flock_id);
           const vaccineName = vaccineMap.get(item.vaccine_definition_id) ?? "Vaccine";
           const remaining = Math.max(item.eligible_count - item.completed_count, 0);
+          const recording = recordDoseId === item.id;
           return (
             <View style={[styles.card, shadow.card]}>
               <View style={styles.cardTop}>
@@ -338,7 +406,7 @@ export default function DosesScreen() {
                   <Text style={[styles.badgeText, { color: toneColor(st.tone) }]}>{st.label}</Text>
                 </View>
               </View>
-              <Text style={styles.meta}>Flock: {flock ? flockLabel(flock) : "Unknown flock"}</Text>
+              <Text style={styles.meta}>Batch: {flock ? flockLabel(flock) : "Unknown batch"}</Text>
               <Text style={styles.meta}>Due date: {item.due_date}</Text>
               <Text style={styles.meta}>
                 Progress: {item.completed_count} of {item.eligible_count} hens done
@@ -346,11 +414,33 @@ export default function DosesScreen() {
               </Text>
               {st.hint ? <Text style={styles.hint}>{st.hint}</Text> : null}
               {canRecord && !item.status.startsWith("completed") && item.status !== "skipped" ? (
-                <Button
-                  label={remaining > 0 ? `Mark vaccinated (${remaining} hens)` : "Mark vaccinated"}
-                  onPress={() => onRecord(item)}
-                  loading={busy}
-                />
+                recording ? (
+                  <View style={styles.recordBox}>
+                    <DateField
+                      label="Administration date"
+                      required
+                      value={adminDate}
+                      onChange={(v) => setAdminDate(v ?? todayIsoDate())}
+                    />
+                    <Text style={styles.label}>Hens vaccinated</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={birdsCovered}
+                      onChangeText={setBirdsCovered}
+                      keyboardType="number-pad"
+                      placeholder={String(Math.max(remaining, 1))}
+                      placeholderTextColor={colors.inkMuted}
+                    />
+                    <Button label="Confirm vaccination" onPress={() => onRecord(item)} loading={busy} />
+                    <Button label="Cancel" variant="secondary" onPress={() => setRecordDoseId(null)} disabled={busy} />
+                  </View>
+                ) : (
+                  <Button
+                    label={remaining > 0 ? `Record vaccination (${remaining} left)` : "Record vaccination"}
+                    onPress={() => setRecordDoseId(item.id)}
+                    disabled={busy}
+                  />
+                )
               ) : null}
             </View>
           );
@@ -381,6 +471,15 @@ function SummaryChip({
 const styles = StyleSheet.create({
   pageTitle: { fontSize: 22, fontWeight: "800", color: colors.brand },
   pageSub: { color: colors.inkMuted, fontSize: 14, lineHeight: 20, marginTop: -space.sm },
+  scopeBanner: {
+    backgroundColor: colors.brandSoft,
+    color: colors.brandDark,
+    fontSize: 13,
+    fontWeight: "600",
+    padding: space.sm,
+    borderRadius: radius.md,
+    overflow: "hidden",
+  },
   summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: space.sm },
   chip: {
     flexGrow: 1,
@@ -427,4 +526,16 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
   badgeText: { fontSize: 11, fontWeight: "800" },
   msg: { color: colors.brand, fontWeight: "700", fontSize: 13 },
+  recordBox: { gap: space.sm, marginTop: space.xs },
+  label: { fontSize: 14, fontWeight: "700", color: colors.ink },
+  input: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    color: colors.ink,
+    fontSize: 16,
+    backgroundColor: colors.bg,
+  },
 });

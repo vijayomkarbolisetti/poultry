@@ -1,0 +1,55 @@
+{
+  "inactive_ui_ok": true,
+  "inactive_list_ok": true,
+  "active_search_ok": true,
+  "inactive_ui": {
+    "has_inactive_label": true,
+    "has_reactivate": true,
+    "has_deactivate": false,
+    "has_add_batch": false,
+    "sample": [
+      "\uf127",
+      "Shed overview",
+      "VerifyShed235435Edit",
+      "Pilot Farm",
+      "VS5435E \u00b7 Farmer-managed \u00b7 Inactive",
+      "Managed by: VerifyMgr2235435",
+      "Notes235435-edited",
+      "Edit shed",
+      "Reactivate",
+      "Inactive shed \u2014 history remains available. New batches and birds are blocked until reactivation.",
+      "LIVE BIRDS",
+      "25",
+      "Across 1 active batch",
+      "25",
+      "Unbanded",
+      "0",
+      "Banded",
+      "VACCINATION TASKS",
+      "Dose-task counts for this shed (not bird counts)",
+      "0",
+      "Overdue",
+      "0"
+    ]
+  },
+  "inactive_list": {
+    "has_shed": true,
+    "sample": [
+      "Inactive",
+      "VerifyShed235435Edit",
+      "Inactive",
+      "VS5435E",
+      "Farmer-managed \u00b7 VerifyMgr2235435"
+    ]
+  },
+  "active_search": {
+    "has_shed": true,
+    "sample": [
+      "VS5435E",
+      "VerifyShed235435Edit",
+      "VS5435E",
+      "Farmer-managed \u00b7 VerifyMgr2235435",
+      "Edit"
+    ]
+  }
+}

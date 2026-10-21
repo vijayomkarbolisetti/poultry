@@ -1,0 +1,73 @@
+{
+  "stamp": "094450",
+  "pdf_path": "D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_094450.pdf",
+  "bird_with_history": {
+    "id": "423e9d5c-d91d-49aa-8645-06d145aa0c0b",
+    "band": "PDF H/094450"
+  },
+  "bird_empty": {
+    "id": "f23262b3-e36d-4943-91ac-bdeacf8f5daa",
+    "band": "PDF-EMPTY-094450"
+  },
+  "shed_id": "cf3aa373-f70b-4f50-8d37-88aee93c0d94",
+  "farmer_email": "vfy.pdf.094450@example.com",
+  "results": [
+    {
+      "step": "owner_login",
+      "status": "passed",
+      "detail": "200"
+    },
+    {
+      "step": "owner_pdf_headers",
+      "status": "passed",
+      "detail": "status=200 ct=application/pdf cd=attachment; filename=\"Bird_Report_PDF_H_094450_20261019.pdf\" bytes=3789"
+    },
+    {
+      "step": "owner_pdf_contents",
+      "status": "passed",
+      "detail": "brand=True band=True lot=True batch=True integrity=True path=D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_094450.pdf"
+    },
+    {
+      "step": "filename_sanitized",
+      "status": "passed",
+      "detail": "attachment; filename=\"Bird_Report_A_B_094450_20261019.pdf\""
+    },
+    {
+      "step": "empty_history_pdf",
+      "status": "passed",
+      "detail": "no_invented_lot=True empty_msg=True batch_section=True"
+    },
+    {
+      "step": "farmer_assigned_pdf",
+      "status": "passed",
+      "detail": "status=200"
+    },
+    {
+      "step": "farmer_unassigned_shed",
+      "status": "passed",
+      "detail": "status=403"
+    },
+    {
+      "step": "cross_org_denied",
+      "status": "passed",
+      "detail": "status=404"
+    },
+    {
+      "step": "search_exact_api",
+      "status": "passed",
+      "detail": "1"
+    },
+    {
+      "step": "profile_api",
+      "status": "passed",
+      "detail": "ind=1"
+    },
+    {
+      "step": "missing_bird_pdf",
+      "status": "passed",
+      "detail": "status=404"
+    }
+  ],
+  "passed": 11,
+  "failed": 0
+}

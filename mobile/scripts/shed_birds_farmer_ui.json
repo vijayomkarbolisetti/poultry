@@ -1,0 +1,44 @@
+{
+  "results": [
+    {
+      "step": "farmer_api_login",
+      "status": "passed",
+      "detail": "[REDACTED]"
+    },
+    {
+      "step": "farmer_api_assigned",
+      "status": "passed",
+      "detail": "code=200"
+    },
+    {
+      "step": "farmer_api_unassigned_403",
+      "status": "passed",
+      "detail": "403"
+    },
+    {
+      "step": "farmer_api_bulk_forbidden_no_mutate",
+      "status": "passed",
+      "detail": "400 {'detail': 'One or more birds were not found or are not accessible'}"
+    },
+    {
+      "step": "farmer_api_assigned_bird_lifecycle",
+      "status": "passed",
+      "detail": "code=201 before=active after=sold"
+    },
+    {
+      "step": "farmer_ui_login",
+      "status": "failed",
+      "detail": "['PoultryTrack', 'Farm health, made simple.', 'Smarter Farms. Healthier Birds.', 'Manage sheds, bird records, health monitoring, and vaccination schedules in one place \u2014 for every life stage on your farm.', 'Email', '\\uf434', 'Perform the final QA closure for bulk bird lifecycle management in `D:\\\\Vaccine-Tracker\\\\poultry\\\\mobile`.  Use the existing implementation and reports: - `mobile/scripts/sh"
+    }
+  ],
+  "passed": 5,
+  "failed": 1,
+  "artifacts": [
+    "mobile/scripts/frm_login_open.png",
+    "mobile/scripts/frm_home.png",
+    "mobile/scripts/frm_login_open.png",
+    "mobile/scripts/frm_home_retry.png"
+  ],
+  "tag": "FRM142833",
+  "note": "Farmer UI select not executed \u2014 login form did not authenticate on emulator"
+}

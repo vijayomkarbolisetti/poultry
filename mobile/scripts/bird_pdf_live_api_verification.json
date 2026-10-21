@@ -1,0 +1,49 @@
+{
+  "steps": [
+    {
+      "register": 201
+    },
+    {
+      "pdf_status": 200,
+      "ct": "application/pdf",
+      "cd": "attachment; filename=\"Bird_Report_LIVE-110200_20261019.pdf\"",
+      "bytes": 3799
+    },
+    {
+      "farmer_create": 201
+    },
+    {
+      "farmer_assigned_pdf": 200
+    },
+    {
+      "farmer_unassigned_pdf": 403
+    },
+    {
+      "cross_org_pdf": 404
+    }
+  ],
+  "customer_ready": {
+    "uuid_absent": true,
+    "no_as_of": true,
+    "no_internal_id": true,
+    "no_display_code": true,
+    "no_dob_conf": true,
+    "no_enum": true,
+    "no_integrity": true,
+    "no_compliance": true,
+    "has_brand": true,
+    "has_title": true,
+    "has_band": true,
+    "has_lot": true,
+    "has_history_heading": true,
+    "has_upcoming_heading": true,
+    "has_batch_note": true,
+    "has_active_label": true,
+    "has_page_footer": true
+  },
+  "stale_generator": false,
+  "all_checks_pass": true,
+  "pdf_path": "D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_live_api_110200.pdf",
+  "bird_id": "f594a57d-84ed-40e8-8add-f8731b4ee6a6",
+  "png": "D:\\Vaccine-Tracker\\poultry\\mobile\\scripts\\verify_bird_report_live_api_110200_page1.png"
+}

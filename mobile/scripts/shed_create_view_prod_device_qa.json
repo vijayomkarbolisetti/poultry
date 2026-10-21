@@ -1,0 +1,21 @@
+{
+  "serial": "2639a611",
+  "api": "https://3.6.160.64.sslip.io",
+  "name": "QA-SHED-1019181248",
+  "code": "Q81248",
+  "shed_id": null,
+  "results": [
+    {
+      "test_id": "CV-00",
+      "scenario": "Credentials from env",
+      "expected": "POULTRY_QA_EMAIL + POULTRY_QA_PASSWORD set",
+      "actual": "missing \u2014 cannot create on production API",
+      "status": "BLOCKED"
+    }
+  ],
+  "passed": 0,
+  "failed": 0,
+  "blocked": 1,
+  "artifacts": [],
+  "note": "Credentials read from env only; not stored."
+}

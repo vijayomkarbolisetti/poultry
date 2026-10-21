@@ -1,0 +1,72 @@
+{
+  "stamp": "232651",
+  "pass": 12,
+  "fail": 1,
+  "results": [
+    {
+      "step": "open new shed",
+      "ok": true,
+      "detail": "['\\uf127', 'New shed', 'Shed name', 'North Barn', 'Code', 'N1', 'Location / notes', 'Optional', 'Owner-managed', 'You manage this shed. No farmer assignment required.', 'Create shed', '\\uf383']"
+    },
+    {
+      "step": "form fields present",
+      "ok": true,
+      "detail": "eds=3"
+    },
+    {
+      "step": "owner-managed off",
+      "ok": false,
+      "detail": "['\\uf127', 'New shed', 'Shed name', 'AutoBarn232651', 'Code', 'AB2651', 'Location / notes', 'Notes232651', 'Owner-managed', 'A farmer must be assigned to manage this shed.', 'Assigned farmer *', 'Select the farmer responsible for managing this shed.', 'Loading\u2026', '\\uf232', '+ Add Farmer', 'Create shed']"
+    },
+    {
+      "step": "create disabled without farmer",
+      "ok": true,
+      "detail": "enabled=False"
+    },
+    {
+      "step": "add farmer modal",
+      "ok": true,
+      "detail": "['Add farmer', 'Close', 'Create a farmer login for this organization. You can assign sheds and adjust permissions later.', 'Full name', '\\uf4ac', 'Email', '\\uf434', 'Temp password', '\\uf3c8', '\\uf2ea', 'Create farmer']"
+    },
+    {
+      "step": "back on new shed form",
+      "ok": true,
+      "detail": "['\\uf127', 'New shed', 'Shed name', 'AutoBarn232651', 'Code', 'AB2651', 'Location / notes', 'Notes232651', 'Owner-managed', 'A farmer must be assigned to manage this shed.', 'Assigned farmer *', 'Select the farmer responsible for managing this shed.', 'AutoFarmer232651', '\\uf232', '+ Add Farmer', 'Create shed', '\\uf383', 'Home', '\\uf1c7', 'Sheds']"
+    },
+    {
+      "step": "shed values preserved",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "auto-selected without manual picker",
+      "ok": true,
+      "detail": "selected=True placeholder=False texts=['AutoBarn232651', 'A farmer must be assigned to manage this shed.', 'Assigned farmer *', 'Select the farmer responsible for managing this shed.', 'AutoFarmer232651', '+ Add Farmer']"
+    },
+    {
+      "step": "create enabled after auto-select",
+      "ok": true,
+      "detail": "enabled=True"
+    },
+    {
+      "step": "overview after create",
+      "ok": true,
+      "detail": "['\\uf127', 'Shed overview', 'AutoBarn232651', 'Pilot Farm', 'AB2651 \u00b7 Farmer-managed', 'Managed by: AutoFarmer232651', 'Notes232651', 'LIVE BIRDS', '0', 'Across 0 active batches', '0', 'Unbanded', '0', 'Banded', 'VACCINATION TASKS', 'Dose-task counts for this shed (not bird counts)']"
+    },
+    {
+      "step": "API shed exists",
+      "ok": true,
+      "detail": "{'id': '0f70c216-c2a0-477e-a827-69e6b1a3ed33', 'owner_account_id': '6dcb0f46-b3bc-4d1b-b46f-9879ca0b6afc', 'name': 'AutoBarn232651', 'code': 'AB2651', 'location_notes': 'Notes23265"
+    },
+    {
+      "step": "API assignment membership",
+      "ok": true,
+      "detail": "[{'id': '7b40d606-dc4d-4594-9f58-864a11ded919', 'shed_id': '0f70c216-c2a0-477e-a827-69e6b1a3ed33', 'owner_membership_id': '649be3b5-d5d0-469a-b8e0-86a7e9c2b652', 'is_manager': True, 'is_active': True, 'farmer_name': 'Aut"
+    },
+    {
+      "step": "membership_id matches farmer record",
+      "ok": true,
+      "detail": "assignment_mem=649be3b5-d5d0-469a-b8e0-86a7e9c2b652 farmer_mem=649be3b5-d5d0-469a-b8e0-86a7e9c2b652"
+    }
+  ]
+}

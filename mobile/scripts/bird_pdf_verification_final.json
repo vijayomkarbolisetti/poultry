@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-19",
+  "feature": "B5 individual bird vaccination PDF — customer-ready",
+  "commit_push": "none (not requested)",
+  "backend": {
+    "stale_8001": {
+      "status": "LISTENING but serving old PDF generator",
+      "evidence": "verify_bird_report_live_api_105500_page1.png still shows As-of bird id, Internal bird ID, DobConfidence.unknown, BirdLifecycleStatus.active, Data integrity",
+      "action_required": "Kill/restart process on :8001 so mobile/emulator picks up customer-ready PDF"
+    },
+    "fresh_8002": {
+      "health": 200,
+      "pdf_route_registered": true,
+      "serves_customer_ready_code": true,
+      "note": "Started for deployment verification after :8001 could not be force-killed from this session"
+    }
+  },
+  "visual": {
+    "sample_pdf": "mobile/scripts/verify_bird_report_094450.pdf",
+    "sample_png": "mobile/scripts/verify_bird_report_094450_page1.png",
+    "long_history_pdf": "mobile/scripts/verify_bird_report_long_history.pdf",
+    "long_history_pages": 3,
+    "long_pngs": [
+      "mobile/scripts/verify_bird_report_long_page1.png",
+      "mobile/scripts/verify_bird_report_long_page2.png",
+      "mobile/scripts/verify_bird_report_long_page3.png"
+    ],
+    "live_api_png": "mobile/scripts/verify_bird_report_live_api_105900_page1.png",
+    "findings": {
+      "branding_ok": true,
+      "status_badge_active_green": true,
+      "batch_upcoming_distinguished": true,
+      "no_internal_ids_on_customer_sample": true,
+      "pagination_repeat_headers": true,
+      "minor": "History column header 'Date administered' wraps to two lines at current column width — readable, not clipped"
+    }
+  },
+  "api_live_8002": {
+    "passed": [
+      "owner_register_and_pdf_200",
+      "content_type_application_pdf",
+      "filename_Bird_Report_LIVE-105900",
+      "all_customer_ready_content_checks",
+      "farmer_assigned_pdf_200",
+      "farmer_unassigned_shed_403",
+      "cross_org_404"
+    ],
+    "failed": [],
+    "artifact": "mobile/scripts/bird_pdf_live_api_verification.json"
+  },
+  "commands": {
+    "pytest app/tests -q": "70 passed (prior full run); bird PDF suite 10/10 after customer-ready changes",
+    "tsc --noEmit": "exit 0",
+    "check-bird-search-helpers.mjs": "ok",
+    "check-create-shed-form.mjs": "ok",
+    "check-select-utils.mjs": "ok"
+  },
+  "emulator_share": {
+    "prior_session": "passed against pre-customer-ready PDF",
+    "retest_after_customer_ready": "blocked until :8001 restarted with new generator; share sheet path itself unchanged"
+  }
+}

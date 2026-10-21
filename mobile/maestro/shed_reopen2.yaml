@@ -1,0 +1,25 @@
+﻿appId: com.vijayomkar.poultrytracker
+---
+- launchApp
+- tapOn:
+    point: "30%,95%"
+- scrollUntilVisible:
+    element: "QA-SHED-1019A"
+    direction: DOWN
+    timeout: 10000
+- tapOn:
+    text: "Open shed QA-SHED-1019A"
+- extendedWaitUntil:
+    visible: "Retry|QA19A|QA-SHED-1019A|Loading shed"
+    timeout: 15000
+- runFlow:
+    when:
+      visible: "Retry"
+    commands:
+      - tapOn: "Retry"
+      - extendedWaitUntil:
+          visible: "QA-SHED-1019A"
+          timeout: 15000
+- takeScreenshot: detail_after_open
+- assertVisible: "QA-SHED-1019A"
+- assertVisible: "QA19A"

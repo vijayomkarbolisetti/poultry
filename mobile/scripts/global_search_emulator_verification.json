@@ -1,0 +1,7 @@
+{
+  "date": "2026-10-19",
+  "superseded_by": "mobile/scripts/global_search_emulator_ui_verification.json",
+  "final_report": "mobile/scripts/global_search_final_verification.json",
+  "status": "PASSED",
+  "summary": "Owner Global Search UI flows verified on emulator-5554 against http://10.0.2.2:8002. Farmer UI verified separately (global_search_farmer_ui_verification.json)."
+}

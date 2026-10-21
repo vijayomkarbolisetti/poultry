@@ -1,11 +1,14 @@
+from datetime import date
+from uuid import UUID
+
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authorization.deps import AuthContext
+from app.models.flock import Flock
 from app.models.membership import OwnerMembership
 from app.models.notification import Notification
-from app.models.owner import OwnerAccount
 from app.models.shed import ShedMembership
 from app.models.vaccine import ScheduledDose
 from app.services.schedule_engine import (
@@ -13,15 +16,21 @@ from app.services.schedule_engine import (
     STATUS_DUE_TODAY,
     STATUS_NEEDS_REVIEW,
     STATUS_OVERDUE,
-    farm_local_today,
 )
+
+
+def format_dose_alert_body(*, due_date: date, batch_code: str | None) -> str:
+    """Build user-facing dose alert body using Batch terminology (never raw flock UUIDs)."""
+    due = due_date.isoformat()
+    code = (batch_code or "").strip()
+    if code:
+        return f"Dose due {due} (batch {code})"
+    return f"Dose due {due}"
 
 
 async def generate_dose_alerts(db: AsyncSession, ctx: AuthContext) -> int:
     """Create in-app notifications for due/overdue/review doses; skip duplicates."""
     assert ctx.owner_account_id
-    owner = await db.get(OwnerAccount, ctx.owner_account_id)
-    today = farm_local_today(owner.timezone if owner else None)
     doses = list(
         await db.scalars(
             select(ScheduledDose).where(
@@ -41,11 +50,20 @@ async def generate_dose_alerts(db: AsyncSession, ctx: AuthContext) -> int:
             )
         )
     )
+    flock_ids = {dose.flock_id for dose in doses if dose.flock_id is not None}
+    batch_codes: dict[UUID, str] = {}
+    if flock_ids:
+        rows = await db.execute(select(Flock.id, Flock.batch_code).where(Flock.id.in_(flock_ids)))
+        batch_codes = {row.id: row.batch_code for row in rows}
+
     created = 0
     for dose in doses:
         alert_type = dose.status
         title = f"Vaccine {dose.status.replace('_', ' ')}"
-        body = f"Dose due {dose.due_date.isoformat()} (flock {dose.flock_id})"
+        body = format_dose_alert_body(
+            due_date=dose.due_date,
+            batch_code=batch_codes.get(dose.flock_id) if dose.flock_id else None,
+        )
         severity = "warning" if dose.status == STATUS_OVERDUE else "info"
         for mem in memberships:
             if mem.role.value == "farmer":

@@ -1,0 +1,65 @@
+{
+  "base": "http://127.0.0.1:8002",
+  "tag": "LQA181815",
+  "shed_id": "3956a550-bf4b-47f7-88a1-58571de75a1e",
+  "results": [
+    {
+      "test_id": "LOC-01",
+      "scenario": "Register owner",
+      "expected": "201",
+      "actual": "ok",
+      "status": "PASS"
+    },
+    {
+      "test_id": "LOC-02",
+      "scenario": "Create shed",
+      "expected": "201 + id",
+      "actual": "201 3956a550-bf4b-47f7-88a1-58571de75a1e",
+      "status": "PASS"
+    },
+    {
+      "test_id": "LOC-03",
+      "scenario": "Overview after create",
+      "expected": "matching name",
+      "actual": "200 Local Shed LQA181815",
+      "status": "PASS"
+    },
+    {
+      "test_id": "LOC-04",
+      "scenario": "List item includes manager_names array",
+      "expected": "array present",
+      "actual": "found=True managers=[]",
+      "status": "PASS"
+    },
+    {
+      "test_id": "LOC-05",
+      "scenario": "Duplicate code",
+      "expected": "409",
+      "actual": "409 {'detail': 'Shed code already exists for this organization'}",
+      "status": "PASS"
+    },
+    {
+      "test_id": "LOC-06",
+      "scenario": "Blank name",
+      "expected": "4xx",
+      "actual": "422",
+      "status": "PASS"
+    },
+    {
+      "test_id": "LOC-07",
+      "scenario": "Other org cannot overview shed",
+      "expected": "403/404",
+      "actual": "404",
+      "status": "PASS"
+    },
+    {
+      "test_id": "LOC-08",
+      "scenario": "Farmer-managed missing farmer",
+      "expected": "4xx",
+      "actual": "422",
+      "status": "PASS"
+    }
+  ],
+  "passed": 8,
+  "failed": 0
+}

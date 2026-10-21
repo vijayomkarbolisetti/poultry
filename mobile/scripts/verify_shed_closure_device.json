@@ -1,0 +1,89 @@
+{
+  "stamp": "closure-final-2026-10-19",
+  "implementation": "complete",
+  "production_readiness": "not_claimed",
+  "outstanding": [
+    "farmer in-app UI permission verification (hide edit/deactivate after real farmer login)"
+  ],
+  "counts": {
+    "tested": 10,
+    "not_tested": 1,
+    "skipped": 1,
+    "failed": 0
+  },
+  "results": [
+    {
+      "step": "edit form typing and save",
+      "status": "tested",
+      "ok": true,
+      "detail": "UI + API name/code updated"
+    },
+    {
+      "step": "edit hydration gate",
+      "status": "tested",
+      "ok": true,
+      "detail": "edit/[id].tsx blocks save until hydrated"
+    },
+    {
+      "step": "owner-managed confirm appear + cancel",
+      "status": "tested",
+      "ok": true,
+      "detail": "Alert + CANCEL; shed remained farmer-managed"
+    },
+    {
+      "step": "owner-managed confirm Switch",
+      "status": "tested",
+      "ok": true,
+      "detail": "SWITCH → owner-managed hint on edit form"
+    },
+    {
+      "step": "deactivate confirm dialog appears",
+      "status": "tested",
+      "ok": true,
+      "detail": "Deactivate this shed? + CANCEL/REVIEW BATCHES/DEACTIVATE"
+    },
+    {
+      "step": "deactivate confirm cancel",
+      "status": "tested",
+      "ok": true,
+      "detail": "CANCEL tapped; still_active=true (final; supersedes earlier Cancel-casing miss)"
+    },
+    {
+      "step": "farmer API denied edit/deactivate",
+      "status": "tested",
+      "ok": true,
+      "detail": "patch=403 deact=403 — server enforcement only; not a UI pass"
+    },
+    {
+      "step": "farmer UI hides edit/deactivate",
+      "status": "not_tested",
+      "ok": false,
+      "detail": "Outstanding: no reliable device logout→farmer login; do not equate with API 403"
+    },
+    {
+      "step": "pytest app/tests -q",
+      "status": "tested",
+      "ok": true,
+      "detail": "55 passed"
+    },
+    {
+      "step": "tsc --noEmit",
+      "status": "tested",
+      "ok": true,
+      "detail": "exit 0"
+    },
+    {
+      "step": "check-create-shed-form.mjs",
+      "status": "tested",
+      "ok": true,
+      "detail": "ok"
+    },
+    {
+      "step": "verify_vax_refresh.py full record path",
+      "status": "skipped",
+      "ok": null,
+      "detail": "Intentionally skipped: pilot org had no open doses"
+    }
+  ],
+  "note": "Final results only. Earlier interim SKIPs (switch already ON, Cancel casing, farmer logout) are not final outcomes where later checks succeeded."
+}

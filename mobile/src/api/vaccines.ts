@@ -22,9 +22,23 @@ export async function generateSchedules(flockId: string, vaccineIds?: string[]) 
   return data as { id: string; due_date: string; status: string; dose_number: number; eligible_count: number; completed_count: number }[];
 }
 
-export async function listScheduledDoses(flockId?: string) {
-  const { data } = await api.get("/vaccines/scheduled-doses", { params: flockId ? { flock_id: flockId } : {} });
-  return data as { id: string; flock_id: string; due_date: string; status: string; dose_number: number; eligible_count: number; completed_count: number; vaccine_definition_id: string }[];
+export async function listScheduledDoses(opts?: { flockId?: string; shedId?: string }) {
+  const params: Record<string, string> = {};
+  if (opts?.flockId) params.flock_id = opts.flockId;
+  if (opts?.shedId) params.shed_id = opts.shedId;
+  const { data } = await api.get("/vaccines/scheduled-doses", { params });
+  return data as {
+    id: string;
+    shed_id: string;
+    flock_id: string;
+    due_date: string;
+    status: string;
+    dose_number: number;
+    eligible_count: number;
+    completed_count: number;
+    vaccine_definition_id: string;
+    needs_review?: boolean;
+  }[];
 }
 
 export async function recordVaccination(input: Record<string, unknown>) {
