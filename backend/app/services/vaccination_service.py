@@ -5,8 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authorization.deps import AuthContext
-from app.authorization.permissions import assert_shed_access
+from app.authorization.permissions import assert_shed_access, list_assigned_shed_ids
 from app.models.audit import AuditLog
+from app.models.enums import MembershipRole
 from app.models.flock import Flock
 from app.models.owner import OwnerAccount
 from app.models.vaccination import VaccinationCorrection, VaccinationEvent
@@ -192,10 +193,22 @@ async def void_or_correct(db: AsyncSession, ctx: AuthContext, event_id: UUID, da
 
 
 async def list_events(db: AsyncSession, ctx: AuthContext, flock_id: UUID | None = None) -> list[VaccinationEvent]:
+    assert ctx.owner_account_id is not None and ctx.membership is not None
     stmt = select(VaccinationEvent).where(
         VaccinationEvent.owner_account_id == ctx.owner_account_id,
         VaccinationEvent.is_void.is_(False),
     )
     if flock_id:
+        flock = await db.scalar(
+            select(Flock).where(Flock.id == flock_id, Flock.owner_account_id == ctx.owner_account_id)
+        )
+        if flock is None:
+            return []
+        await assert_shed_access(db, ctx, flock.shed_id, permission_code="vaccination.view")
         stmt = stmt.where(VaccinationEvent.flock_id == flock_id)
+    elif ctx.membership.role == MembershipRole.farmer:
+        assigned = await list_assigned_shed_ids(db, ctx.membership.id)
+        if not assigned:
+            return []
+        stmt = stmt.where(VaccinationEvent.shed_id.in_(assigned))
     return list(await db.scalars(stmt.order_by(VaccinationEvent.administered_at.desc())))

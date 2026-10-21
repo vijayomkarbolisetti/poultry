@@ -11,6 +11,7 @@ from app.api.v1 import (
     notifications,
     owners,
     reports,
+    search,
     sheds,
     vaccinations,
     vaccines,
@@ -19,6 +20,7 @@ from app.api.v1 import (
 api_router = APIRouter()
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(owners.router, prefix="/owners", tags=["owners"])
+api_router.include_router(search.router, prefix="/search", tags=["search"])
 api_router.include_router(sheds.router, prefix="/sheds", tags=["sheds"])
 api_router.include_router(farmers.router, prefix="/farmers", tags=["farmers"])
 api_router.include_router(flocks.router, prefix="/flocks", tags=["flocks"])

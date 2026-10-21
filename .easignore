@@ -1,0 +1,21 @@
+# EAS packs from the git repo root. Keep the upload small and secret-free.
+
+backend/
+.git/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.env
+**/.env.*
+
+mobile/node_modules/
+mobile/.expo/
+mobile/builds/
+mobile/scripts/
+mobile/docs/
+mobile/maestro/
+
+*.apk
+*.aab
+*.md
+DROPDOWN_AUDIT_REPORT.md

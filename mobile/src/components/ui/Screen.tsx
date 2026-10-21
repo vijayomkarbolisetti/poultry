@@ -14,7 +14,12 @@ type Props = {
 
 export function Screen({ children, scroll, style, edges = ["left", "right"] }: Props) {
   const body = scroll ? (
-    <ScrollView contentContainerStyle={[styles.content, style]} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      contentContainerStyle={[styles.content, style]}
+      keyboardShouldPersistTaps="always"
+      keyboardDismissMode="none"
+      removeClippedSubviews={false}
+    >
       {children}
     </ScrollView>
   ) : (

@@ -7,11 +7,12 @@ import { z } from "zod";
 
 import { registerOwner, warmApi } from "../../src/api/auth";
 import { describeApiError } from "../../src/api/client";
+import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Button } from "../../src/components/ui/Button";
 import { Screen } from "../../src/components/ui/Screen";
 import { TextField } from "../../src/components/ui/TextField";
 import { useAuth } from "../../src/features/auth/AuthContext";
-import { colors, radius, space } from "../../src/theme/tokens";
+import { colors, radius, shadows, space, typography } from "../../src/theme/tokens";
 
 const schema = z.object({
   full_name: z.string().min(1, "Required"),
@@ -55,13 +56,14 @@ export default function RegisterScreen() {
   });
 
   return (
-    <Screen scroll edges={["top", "left", "right", "bottom"]}>
+    <Screen scroll edges={["top", "left", "right"]}>
       <View style={styles.hero}>
+        <BrandLogo size={56} />
         <Text style={styles.brand}>Create your farm</Text>
         <Text style={styles.sub}>You’ll be the owner of this PoultryTrack organization.</Text>
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, shadows.soft]}>
         <TextField
           control={control}
           name="full_name"
@@ -111,18 +113,18 @@ export default function RegisterScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { gap: space.sm, marginBottom: space.sm, marginTop: space.md },
-  brand: { fontSize: 28, fontWeight: "800", color: colors.brand, letterSpacing: -0.4 },
-  sub: { fontSize: 15, color: colors.inkMuted, lineHeight: 22 },
+  hero: { gap: space.sm, marginBottom: space.sm, marginTop: space.md, alignItems: "center" },
+  brand: { ...typography.heading, color: colors.primary, textAlign: "center" },
+  sub: { ...typography.body, color: colors.textSecondary, textAlign: "center" },
   card: {
-    backgroundColor: colors.bgElevated,
+    backgroundColor: colors.surface,
     borderRadius: radius.lg,
     padding: space.lg,
     gap: space.md,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  error: { color: colors.danger, fontSize: 14 },
-  footer: { color: colors.inkMuted, fontSize: 15, textAlign: "center", marginTop: space.sm },
-  link: { color: colors.brand, fontWeight: "700" },
+  error: { color: colors.error, fontSize: 14 },
+  footer: { color: colors.textSecondary, fontSize: 15, textAlign: "center", marginTop: space.sm },
+  link: { color: colors.primary, fontWeight: "700" },
 });

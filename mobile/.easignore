@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+builds/
+scripts/
+docs/
+maestro/
+.pytest_cache/
+.git/
+*.apk
+*.aab
+*.md
+DROPDOWN_AUDIT_REPORT.md

@@ -49,6 +49,7 @@ class ScheduledDoseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    shed_id: UUID
     flock_id: UUID
     bird_id: UUID | None
     vaccine_definition_id: UUID
@@ -95,6 +96,7 @@ class VaccinationEventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
+    shed_id: UUID
     flock_id: UUID
     bird_id: UUID | None
     scheduled_dose_id: UUID | None

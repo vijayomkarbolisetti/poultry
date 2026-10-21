@@ -7,9 +7,27 @@ from app.authorization.deps import AuthContext
 from app.authorization.permissions import require_permission
 from app.core.database import get_db
 from app.schemas.flock import FlockCreate, FlockOut, FlockUpdate
+from app.schemas.search import BatchSearchOut
 from app.services import flock_service
 
 router = APIRouter()
+
+
+@router.get("/search", response_model=BatchSearchOut)
+async def search_batches(
+    q: str = Query(..., min_length=1, max_length=64),
+    limit: int = Query(10, ge=1, le=25),
+    include_inactive: bool = Query(True),
+    ctx: AuthContext = Depends(require_permission("flock.view")),
+    db: AsyncSession = Depends(get_db),
+) -> BatchSearchOut:
+    try:
+        return await flock_service.search_batches(
+            db, ctx, query=q, limit=limit, include_inactive=include_inactive
+        )
+    except flock_service.FlockError as exc:
+        code = 400 if exc.code == "INVALID" else 404
+        raise HTTPException(status_code=code, detail=exc.message) from exc
 
 
 @router.post("", response_model=FlockOut, status_code=status.HTTP_201_CREATED)

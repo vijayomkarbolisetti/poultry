@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authorization.deps import AuthContext
-from app.authorization.permissions import assert_shed_access
+from app.authorization.permissions import assert_shed_access, list_assigned_shed_ids
 from app.core.config import get_settings
+from app.models.enums import MembershipRole
 from app.models.media import AnimalMedia
 
 
@@ -28,6 +29,8 @@ async def sign_upload(db: AsyncSession, ctx: AuthContext, *, shed_id: UUID | Non
     assert ctx.owner_account_id
     if shed_id:
         await assert_shed_access(db, ctx, shed_id, permission_code="media.upload")
+        # Inactive sheds: signing remains allowed — media documents existing birds/events
+        # (historical evidence), not new batch/bird/schedule onboarding.
     if not cloudinary_configured():
         # Dev placeholder — client can still register metadata after manual/test upload
         return {
@@ -62,6 +65,13 @@ async def sign_upload(db: AsyncSession, ctx: AuthContext, *, shed_id: UUID | Non
 
 
 async def register_media(db: AsyncSession, ctx: AuthContext, data) -> AnimalMedia:
+    """Register uploaded media metadata.
+
+    Policy: uploads on inactive sheds are allowed when the caller has ``media.upload``
+    and shed access. Animal media attaches to existing shed/flock/bird/vaccination
+    records as historical evidence — the same catch-up family as recording vaccination
+    or lifecycle events. It does not create batches, birds, or schedules.
+    """
     assert ctx.owner_account_id
     if data.shed_id:
         await assert_shed_access(db, ctx, data.shed_id, permission_code="media.upload")
@@ -108,12 +118,18 @@ async def update_media_version(db: AsyncSession, ctx: AuthContext, media_id: UUI
 
 
 async def list_media(db: AsyncSession, ctx: AuthContext, bird_id: UUID | None = None) -> list[AnimalMedia]:
+    assert ctx.owner_account_id is not None and ctx.membership is not None
     stmt = select(AnimalMedia).where(
         AnimalMedia.owner_account_id == ctx.owner_account_id,
         AnimalMedia.is_deleted.is_(False),
     )
     if bird_id:
         stmt = stmt.where(AnimalMedia.bird_id == bird_id)
+    elif ctx.membership.role == MembershipRole.farmer:
+        assigned = await list_assigned_shed_ids(db, ctx.membership.id)
+        if not assigned:
+            return []
+        stmt = stmt.where(AnimalMedia.shed_id.in_(assigned))
     return list(await db.scalars(stmt.order_by(AnimalMedia.created_at.desc())))
 
 

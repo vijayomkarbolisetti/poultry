@@ -40,13 +40,16 @@ export default function SettingsScreen() {
   const { user, ownerAccountId, setActiveOwner, signOut } = useAuth();
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
-  const canVaccines = hasPermission(user, ownerAccountId, "schedule.view");
   const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
-  const canTasks = hasPermission(user, ownerAccountId, "vaccination.view");
+  const canSearch =
+    hasPermission(user, ownerAccountId, "bird.view") ||
+    hasPermission(user, ownerAccountId, "shed.view") ||
+    hasPermission(user, ownerAccountId, "flock.view");
 
   const onSignOut = async () => {
     await signOut();
-    router.replace("/(auth)/welcome");
+    router.replace("/(auth)/login");
+
   };
 
   return (
@@ -66,10 +69,9 @@ export default function SettingsScreen() {
 
       <Text style={styles.section}>Manage</Text>
       <View style={[styles.card, shadow.card]}>
-        {canVaccines ? <MenuRow label="Vaccines" icon="medkit-outline" href="/(app)/vaccines" /> : null}
         {canFarmers ? <MenuRow label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
-        {canTasks ? <MenuRow label="Vaccination tasks" icon="checkbox-outline" href="/(app)/doses" /> : null}
-        {!canVaccines && !canFarmers && !canTasks ? (
+        {canSearch ? <MenuRow label="Search" icon="search-outline" href="/(app)/search" /> : null}
+        {!canFarmers && !canSearch ? (
           <Text style={{ padding: space.md, color: colors.inkMuted }}>No manage modules granted.</Text>
         ) : null}
       </View>

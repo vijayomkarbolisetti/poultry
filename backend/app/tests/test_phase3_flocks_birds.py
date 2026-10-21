@@ -55,7 +55,12 @@ async def test_flock_bird_bulk_lifecycle(client: AsyncClient) -> None:
     dup = await client.post(
         "/api/v1/birds",
         headers=s["headers"],
-        json={"flock_id": flock_id, "band_id": "BAND-1"},
+        json={
+            "flock_id": flock_id,
+            "band_id": "BAND-1",
+            "dob_confidence": "exact",
+            "hatch_date": "2026-01-01",
+        },
     )
     assert dup.status_code == 400
 

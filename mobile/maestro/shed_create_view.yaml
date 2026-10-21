@@ -1,0 +1,43 @@
+appId: com.vijayomkar.poultrytracker
+---
+- launchApp:
+    clearState: false
+- extendedWaitUntil:
+    visible: "Hello, Arjun"
+    timeout: 20000
+# Bottom tab: Sheds (~20% from left on 5-tab bar)
+- tapOn:
+    point: "30%,95%"
+- extendedWaitUntil:
+    visible: "Add shed"
+    timeout: 15000
+- tapOn: "Add shed"
+- extendedWaitUntil:
+    visible: "Create shed"
+    timeout: 10000
+# Name field placeholder
+- tapOn: "North Barn"
+- eraseText
+- inputText: "QA-SHED-1019A"
+# Code field placeholder
+- tapOn: "N1"
+- eraseText
+- inputText: "QA19A"
+- hideKeyboard
+- tapOn: "Create shed"
+- extendedWaitUntil:
+    visible: "QA-SHED-1019A"
+    timeout: 25000
+- assertVisible: "QA-SHED-1019A"
+# Back to list via Sheds tab
+- tapOn:
+    point: "30%,95%"
+- extendedWaitUntil:
+    visible: "QA-SHED-1019A"
+    timeout: 15000
+- tapOn: "QA-SHED-1019A"
+- extendedWaitUntil:
+    visible: "QA19A"
+    timeout: 15000
+- assertVisible: "QA-SHED-1019A"
+- assertVisible: "QA19A"
