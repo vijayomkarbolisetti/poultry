@@ -53,3 +53,4 @@ expo-env.d.ts
 *.apk
 *.aab
 mobile/builds/
+mobile/scripts/

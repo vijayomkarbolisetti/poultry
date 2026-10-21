@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authorization.deps import AuthContext
 from app.authorization.permissions import require_permission
-from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.enums import BirdLifecycleStatus
 from app.schemas.flock import (
@@ -176,28 +175,24 @@ async def get_bird_profile(
         raise HTTPException(status_code=404, detail=exc.message) from exc
 
 
-# Vaccination PDF stays available only in ENVIRONMENT=test so legacy pytest coverage
-# of bird_report_service remains. Local/production keep the route unmounted.
-if get_settings().environment == "test":
+@router.get("/{bird_id}/vaccination-report.pdf")
+async def bird_vaccination_report_pdf(
+    bird_id: UUID,
+    ctx: AuthContext = Depends(require_permission("bird.view")),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    from app.services.bird_report_service import BirdReportError, generate_bird_vaccination_report
 
-    @router.get("/{bird_id}/vaccination-report.pdf")
-    async def bird_vaccination_report_pdf(
-        bird_id: UUID,
-        ctx: AuthContext = Depends(require_permission("bird.view")),
-        db: AsyncSession = Depends(get_db),
-    ) -> Response:
-        from app.services.bird_report_service import BirdReportError, generate_bird_vaccination_report
-
-        try:
-            pdf_bytes, filename = await generate_bird_vaccination_report(db, ctx, bird_id)
-        except BirdReportError as exc:
-            code = 404 if exc.code == "NOT_FOUND" else 400
-            raise HTTPException(status_code=code, detail=exc.message) from exc
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-        )
+    try:
+        pdf_bytes, filename = await generate_bird_vaccination_report(db, ctx, bird_id)
+    except BirdReportError as exc:
+        code = 404 if exc.code == "NOT_FOUND" else 400
+        raise HTTPException(status_code=code, detail=exc.message) from exc
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.patch("/{bird_id}", response_model=BirdOut)
