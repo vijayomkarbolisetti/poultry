@@ -11,6 +11,7 @@ from app.models.enums import BirdLifecycleStatus
 from app.schemas.flock import (
     AddUnbandedInShedIn,
     AddUnbandedInShedOut,
+    BandFromUnbandedByCohortIn,
     BandFromUnbandedIn,
     BandFromUnbandedOut,
     BirdBulkImport,
@@ -79,6 +80,13 @@ async def add_unbanded_in_shed(
     return AddUnbandedInShedOut.model_validate(result)
 
 
+def _flock_http(exc: flock_service.FlockError) -> HTTPException:
+    # Legacy band-from-unbanded returned 400 for all FlockError codes; preserve that.
+    if exc.code == "IDEMPOTENCY_KEY_CONFLICT":
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.message)
+    return HTTPException(status_code=400, detail=exc.message)
+
+
 @router.post(
     "/band-from-unbanded",
     response_model=BandFromUnbandedOut,
@@ -93,7 +101,25 @@ async def band_from_unbanded(
     try:
         result = await flock_service.band_from_unbanded(db, ctx, body)
     except flock_service.FlockError as exc:
-        raise HTTPException(status_code=400, detail=exc.message) from exc
+        raise _flock_http(exc) from exc
+    return BandFromUnbandedOut.model_validate(result)
+
+
+@router.post(
+    "/band-from-unbanded-by-cohort",
+    response_model=BandFromUnbandedOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def band_from_unbanded_by_cohort(
+    body: BandFromUnbandedByCohortIn,
+    ctx: AuthContext = Depends(require_permission("bird.create")),
+    db: AsyncSession = Depends(get_db),
+) -> BandFromUnbandedOut:
+    """Shed-centric banding: resolve active cohort by exact/estimated age key (no flock_id)."""
+    try:
+        result = await flock_service.band_from_unbanded_by_cohort(db, ctx, body)
+    except flock_service.FlockError as exc:
+        raise _flock_http(exc) from exc
     return BandFromUnbandedOut.model_validate(result)
 
 

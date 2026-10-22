@@ -13,6 +13,16 @@ export function formatBirdAge(opts: {
   return "Age unknown";
 }
 
+/** User-facing label for an unbanded population row (never shows batch_code). */
+export function formatUnbandedCohortLabel(opts: {
+  hatch_date: string | null;
+  estimated_age_days: number | null;
+  unbanded_count: number;
+}): string {
+  const age = formatBirdAge(opts);
+  return `${age} · ${opts.unbanded_count} unbanded`;
+}
+
 export function formatVaccSummary(count: number): string {
   if (count <= 0) return "No individual vaccinations";
   return `${count} individual vaccination${count === 1 ? "" : "s"}`;

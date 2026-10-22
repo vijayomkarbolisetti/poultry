@@ -40,7 +40,15 @@ async def _shed(client: AsyncClient, headers: dict, code: str) -> str:
     return r.json()["id"]
 
 
-async def _mixed_flock(client: AsyncClient, headers: dict, shed_id: str, code: str, unbanded: int = 10) -> dict:
+async def _mixed_flock(
+    client: AsyncClient,
+    headers: dict,
+    shed_id: str,
+    code: str,
+    unbanded: int = 10,
+    *,
+    estimated_age_days: int = 20,
+) -> dict:
     flock = await client.post(
         "/api/v1/flocks",
         headers=headers,
@@ -50,7 +58,7 @@ async def _mixed_flock(client: AsyncClient, headers: dict, shed_id: str, code: s
             "initial_count": unbanded,
             "tracking_mode": "mixed",
             "dob_confidence": "estimated",
-            "estimated_age_days": 20,
+            "estimated_age_days": estimated_age_days,
             "age_reported_on": date.today().isoformat(),
             "unbanded_count": unbanded,
             "breed": "Layer",
@@ -75,9 +83,9 @@ async def test_shed_bird_list_filter_pagination_and_unbanded(client: AsyncClient
     a = await _owner(client, "shed-birds-list@example.com", "List Farm")
     sid = await _shed(client, a["headers"], "SBL1")
     other = await _shed(client, a["headers"], "SBL2")
-    f1 = await _mixed_flock(client, a["headers"], sid, "BX-A", 8)
-    f2 = await _mixed_flock(client, a["headers"], sid, "BX-B", 5)
-    f_other = await _mixed_flock(client, a["headers"], other, "BX-X", 3)
+    f1 = await _mixed_flock(client, a["headers"], sid, "BX-A", 8, estimated_age_days=20)
+    f2 = await _mixed_flock(client, a["headers"], sid, "BX-B", 5, estimated_age_days=30)
+    f_other = await _mixed_flock(client, a["headers"], other, "BX-X", 3, estimated_age_days=20)
 
     for band in ("SB-01", "SB-02", "SB-10", "OTHER-1"):
         flock_id = f_other["id"] if band.startswith("OTHER") else (f1["id"] if band != "SB-10" else f2["id"])
@@ -238,7 +246,7 @@ async def test_lifecycle_preserves_history_and_updates_counts(client: AsyncClien
     after = await client.get(f"/api/v1/flocks/{flock['id']}", headers=a["headers"])
     assert after.json()["current_count"] == before_count - 1
 
-    # Idempotent replay
+    # Idempotent replay (payload must match, including reason)
     replay = await client.post(
         "/api/v1/lifecycle-events",
         headers=a["headers"],
@@ -247,10 +255,11 @@ async def test_lifecycle_preserves_history_and_updates_counts(client: AsyncClien
             "effective_date": date.today().isoformat(),
             "bird_id": bird["id"],
             "quantity": 1,
+            "reason": "Test mortality",
             "idempotency_key": f"mort-{bird['id']}",
         },
     )
-    assert replay.status_code == 201
+    assert replay.status_code == 201, replay.text
     after2 = await client.get(f"/api/v1/flocks/{flock['id']}", headers=a["headers"])
     assert after2.json()["current_count"] == after.json()["current_count"]
 
