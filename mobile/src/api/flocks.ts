@@ -1,11 +1,10 @@
 /**
- * Batch domain client.
- * Product terminology: users see "Batch / Batches".
- * API/DB contract remains `/flocks`, `flock_id`, and related field names for compatibility.
+ * Internal flock/cohort client.
+ * Product UX is shed- and hatch-date oriented; API/DB still use `/flocks`, `flock_id`, `batch_code`.
  */
 import { api } from "./client";
 
-/** API entity shape for a bird batch (legacy type name `Flock`). Prefer `Batch` in new UI code. */
+/** API entity for an internal shed hatch-date cohort (legacy type name `Flock`). */
 export type Flock = {
   id: string;
   shed_id: string;
@@ -13,6 +12,7 @@ export type Flock = {
   breed: string | null;
   hatch_date: string | null;
   estimated_age_days: number | null;
+  age_reported_on: string | null;
   dob_confidence: "exact" | "estimated" | "unknown";
   initial_count: number;
   current_count: number;
@@ -24,7 +24,7 @@ export type Flock = {
   notes: string | null;
 };
 
-/** Product-facing alias for {@link Flock}. */
+/** Legacy alias for {@link Flock} (prefer hatch-date labels in UI). */
 export type Batch = Flock;
 
 export type Bird = {
@@ -156,5 +156,54 @@ export type ShedTransferOut = {
 /** Move birds/headcount to another shed's group (birds stay active). */
 export async function transferToShed(input: ShedTransferInput): Promise<ShedTransferOut> {
   const { data } = await api.post<ShedTransferOut>("/lifecycle-events/transfer-to-shed", input);
+  return data;
+}
+
+/** Age key: exact hatch_date XOR (estimated_age_days + age_reported_on). */
+export type CohortAgeFields =
+  | { hatch_date: string; estimated_age_days?: never; age_reported_on?: never }
+  | { hatch_date?: never; estimated_age_days: number; age_reported_on: string };
+
+export type UnbandedLifecycleByCohortInput = CohortAgeFields & {
+  shed_id: string;
+  event_type: "mortality" | "sale" | "transfer";
+  effective_date: string;
+  quantity: number;
+  reason?: string | null;
+  idempotency_key: string;
+};
+
+/** Count-only lifecycle resolved by shed + age cohort (no flock_id). */
+export async function recordUnbandedLifecycleByCohort(
+  input: UnbandedLifecycleByCohortInput,
+): Promise<LifecycleEventOut> {
+  const { data } = await api.post<LifecycleEventOut>(
+    "/lifecycle-events/unbanded-by-cohort",
+    input,
+  );
+  return data;
+}
+
+export type ShedTransferByCohortInput = CohortAgeFields & {
+  destination_shed_id: string;
+  effective_date: string;
+  bird_ids?: string[];
+  source_shed_id?: string;
+  quantity?: number;
+  reason?: string | null;
+  idempotency_key: string;
+};
+
+/**
+ * Shed-centric transfer: server resolves/creates the destination cohort under
+ * lifecycle.record (no client flock.create).
+ */
+export async function transferToShedByCohort(
+  input: ShedTransferByCohortInput,
+): Promise<ShedTransferOut> {
+  const { data } = await api.post<ShedTransferOut>(
+    "/lifecycle-events/transfer-to-shed-by-cohort",
+    input,
+  );
   return data;
 }

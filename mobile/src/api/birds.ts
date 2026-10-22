@@ -227,6 +227,25 @@ export async function bandFromUnbanded(input: {
   return data;
 }
 
+/** Shed-centric banding by exact hatch date or estimated age key (no flock_id). */
+export async function bandFromUnbandedByCohort(input: {
+  shed_id: string;
+  band_id: string;
+  idempotency_key: string;
+  hatch_date?: string;
+  estimated_age_days?: number;
+  age_reported_on?: string;
+  breed?: string | null;
+  sex?: string | null;
+  notes?: string | null;
+}): Promise<BandFromUnbandedResult> {
+  const { data } = await api.post<BandFromUnbandedResult>(
+    "/birds/band-from-unbanded-by-cohort",
+    input,
+  );
+  return data;
+}
+
 /** Shed-centric banded registration — server finds/creates a hidden DOB cohort. */
 export async function registerBandedInShed(input: {
   shed_id: string;

@@ -200,6 +200,9 @@ async def test_banded_and_unbanded_shed_transfer(client: AsyncClient) -> None:
     )
     assert retry.status_code == 201, retry.text
     assert retry.json()["idempotent_replay"] is True
+    assert retry.json()["bird_ids"] == [bird["id"]]
+    assert retry.json()["moved"] == 1
+    assert retry.json()["destination_flock_id"] == dest["id"]
 
     profile = await client.get(f"/api/v1/birds/{bird['id']}/profile", headers=h)
     assert profile.status_code == 200

@@ -26,7 +26,10 @@ import { HenLoader } from "../../../../src/components/ui/HenLoader";
 import { Screen } from "../../../../src/components/ui/Screen";
 import { useAuth } from "../../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../../src/features/auth/permissions";
-import { formatLifecycleLabel } from "../../../../src/features/birds/birdListHelpers";
+import {
+  formatLifecycleLabel,
+  formatUnbandedCohortLabel,
+} from "../../../../src/features/birds/birdListHelpers";
 import {
   birdLabel,
   eligibleIdsFromLoaded,
@@ -132,6 +135,11 @@ export default function ShedBirdsScreen() {
   const shed = overview.data?.shed;
   const population = overview.data?.population;
   const batches = overview.data?.batches ?? [];
+  const overviewByFlockId = useMemo(() => {
+    const map = new Map<string, (typeof batches)[number]>();
+    for (const b of batches) map.set(b.id, b);
+    return map;
+  }, [batches]);
   const bandedCount = population?.banded_birds ?? 0;
   const unbandedCount = population?.unbanded_birds ?? unbandedTotal;
   const emptyPopulation = bandedCount === 0 && unbandedCount === 0 && !debouncedQ && !filtersAreActive(filters);
@@ -193,8 +201,12 @@ export default function ShedBirdsScreen() {
 
   const batchFilterOptions = batches.map((b) => ({
     value: b.id,
-    label: b.batch_code,
-    hint: `${b.tracking_mode} · unbanded ${b.unbanded_count}`,
+    label: formatUnbandedCohortLabel({
+      hatch_date: b.hatch_date,
+      estimated_age_days: b.estimated_age_days,
+      unbanded_count: b.unbanded_count,
+    }),
+    hint: `${b.banded_count} banded · ${b.unbanded_count} unbanded`,
   }));
 
   const listHeader = (
@@ -301,41 +313,50 @@ export default function ShedBirdsScreen() {
         <View style={styles.unbandedCard}>
           <Text style={styles.unbandedTitle}>Unbanded · {unbandedCount}</Text>
           <Text style={styles.unbandedHint}>
-            Count-only birds have no profiles. Banding creates a new individual from the cohort.
+            Count-only birds have no profiles. Banding creates a new individual from the same hatch
+            date.
           </Text>
-          {unbandedBatches.slice(0, 4).map((b) => (
-            <View key={b.flock_id} style={styles.unbandedRow}>
-              <Text style={styles.unbandedBatch}>
-                {b.unbanded_count} unbanded
-              </Text>
-              <View style={styles.unbandedActions}>
-                {canCreate && shed?.is_active ? (
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(app)/birds/band-from-unbanded",
-                        params: { shedId: id!, flockId: b.flock_id },
-                      })
-                    }
-                  >
-                    <Text style={styles.link}>Band a bird</Text>
-                  </Pressable>
-                ) : null}
-                {canLifecycle && shed?.is_active ? (
-                  <Pressable
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(app)/lifecycle-batch",
-                        params: { shedId: id!, flockId: b.flock_id },
-                      })
-                    }
-                  >
-                    <Text style={styles.link}>Count actions</Text>
-                  </Pressable>
-                ) : null}
+          {unbandedBatches.map((b) => {
+            const ov = overviewByFlockId.get(b.flock_id);
+            const label = formatUnbandedCohortLabel({
+              hatch_date: ov?.hatch_date ?? null,
+              estimated_age_days: ov?.estimated_age_days ?? null,
+              unbanded_count: b.unbanded_count,
+            });
+            return (
+              <View key={b.flock_id} style={styles.unbandedRow}>
+                <Text style={styles.unbandedBatch}>{label}</Text>
+                <View style={styles.unbandedActions}>
+                  {canCreate && shed?.is_active ? (
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(app)/birds/band-from-unbanded",
+                          params: { shedId: id!, flockId: b.flock_id },
+                        })
+                      }
+                      accessibilityLabel={`Band a bird from ${label}`}
+                    >
+                      <Text style={styles.link}>Band a bird</Text>
+                    </Pressable>
+                  ) : null}
+                  {canLifecycle && shed?.is_active ? (
+                    <Pressable
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(app)/lifecycle-batch",
+                          params: { shedId: id!, flockId: b.flock_id },
+                        })
+                      }
+                      accessibilityLabel={`Count actions for ${label}`}
+                    >
+                      <Text style={styles.link}>Count actions</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
       ) : null}
 

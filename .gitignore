@@ -38,6 +38,8 @@ Thumbs.db
 # Local data
 *.sqlite3
 postgres-data/
+# P5 pre-migration local DB dump (do not commit)
+/poultry_tracker_pre_0007.dump
 
 # Scratch / tooling
 mobile-tmp/

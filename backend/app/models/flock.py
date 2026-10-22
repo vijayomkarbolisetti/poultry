@@ -7,6 +7,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -23,7 +24,32 @@ from app.models.enums import BirdLifecycleStatus, DobConfidence, FlockStatus, Tr
 
 class Flock(Base):
     __tablename__ = "flocks"
-    __table_args__ = (UniqueConstraint("owner_account_id", "batch_code", name="uq_flock_owner_batch"),)
+    __table_args__ = (
+        UniqueConstraint("owner_account_id", "batch_code", name="uq_flock_owner_batch"),
+        # Mirrors migration 0007; create_all (pytest) must match Alembic.
+        Index(
+            "uq_flocks_active_exact_cohort",
+            "owner_account_id",
+            "shed_id",
+            "hatch_date",
+            unique=True,
+            postgresql_where=text(
+                "status = 'active' AND dob_confidence = 'exact' AND hatch_date IS NOT NULL"
+            ),
+        ),
+        Index(
+            "uq_flocks_active_estimated_cohort",
+            "owner_account_id",
+            "shed_id",
+            "estimated_age_days",
+            "age_reported_on",
+            unique=True,
+            postgresql_where=text(
+                "status = 'active' AND dob_confidence = 'estimated' "
+                "AND estimated_age_days IS NOT NULL AND age_reported_on IS NOT NULL"
+            ),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_account_id: Mapped[uuid.UUID] = mapped_column(
