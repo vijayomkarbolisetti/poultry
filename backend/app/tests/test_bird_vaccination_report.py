@@ -242,7 +242,7 @@ async def test_pdf_owner_access_and_customer_content(client: AsyncClient) -> Non
     assert "Active" in text
     assert "Vaccination History" in text
     assert "Upcoming Vaccinations" in text
-    assert "scheduled for this bird's batch" in text.lower() or "does not confirm" in text.lower()
+    assert "hatch date" in text.lower() or "does not confirm" in text.lower()
     assert "Individual vaccinations recorded" in text
     assert "Page" in text and "of" in text
 

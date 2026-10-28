@@ -30,7 +30,40 @@ class VaccinationError(Exception):
         super().__init__(message)
 
 
-async def record_vaccination(db: AsyncSession, ctx: AuthContext, data) -> VaccinationEvent:
+async def _deactivate_sibling_open_doses(db: AsyncSession, dose: ScheduledDose) -> int:
+    """After full coverage, retire open twin doses for the same logical schedule slot."""
+    from app.services.schedule_engine import STATUS_INACTIVE
+
+    siblings = list(
+        await db.scalars(
+            select(ScheduledDose).where(
+                ScheduledDose.owner_account_id == dose.owner_account_id,
+                ScheduledDose.flock_id == dose.flock_id,
+                ScheduledDose.vaccine_definition_id == dose.vaccine_definition_id,
+                ScheduledDose.dose_number == dose.dose_number,
+                ScheduledDose.due_date == dose.due_date,
+                ScheduledDose.bird_id.is_(None),
+                ScheduledDose.is_active.is_(True),
+                ScheduledDose.id != dose.id,
+                ~ScheduledDose.status.like("completed%"),
+            )
+        )
+    )
+    for sibling in siblings:
+        sibling.is_active = False
+        sibling.status = STATUS_INACTIVE
+    return len(siblings)
+
+
+async def record_vaccination(
+    db: AsyncSession,
+    ctx: AuthContext,
+    data,
+    *,
+    commit: bool = True,
+    for_update: bool = False,
+    strict_remaining: bool = False,
+) -> VaccinationEvent:
     assert ctx.owner_account_id
     if data.idempotency_key:
         existing = await db.scalar(
@@ -41,12 +74,13 @@ async def record_vaccination(db: AsyncSession, ctx: AuthContext, data) -> Vaccin
 
     dose: ScheduledDose | None = None
     if data.scheduled_dose_id:
-        dose = await db.scalar(
-            select(ScheduledDose).where(
-                ScheduledDose.id == data.scheduled_dose_id,
-                ScheduledDose.owner_account_id == ctx.owner_account_id,
-            )
+        stmt = select(ScheduledDose).where(
+            ScheduledDose.id == data.scheduled_dose_id,
+            ScheduledDose.owner_account_id == ctx.owner_account_id,
         )
+        if for_update:
+            stmt = stmt.with_for_update()
+        dose = await db.scalar(stmt)
         if not dose:
             raise VaccinationError("Scheduled dose not found", "NOT_FOUND")
         await assert_shed_access(db, ctx, dose.shed_id, permission_code="vaccination.record")
@@ -59,7 +93,7 @@ async def record_vaccination(db: AsyncSession, ctx: AuthContext, data) -> Vaccin
             select(Flock).where(Flock.id == data.flock_id, Flock.owner_account_id == ctx.owner_account_id)
         )
         if not flock:
-            raise VaccinationError("Flock not found", "NOT_FOUND")
+            raise VaccinationError("Population not found", "NOT_FOUND")
         await assert_shed_access(db, ctx, flock.shed_id, permission_code="vaccination.record")
         flock_id = flock.id
         shed_id = flock.shed_id
@@ -89,11 +123,20 @@ async def record_vaccination(db: AsyncSession, ctx: AuthContext, data) -> Vaccin
         )
         # remaining eligibility for partial bulk
         remaining = max(dose.eligible_count - dose.completed_count, 0)
-        if birds_covered > remaining and remaining > 0:
+        if birds_covered > remaining:
+            if strict_remaining or remaining == 0:
+                raise VaccinationError(
+                    f"Only {remaining} birds remaining for this dose (requested {birds_covered}). Refresh and try again.",
+                    "STALE_COVERAGE",
+                )
             birds_covered = remaining
         dose.completed_count = min(dose.eligible_count, dose.completed_count + birds_covered)
         if dose.completed_count >= dose.eligible_count:
+            # Full coverage: mark completed and clear review so dashboards leave the open queue.
             dose.status = timing
+            dose.needs_review = False
+            # Twin doses (same flock/vaccine/due from rematerialized rules) stay open otherwise.
+            await _deactivate_sibling_open_doses(db, dose)
         else:
             # partial — keep overdue/due if still open
             if dose.due_date < farm_local_today(owner.timezone if owner else None):
@@ -114,6 +157,8 @@ async def record_vaccination(db: AsyncSession, ctx: AuthContext, data) -> Vaccin
         recorded_by_user_id=ctx.user.id,
         lot_number=data.lot_number,
         product_expiry=data.product_expiry,
+        manufacturer_or_brand=getattr(data, "manufacturer_or_brand", None),
+        vaccine_type_or_strain=getattr(data, "vaccine_type_or_strain", None),
         dose_amount=data.dose_amount,
         route=data.route,
         notes=data.notes,
@@ -135,9 +180,77 @@ async def record_vaccination(db: AsyncSession, ctx: AuthContext, data) -> Vaccin
             after={"birds_covered": birds_covered, "timing": event.timing_status},
         )
     )
-    await db.commit()
-    await db.refresh(event)
+    if commit:
+        await db.commit()
+        await db.refresh(event)
+    else:
+        await db.flush()
+        await db.refresh(event)
     return event
+
+
+async def record_vaccination_batch(db: AsyncSession, ctx: AuthContext, data) -> list[VaccinationEvent]:
+    """Record one or more population coverages atomically (shed-wide confirm)."""
+    from types import SimpleNamespace
+
+    assert ctx.owner_account_id
+    batch_key = data.idempotency_key.strip()
+    # Replay only when the same batch key covered the exact same scheduled doses.
+    # Matching on count alone wrongly "succeeds" when the client reuses a key across
+    # different dose screens (Expo Router often keeps [id] mounted and reuseState).
+    prior = list(
+        await db.scalars(
+            select(VaccinationEvent).where(
+                VaccinationEvent.owner_account_id == ctx.owner_account_id,
+                VaccinationEvent.idempotency_key.like(f"{batch_key}:%"),
+            )
+        )
+    )
+    if prior:
+        prior_dose_ids = {event.scheduled_dose_id for event in prior}
+        request_dose_ids = {item.scheduled_dose_id for item in data.items}
+        if len(prior) != len(data.items) or prior_dose_ids != request_dose_ids:
+            raise VaccinationError(
+                "Idempotency key was already used with a different batch payload.",
+                "IDEMPOTENCY_CONFLICT",
+            )
+        return prior
+
+    events: list[VaccinationEvent] = []
+    for item in data.items:
+        row = SimpleNamespace(
+            scheduled_dose_id=item.scheduled_dose_id,
+            flock_id=None,
+            bird_id=None,
+            vaccine_definition_id=None,
+            schedule_version_id=None,
+            administered_at=None,
+            administration_date=data.administration_date,
+            birds_covered=item.birds_covered,
+            lot_number=data.lot_number,
+            product_expiry=data.product_expiry,
+            manufacturer_or_brand=data.manufacturer_or_brand,
+            vaccine_type_or_strain=data.vaccine_type_or_strain,
+            dose_amount=data.dose_amount,
+            route=data.route,
+            notes=data.notes,
+            verification_status=data.verification_status or "verified",
+            idempotency_key=f"{batch_key}:{item.scheduled_dose_id}",
+        )
+        events.append(
+            await record_vaccination(
+                db,
+                ctx,
+                row,
+                commit=False,
+                for_update=True,
+                strict_remaining=True,
+            )
+        )
+    await db.commit()
+    for event in events:
+        await db.refresh(event)
+    return events
 
 
 async def void_or_correct(db: AsyncSession, ctx: AuthContext, event_id: UUID, data) -> VaccinationEvent:

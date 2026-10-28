@@ -52,7 +52,6 @@ export function birdSubtitle(hit: {
 }): string {
   const parts = [
     hit.breed || null,
-    `Batch ${hit.batch_code}`,
     hit.shed_name ?? hit.shed_code ?? null,
     hit.is_active ? "Active" : hit.lifecycle_status.replace(/_/g, " "),
   ].filter(Boolean);

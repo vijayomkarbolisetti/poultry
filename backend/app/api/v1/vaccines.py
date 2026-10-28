@@ -102,7 +102,7 @@ async def generate_schedules(
         )
     except vaccine_service.VaccineError as exc:
         raise HTTPException(status_code=400, detail=exc.message) from exc
-    return [ScheduledDoseOut.model_validate(d) for d in doses]
+    return await vaccine_service.enrich_scheduled_doses(db, ctx, doses)
 
 
 @router.get("/scheduled-doses", response_model=list[ScheduledDoseOut])
@@ -119,7 +119,7 @@ async def list_doses(
     rows = await vaccine_service.list_scheduled_doses(
         db, ctx, flock_id=flock_id, shed_id=shed_id, status=status_filter, limit=limit
     )
-    return [ScheduledDoseOut.model_validate(r) for r in rows]
+    return await vaccine_service.enrich_scheduled_doses(db, ctx, rows)
 
 
 @router.post("/refresh-statuses")

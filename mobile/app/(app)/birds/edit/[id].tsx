@@ -6,10 +6,11 @@ import { StyleSheet, Text, TextInput } from "react-native";
 import { getBirdProfile, updateBird } from "../../../../src/api/birds";
 import { describeApiError } from "../../../../src/api/client";
 import { Button } from "../../../../src/components/ui/Button";
-import { DateField } from "../../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../../src/components/ui/AppDatePicker";
 import { HenLoader } from "../../../../src/components/ui/HenLoader";
 import { Screen } from "../../../../src/components/ui/Screen";
 import { SelectField } from "../../../../src/components/ui/SelectField";
+import { todayIsoDate } from "../../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../../src/features/auth/permissions";
 import { safeBack } from "../../../../src/navigation/safeBack";
@@ -59,7 +60,7 @@ export default function EditBirdScreen() {
   }, [profile.data, seeded]);
 
   const fallback = fromShedId
-    ? `/(app)/sheds/${fromShedId}`
+    ? `/(app)/sheds/${fromShedId}/birds`
     : id
       ? `/(app)/birds/${id}`
       : "/(app)/search";
@@ -90,7 +91,7 @@ export default function EditBirdScreen() {
         dob_confidence: dobConfidence ?? "unknown",
         hatch_date: hatchDate || null,
         estimated_age_days: ageDays ? Number(ageDays) : null,
-        age_reported_on: dobConfidence === "estimated" ? new Date().toISOString().slice(0, 10) : null,
+        age_reported_on: dobConfidence === "estimated" ? todayIsoDate() : null,
       });
       void qc.invalidateQueries({ queryKey: ["bird-profile", id] });
       void qc.invalidateQueries({ queryKey: ["shed-birds"] });
@@ -145,7 +146,8 @@ export default function EditBirdScreen() {
 
       <Text style={styles.system}>System — bird ID: {p.id}</Text>
       <Text style={styles.system}>
-        System — batch {p.batch_code} · shed {p.shed_name} · status {p.lifecycle_status}
+        System — shed {p.shed_name}
+        {p.hatch_date ? ` · hatch ${p.hatch_date}` : ""} · status {p.lifecycle_status}
       </Text>
 
       <Text style={styles.label}>Band number *</Text>
@@ -162,7 +164,15 @@ export default function EditBirdScreen() {
       <TextInput style={styles.input} value={sex} onChangeText={setSex} />
 
       <SelectField label="DOB confidence" value={dobConfidence} options={DOB_OPTIONS} onChange={setDobConfidence} />
-      {dobConfidence === "exact" ? <DateField label="Hatch date" value={hatchDate} onChange={setHatchDate} /> : null}
+      {dobConfidence === "exact" ? (
+        <AppDatePicker
+          label="Hatch date"
+          value={hatchDate}
+          onChange={setHatchDate}
+          maximumDate={todayIsoDate()}
+          placeholder="Select hatch date"
+        />
+      ) : null}
       {dobConfidence === "estimated" ? (
         <>
           <Text style={styles.label}>Estimated age (days)</Text>

@@ -58,13 +58,13 @@ _RED_SOFT = colors.HexColor("#FDECEA")
 _GREEN_SOFT = colors.HexColor("#E3F4EA")
 
 _BATCH_NOTE = (
-    "Some upcoming vaccinations are scheduled for this bird's batch. "
+    "Some upcoming vaccinations are scheduled for birds that share this bird's hatch date in the same shed. "
     "The schedule below does not confirm that an individual vaccination has been administered to this bird."
 )
 _HISTORY_CONTEXT = (
     "Individual vaccination records are available for the vaccinations listed below. "
-    "Some vaccination activities are recorded for the batch rather than for each bird individually, "
-    "so this report may not represent the bird's complete vaccination history."
+    "Some vaccination activities are recorded for the shed hatch-date population rather than for each bird "
+    "individually, so this report may not represent the bird's complete vaccination history."
 )
 
 
@@ -348,7 +348,6 @@ def build_bird_vaccination_pdf_bytes(
     identity_pairs.append(("Farm", profile.organization_name or "Not recorded"))
     shed_bits = [b for b in [profile.shed_name, profile.shed_code] if b]
     identity_pairs.append(("Shed", " · ".join(shed_bits) if shed_bits else "Not recorded"))
-    identity_pairs.append(("Batch", profile.batch_code or "Not recorded"))
     father = _parent_label(profile.sire)
     mother = _parent_label(profile.dam)
     if father:
@@ -413,7 +412,7 @@ def build_bird_vaccination_pdf_bytes(
         story.append(
             _p(
                 "No individual vaccinations have been recorded for this bird yet. "
-                "Batch vaccination activity is listed separately under Upcoming Vaccinations when applicable.",
+                "Shed hatch-date vaccination activity is listed separately under Upcoming Vaccinations when applicable.",
                 muted,
             )
         )
@@ -475,7 +474,7 @@ def build_bird_vaccination_pdf_bytes(
             _p("Dose", table_header),
             _p("Due date", table_header),
             _p("Status", table_header),
-            _p("Batch progress", table_header),
+            _p("Population progress", table_header),
         ]
         rows = [header]
         for d in profile.batch_upcoming_doses:

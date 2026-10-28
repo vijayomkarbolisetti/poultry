@@ -1,22 +1,24 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { listBirdsInShed, type ShedBirdListItem } from "../../api/birds";
 import { describeApiError } from "../../api/client";
 import {
   formatBirdAge,
   formatLifecycleLabel,
-  formatVaccSummary,
   LIFECYCLE_FILTER_OPTIONS,
 } from "../../features/birds/birdListHelpers";
 import {
+  areAllEligibleSelected,
   birdLabel,
   eligibleIdsFromLoaded,
+  formatSelectedBirdsLabel,
   isLifecycleEligible,
   reconcileSelectionToLoaded,
-  selectAllLoaded,
+  selectAllLoadedScopeMessage,
+  toggleSelectAllLoaded,
   toggleSelection,
 } from "../../features/birds/birdSelectionHelpers";
 import { media } from "../../theme/media";
@@ -31,6 +33,7 @@ const PAGE = 20;
 export type ShedBirdBatchOption = {
   id: string;
   batch_code: string;
+  hatch_date?: string | null;
   tracking_mode?: string;
   current_count?: number;
   banded_count?: number;
@@ -105,6 +108,14 @@ export function ShedBirdsSection({
   const unbandedBatches = birds.data?.pages[0]?.unbanded_batches ?? [];
   const loadedEligibleIds = useMemo(() => eligibleIdsFromLoaded(items), [items]);
 
+  // Never carry selection across sheds.
+  useEffect(() => {
+    setSelected(new Set());
+    setSelectMode(false);
+    setSelectionNote(null);
+    filterKey.current = "";
+  }, [shedId]);
+
   // Clear selection when search/filters change so stale IDs cannot be submitted.
   useEffect(() => {
     const key = `${debouncedQ}|${flockId}|${lifecycleFilter}`;
@@ -134,20 +145,24 @@ export function ShedBirdsSection({
 
   const batchOptions = useMemo(
     () => [
-      { value: "", label: "All batches", hint: "Every batch in this shed" },
-      ...batches.map((b) => ({ value: b.id, label: b.batch_code, hint: "Filter registered birds" })),
+      { value: "", label: "All hatch dates", hint: "Every population in this shed" },
+      ...batches.map((b) => ({
+        value: b.id,
+        label: b.hatch_date ? `Hatch ${b.hatch_date}` : b.batch_code,
+        hint: "Filter registered birds",
+      })),
     ],
     [batches],
   );
 
   const batchActionOptions = useMemo(
     () => [
-      { value: "", label: "Choose a batch…", hint: "Count-only unbanded actions" },
+      { value: "", label: "Choose a hatch date…", hint: "Count-only unbanded actions" },
       ...batches
         .filter((b) => b.status !== "closed")
         .map((b) => ({
           value: b.id,
-          label: b.batch_code,
+          label: b.hatch_date ? `Hatch ${b.hatch_date}` : b.batch_code,
           hint: `${b.tracking_mode ?? "—"} · live ${b.current_count ?? "—"} · unbanded ${b.unbanded_count ?? "—"}`,
         })),
     ],
@@ -217,22 +232,33 @@ export function ShedBirdsSection({
 
       {selectMode ? (
         <View style={styles.selectBanner}>
-          <Text style={styles.selectTitle}>
-            {selected.size} selected · {loadedEligibleIds.length} eligible in loaded results
-          </Text>
-          <Text style={styles.meta}>
-            Select all applies only to eligible birds already loaded on screen — not unloaded pages.
-          </Text>
+          <Text style={styles.selectTitle}>{formatSelectedBirdsLabel(selected.size)}</Text>
           <View style={styles.headerActions}>
             <Button
-              label="Select all loaded"
+              label={
+                areAllEligibleSelected(selected, loadedEligibleIds)
+                  ? "Deselect all"
+                  : "Select all"
+              }
               variant="secondary"
+              disabled={loadedEligibleIds.length === 0}
               onPress={() => {
-                setSelected(selectAllLoaded(selected, loadedEligibleIds));
+                const selecting = !areAllEligibleSelected(selected, loadedEligibleIds);
+                setSelected((prev) => toggleSelectAllLoaded(prev, loadedEligibleIds));
                 setSelectionNote(null);
+                if (!selecting) return;
+                const scopeNote = selectAllLoadedScopeMessage(birds.hasNextPage);
+                if (scopeNote) {
+                  Alert.alert("Select all", scopeNote, [{ text: "OK" }]);
+                }
               }}
             />
-            <Button label="Clear" variant="ghost" onPress={() => setSelected(new Set())} />
+            <Button
+              label="Clear"
+              variant="ghost"
+              onPress={() => setSelected(new Set())}
+              disabled={selected.size === 0}
+            />
           </View>
           {selectionNote ? <Text style={styles.warn}>{selectionNote}</Text> : null}
           {selected.size > 0 ? (
@@ -248,13 +274,13 @@ export function ShedBirdsSection({
 
       {canLifecycle && shedActive ? (
         <View style={styles.batchBlock}>
-          <Text style={styles.subsection}>Batch count actions</Text>
+          <Text style={styles.subsection}>Unbanded count actions</Text>
           <Text style={styles.meta}>
             Manage unbanded population counts without selecting individual birds. Banded birds keep their own
             history — use Select for those.
           </Text>
           <SelectField
-            label="Batch for count action"
+            label="Hatch date for count action"
             value={batchActionId ?? ""}
             options={batchActionOptions}
             onChange={(v) => setBatchActionId(v || null)}
@@ -262,7 +288,7 @@ export function ShedBirdsSection({
           />
           {batchActionId ? (
             <Button
-              label="Continue with batch count…"
+              label="Continue with count action…"
               variant="secondary"
               onPress={() =>
                 router.push({
@@ -279,14 +305,12 @@ export function ShedBirdsSection({
         <View style={styles.unbandedCard}>
           <Text style={styles.unbandedTitle}>Unbanded birds: {unbandedTotal}</Text>
           <Text style={styles.meta}>
-            Unbanded birds are batch population counts — not individual profiles. Start banding on the correct
-            batch.
+            Unbanded birds are shed population counts — not individual profiles. Start banding from the correct
+            hatch date.
           </Text>
           {unbandedBatches.slice(0, 3).map((b) => (
             <View key={b.flock_id} style={styles.unbandedRow}>
-              <Text style={styles.meta}>
-                {b.batch_code}: {b.unbanded_count} unbanded
-              </Text>
+              <Text style={styles.meta}>{b.unbanded_count} unbanded</Text>
               {canCreate && shedActive ? (
                 <Button
                   label="Band birds"
@@ -309,7 +333,7 @@ export function ShedBirdsSection({
         accessibilityLabel="Search birds by band number"
       />
       <SelectField
-        label="Batch"
+        label="Hatch date"
         value={flockId ?? ""}
         options={batchOptions}
         onChange={(v) => setFlockId(v || null)}
@@ -335,7 +359,7 @@ export function ShedBirdsSection({
           title={debouncedQ || flockId ? "No matching birds" : "No registered birds yet"}
           body={
             shedActive
-              ? "Add a banded bird to a batch in this shed, or band unbanded birds from a batch."
+              ? "Add a banded bird in this shed, or band unbanded birds from a hatch-date population."
               : "This shed is inactive. History remains available; new birds are blocked until reactivation."
           }
           imageUri={media.flockHen}
@@ -357,7 +381,7 @@ export function ShedBirdsSection({
           canLifecycle={canLifecycle}
           selectMode={selectMode}
           selected={selected.has(bird.id)}
-          onToggle={() => setSelected(toggleSelection(selected, bird.id))}
+          onToggle={() => setSelected((prev) => toggleSelection(prev, bird.id))}
         />
       ))}
 
@@ -408,7 +432,10 @@ function BirdRow({
         }
         openProfile();
       }}
-      accessibilityRole="button"
+      accessibilityRole={selectMode ? "checkbox" : "button"}
+      accessibilityState={
+        selectMode ? { checked: selected, disabled: !eligible } : undefined
+      }
       accessibilityLabel={
         selectMode
           ? `${selected ? "Deselect" : "Select"} ${title}`
@@ -417,20 +444,17 @@ function BirdRow({
     >
       <View style={styles.rowTop}>
         {selectMode ? (
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation?.();
-              if (eligible) onToggle();
-            }}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: selected, disabled: !eligible }}
-            hitSlop={8}
-            style={styles.checkboxHit}
-          >
-            <View style={[styles.checkbox, selected && styles.checkboxOn, !eligible && styles.checkboxDisabled]}>
+          <View style={styles.checkboxHit} importantForAccessibility="no">
+            <View
+              style={[
+                styles.checkbox,
+                selected && styles.checkboxOn,
+                !eligible && styles.checkboxDisabled,
+              ]}
+            >
               {selected ? <Text style={styles.checkMark}>✓</Text> : null}
             </View>
-          </Pressable>
+          </View>
         ) : null}
         <Text style={styles.band}>{title}</Text>
         <Text style={styles.badge}>{formatLifecycleLabel(bird.lifecycle_status)}</Text>
@@ -441,8 +465,6 @@ function BirdRow({
       <Text style={styles.meta}>
         {[bird.breed ?? "Breed unknown", bird.sex ?? "Sex —", formatBirdAge(bird)].join(" · ")}
       </Text>
-      <Text style={styles.meta}>Batch {bird.batch_code}</Text>
-      <Text style={styles.meta}>{formatVaccSummary(bird.individual_vaccination_count)}</Text>
       {!selectMode ? (
         <View style={styles.rowActions}>
           <View style={{ flex: 1 }}>

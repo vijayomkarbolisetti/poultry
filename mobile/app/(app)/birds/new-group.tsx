@@ -14,9 +14,10 @@ import { describeApiError } from "../../../src/api/client";
 import { createFlock } from "../../../src/api/flocks";
 import { getShed } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
-import { DateField } from "../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import {
@@ -68,7 +69,7 @@ export default function NewGroupWizardScreen() {
     return (
       <Screen>
         <Text style={styles.error}>You do not have permission to create a group.</Text>
-        <Button label="Back" variant="secondary" onPress={() => safeBack(shedId ? `/(app)/sheds/${shedId}` : undefined)} />
+        <Button label="Back" variant="secondary" onPress={() => safeBack(shedId ? `/(app)/sheds/${shedId}/birds` : undefined)} />
       </Screen>
     );
   }
@@ -103,7 +104,7 @@ export default function NewGroupWizardScreen() {
     return (
       <Screen>
         <Text style={styles.error}>This shed is inactive. Reactivate it before adding a group.</Text>
-        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}`)} />
+        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} />
       </Screen>
     );
   }
@@ -187,7 +188,7 @@ export default function NewGroupWizardScreen() {
     <Screen scroll edges={["left", "right", "bottom"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => (step === 1 ? safeBack(`/(app)/sheds/${shedId}`) : setStep(1))}
+          onPress={() => (step === 1 ? safeBack(`/(app)/sheds/${shedId}/birds`) : setStep(1))}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Back"
@@ -254,10 +255,12 @@ export default function NewGroupWizardScreen() {
             })}
           </View>
           {ageChip === "exact" ? (
-            <DateField
+            <AppDatePicker
               label="Hatch date"
               required
               value={hatchDate}
+              maximumDate={todayIsoDate()}
+              placeholder="Select hatch date"
               onChange={(v) => {
                 setHatchDate(v);
                 setError(null);

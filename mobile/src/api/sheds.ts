@@ -11,6 +11,8 @@ export type Shed = {
   name: string;
   code: string;
   location_notes: string | null;
+  /** Optional planned bird capacity (Screen 5). Null/absent = unspecified. */
+  capacity?: number | null;
   is_owner_managed: boolean;
   is_active: boolean;
   created_at: string;
@@ -182,6 +184,7 @@ export async function createShed(input: {
   name: string;
   code: string;
   location_notes?: string;
+  capacity?: number | null;
   is_owner_managed?: boolean;
   /** Required when is_owner_managed is false — farmer OwnerMembership id. */
   initial_farmer_membership_id?: string;
@@ -196,6 +199,7 @@ export async function updateShed(
     name: string;
     code: string;
     location_notes: string;
+    capacity: number | null;
     is_owner_managed: boolean;
     is_active: boolean;
     initial_farmer_membership_id: string;

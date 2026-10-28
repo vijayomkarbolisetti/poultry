@@ -6,16 +6,23 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { listBirdsInShed } from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
-import { listFlocks, transferToShed } from "../../../src/api/flocks";
+import { listFlocks, transferToShedByCohort, type Flock } from "../../../src/api/flocks";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
-import { DateField } from "../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { SelectField } from "../../../src/components/ui/SelectField";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { newLifecycleIdempotencyKey } from "../../../src/features/birds/birdSelectionHelpers";
+import {
+  cohortAgePayload,
+  resolveBandedSelectionCohort,
+  unbandedSourceOptions,
+  validateUnbandedTransferQuantity,
+} from "../../../src/features/birds/transferHelpers";
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
@@ -35,11 +42,10 @@ export default function TransferBirdsScreen() {
 
   const [mode, setMode] = useState<"banded" | "unbanded">(preselected.length ? "banded" : "banded");
   const [destShedId, setDestShedId] = useState<string | null>(null);
-  const [destFlockId, setDestFlockId] = useState<string | null>(null);
   const [sourceFlockId, setSourceFlockId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [selected, setSelected] = useState<Set<string>>(() => new Set(preselected));
-  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [effectiveDate, setEffectiveDate] = useState(() => todayIsoDate());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -52,11 +58,6 @@ export default function TransferBirdsScreen() {
     queryKey: ["flocks", shedId],
     queryFn: () => listFlocks(shedId),
     enabled: !!shedId && can,
-  });
-  const destFlocks = useQuery({
-    queryKey: ["flocks", destShedId],
-    queryFn: () => listFlocks(destShedId!),
-    enabled: !!destShedId && can,
   });
   const birds = useQuery({
     queryKey: ["shed-birds-xfer", shedId],
@@ -71,81 +72,107 @@ export default function TransferBirdsScreen() {
         .map((s) => ({ value: s.id, label: s.name, hint: s.code })),
     [sheds.data, shedId],
   );
-  const destFlockOptions = useMemo(
-    () =>
-      (destFlocks.data ?? [])
-        .filter((f) => f.status === "active")
-        .map((f) => ({
-          value: f.id,
-          label: f.batch_code,
-          hint: `${f.current_count} live`,
-        })),
-    [destFlocks.data],
-  );
-  const sourceFlockOptions = useMemo(
-    () =>
-      (sourceFlocks.data ?? [])
-        .filter((f) => f.status === "active" && f.tracking_mode !== "individual")
-        .map((f) => ({
-          value: f.id,
-          label: f.batch_code,
-          hint: `${f.unbanded_count} unbanded`,
-        })),
+
+  const sourceOptions = useMemo(
+    () => unbandedSourceOptions(sourceFlocks.data ?? []),
     [sourceFlocks.data],
   );
+
+  const flocksById = useMemo(() => {
+    const map = new Map<string, Flock>();
+    for (const f of sourceFlocks.data ?? []) map.set(f.id, f);
+    return map;
+  }, [sourceFlocks.data]);
 
   const liveBirds = (birds.data?.items ?? []).filter(
     (b) => b.is_active && b.lifecycle_status === "active",
   );
 
+  const selectedSource = sourceOptions.find((o) => o.value === sourceFlockId) ?? null;
+
   const onSave = async () => {
     if (!can || submitting.current) return;
-    if (!destFlockId) {
-      setMsg("Select a destination group");
+    if (!destShedId) {
+      setMsg("Select a destination shed");
       return;
     }
+
     submitting.current = true;
     setBusy(true);
     setMsg(null);
     try {
       if (mode === "banded") {
-        const ids = [...selected];
-        if (!ids.length) {
-          setMsg("Select at least one banded bird");
+        const resolved = resolveBandedSelectionCohort(liveBirds, [...selected], flocksById);
+        if (!resolved.ok) {
+          setMsg(resolved.error);
           return;
         }
-        await transferToShed({
-          destination_flock_id: destFlockId,
+        const ageFields = cohortAgePayload(resolved.key);
+        if (!ageFields) {
+          setMsg(
+            "Selected birds have no hatch date, so a destination population cannot be chosen safely.",
+          );
+          return;
+        }
+        await transferToShedByCohort({
+          destination_shed_id: destShedId,
           effective_date: effectiveDate,
-          bird_ids: ids,
+          bird_ids: resolved.birdIds,
           idempotency_key: idem.current,
+          ...ageFields,
         });
       } else {
-        if (!sourceFlockId) {
-          setMsg("Select a source group");
+        if (!sourceFlockId || !selectedSource) {
+          setMsg("Select a source hatch-date population");
           return;
         }
-        const qty = Number(quantity);
-        if (!Number.isInteger(qty) || qty < 1) {
-          setMsg("Enter a valid quantity");
+        if (selectedSource.key.kind === "unknown") {
+          setMsg(
+            "This unbanded population has no hatch date, so a destination population cannot be chosen safely.",
+          );
           return;
         }
-        await transferToShed({
-          destination_flock_id: destFlockId,
+        const qtyNum = Number(quantity);
+        const qtyErr = validateUnbandedTransferQuantity(qtyNum, selectedSource.unbanded_count);
+        if (qtyErr) {
+          setMsg(qtyErr);
+          return;
+        }
+        const ageFields = cohortAgePayload(selectedSource.key);
+        if (!ageFields) {
+          setMsg(
+            "This unbanded population has no hatch date, so a destination population cannot be chosen safely.",
+          );
+          return;
+        }
+        await transferToShedByCohort({
+          destination_shed_id: destShedId,
+          source_shed_id: shedId,
+          quantity: qtyNum,
           effective_date: effectiveDate,
-          source_flock_id: sourceFlockId,
-          quantity: qty,
           idempotency_key: idem.current,
+          ...ageFields,
         });
       }
+
       idem.current = newLifecycleIdempotencyKey("shed-xfer");
       void qc.invalidateQueries({ queryKey: ["shed-overview"] });
       void qc.invalidateQueries({ queryKey: ["shed-birds"] });
       void qc.invalidateQueries({ queryKey: ["flocks"] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
-      safeBack(shedId ? `/(app)/sheds/${shedId}` : "/(app)/sheds");
+      safeBack(shedId ? `/(app)/sheds/${shedId}/birds` : "/(app)/sheds");
     } catch (e: unknown) {
-      setMsg(describeApiError(e, "transfer birds"));
+      const apiMsg = describeApiError(e, "transfer birds");
+      if (typeof e === "object" && e && "message" in e && typeof (e as Error).message === "string") {
+        const local = (e as Error).message;
+        if (local && !local.startsWith("Request") && local.length < 200) {
+          setMsg(local);
+        } else {
+          setMsg(apiMsg);
+        }
+      } else {
+        setMsg(apiMsg);
+      }
     } finally {
       setBusy(false);
       submitting.current = false;
@@ -173,7 +200,7 @@ export default function TransferBirdsScreen() {
   return (
     <Screen scroll edges={["left", "right", "bottom"]}>
       <View style={styles.header}>
-        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}`)} style={styles.backBtn}>
+        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={birdUi.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -203,33 +230,36 @@ export default function TransferBirdsScreen() {
         options={destShedOptions}
         onChange={(v) => {
           setDestShedId(v);
-          setDestFlockId(null);
         }}
         loading={sheds.isLoading}
         emptyMessage="No other active sheds"
       />
-      <SelectField
-        label="Destination group"
-        value={destFlockId}
-        options={destFlockOptions}
-        onChange={setDestFlockId}
-        loading={destFlocks.isLoading}
-        emptyMessage="Create a group in the destination shed first"
-      />
-      <DateField
+      <AppDatePicker
         label="Effective date"
+        required
         value={effectiveDate}
-        onChange={(v) => setEffectiveDate(v ?? new Date().toISOString().slice(0, 10))}
+        maximumDate={todayIsoDate()}
+        onChange={(v) => setEffectiveDate(v ?? todayIsoDate())}
       />
 
       {mode === "banded" ? (
-        birds.isLoading ? (
+        birds.isLoading || sourceFlocks.isLoading ? (
           <HenLoader label="Loading birds…" />
         ) : (
           <View style={styles.list}>
             <Text style={styles.listTitle}>Select birds ({selected.size})</Text>
+            <Text style={styles.hint}>
+              Birds must share the same hatch date. The destination shed receives them in that
+              hatch-date population (created if needed).
+            </Text>
             {liveBirds.map((b) => {
               const on = selected.has(b.id);
+              const hatch =
+                b.hatch_date ??
+                flocksById.get(b.flock_id)?.hatch_date ??
+                (flocksById.get(b.flock_id)?.estimated_age_days != null
+                  ? `~${flocksById.get(b.flock_id)!.estimated_age_days}d`
+                  : "no hatch date");
               return (
                 <Pressable
                   key={b.id}
@@ -248,7 +278,10 @@ export default function TransferBirdsScreen() {
                     size={22}
                     color={on ? birdUi.primary : birdUi.muted}
                   />
-                  <Text style={styles.band}>{b.band_id ?? b.display_code ?? b.id.slice(0, 8)}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.band}>{b.band_id ?? b.display_code ?? b.id.slice(0, 8)}</Text>
+                    <Text style={styles.birdMeta}>{hatch}</Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -260,13 +293,17 @@ export default function TransferBirdsScreen() {
       ) : (
         <>
           <SelectField
-            label="Source group"
+            label="Source hatch-date population"
             value={sourceFlockId}
-            options={sourceFlockOptions}
+            options={sourceOptions.map(({ value, label, hint }) => ({ value, label, hint }))}
             onChange={setSourceFlockId}
-            emptyMessage="No groups with unbanded birds"
+            loading={sourceFlocks.isLoading}
+            emptyMessage="No unbanded populations in this shed"
           />
           <Text style={styles.listTitle}>Quantity</Text>
+          {selectedSource ? (
+            <Text style={styles.hint}>Available unbanded: {selectedSource.unbanded_count}</Text>
+          ) : null}
           <TextInput
             style={styles.input}
             value={quantity}
@@ -279,7 +316,12 @@ export default function TransferBirdsScreen() {
       )}
 
       {msg ? <Text style={styles.error}>{msg}</Text> : null}
-      <Button label="Confirm transfer" onPress={onSave} loading={busy} disabled={busy} />
+      <Button
+        label="Confirm transfer"
+        onPress={() => void onSave()}
+        loading={busy}
+        disabled={busy || !destShedId}
+      />
     </Screen>
   );
 }
@@ -296,6 +338,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: "800", color: birdUi.text },
   sub: { fontSize: 13, color: birdUi.muted },
+  hint: { fontSize: 13, color: birdUi.muted, lineHeight: 18, marginBottom: 4 },
   modeRow: { flexDirection: "row", gap: 8 },
   modeChip: {
     flex: 1,
@@ -323,6 +366,7 @@ const styles = StyleSheet.create({
   },
   birdOn: { borderColor: birdUi.primary, backgroundColor: birdUi.paleMint },
   band: { fontSize: 16, fontWeight: "700", color: birdUi.text },
+  birdMeta: { fontSize: 12, color: birdUi.muted, marginTop: 2 },
   input: {
     borderWidth: 1,
     borderColor: birdUi.border,

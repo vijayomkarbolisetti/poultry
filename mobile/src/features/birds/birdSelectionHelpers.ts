@@ -34,8 +34,58 @@ export function selectAllLoaded(selected: Set<string>, loadedEligibleIds: string
   return next;
 }
 
+/** Empty eligible lists are never "fully selected". */
+export function areAllEligibleSelected(
+  selected: Set<string>,
+  loadedEligibleIds: string[],
+): boolean {
+  return (
+    loadedEligibleIds.length > 0 && loadedEligibleIds.every((id) => selected.has(id))
+  );
+}
+
+/**
+ * Select every loaded eligible id, or clear those ids from the set when already
+ * fully selected. IDs outside the current scope are preserved.
+ */
+export function toggleSelectAllLoaded(
+  selected: Set<string>,
+  loadedEligibleIds: string[],
+): Set<string> {
+  if (loadedEligibleIds.length === 0) return new Set(selected);
+  if (areAllEligibleSelected(selected, loadedEligibleIds)) {
+    const next = new Set(selected);
+    for (const id of loadedEligibleIds) next.delete(id);
+    return next;
+  }
+  return selectAllLoaded(selected, loadedEligibleIds);
+}
+
 export function clearSelection(): Set<string> {
   return new Set();
+}
+
+/** Farmer-facing selection count — derived from the selected-ID set size. */
+export function formatSelectedBirdsLabel(count: number): string {
+  if (count === 1) return "1 bird selected";
+  return `${count} birds selected`;
+}
+
+/**
+ * Optional one-shot explanation after Select All.
+ * Pass `hasMorePages` from the list query when known; `null`/`undefined` means unknown.
+ * Returns null when every eligible bird is already loaded (no warning needed).
+ */
+export function selectAllLoadedScopeMessage(
+  hasMorePages: boolean | null | undefined,
+): string | null {
+  if (hasMorePages === true) {
+    return "Only loaded birds are selected. Load more birds to select additional birds.";
+  }
+  if (hasMorePages == null) {
+    return "Select All applies to eligible birds currently loaded in this list.";
+  }
+  return null;
 }
 
 /**
@@ -54,6 +104,13 @@ export function reconcileSelectionToLoaded(
     else removed += 1;
   }
   return { next, removed };
+}
+
+/** True when both sets contain the same ids (order-independent). */
+export function selectionSetsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
 }
 
 export function newLifecycleIdempotencyKey(prefix: string): string {
@@ -80,7 +137,7 @@ export type BatchLifecycleScope = {
 
 export function batchCountActionAllowed(scope: BatchLifecycleScope): string | null {
   if (scope.trackingMode === "individual") {
-    return "This batch is individually tracked. Select registered birds instead of a count.";
+    return "This hatch-date population is individually tracked. Select registered birds instead of a count.";
   }
   if (scope.unbandedCount < 1) {
     return "No unbanded birds available for a count-only action.";

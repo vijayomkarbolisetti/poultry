@@ -4,7 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { bandFromUnbanded } from "../../../src/api/birds";
+import { bandFromUnbandedByCohort } from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
 import { getFlock } from "../../../src/api/flocks";
 import { Button } from "../../../src/components/ui/Button";
@@ -12,8 +12,10 @@ import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
+import { formatBirdAge } from "../../../src/features/birds/birdListHelpers";
 import { validateBandNumber } from "../../../src/features/birds/groupOnboardingHelpers";
 import { newLifecycleIdempotencyKey } from "../../../src/features/birds/birdSelectionHelpers";
+import { cohortAgePayload, cohortKeyFromAge } from "../../../src/features/birds/transferHelpers";
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
@@ -42,22 +44,35 @@ export default function BandFromUnbandedScreen() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const save = async () => {
-    if (!flockId || submitting.current) return;
+    if (!flockId || !shedId || !flock.data || submitting.current) return;
     const err = validateBandNumber(bandId);
     if (err) {
       setMsg(err);
       return;
     }
-    if ((flock.data?.unbanded_count ?? 0) < 1) {
-      setMsg("This group has no unbanded birds left to band");
+    if ((flock.data.unbanded_count ?? 0) < 1) {
+      setMsg("This hatch-date population has no unbanded birds left to band");
+      return;
+    }
+    const key = cohortKeyFromAge({
+      hatch_date: flock.data.hatch_date,
+      estimated_age_days: flock.data.estimated_age_days,
+      age_reported_on: flock.data.age_reported_on,
+    });
+    const ageFields = cohortAgePayload(key);
+    if (!ageFields) {
+      setMsg(
+        "This population has no hatch date or estimated age key, so banding by cohort is not available.",
+      );
       return;
     }
     submitting.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      const result = await bandFromUnbanded({
-        flock_id: flockId,
+      const result = await bandFromUnbandedByCohort({
+        shed_id: shedId,
+        ...ageFields,
         band_id: bandId.trim(),
         idempotency_key: idemKey.current,
       });
@@ -87,117 +102,95 @@ export default function BandFromUnbandedScreen() {
     );
   }
 
-  if (flock.isLoading) {
+  if (!flockId) {
     return (
       <Screen>
-        <HenLoader label="Loading group…" />
+        <Text style={styles.error}>
+          Missing unbanded population. Open this screen from a shed birds list.
+        </Text>
+        <Button label="Back" variant="secondary" onPress={() => safeBack()} />
       </Screen>
     );
   }
 
+  if (!shedId) {
+    return (
+      <Screen>
+        <Text style={styles.error}>Missing shed. Open this screen from a shed birds list.</Text>
+        <Button label="Back" variant="secondary" onPress={() => safeBack()} />
+      </Screen>
+    );
+  }
+
+  if (flock.isLoading) {
+    return (
+      <Screen>
+        <HenLoader label="Loading population…" />
+      </Screen>
+    );
+  }
+
+  if (flock.isError || !flock.data) {
+    return (
+      <Screen>
+        <Text style={styles.error}>{describeApiError(flock.error, "load population")}</Text>
+        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} />
+      </Screen>
+    );
+  }
+
+  const f = flock.data;
+
   return (
-    <Screen scroll edges={["left", "right", "bottom"]}>
+    <Screen scroll>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => safeBack(shedId ? `/(app)/sheds/${shedId}/birds` : undefined)}
-          style={styles.backBtn}
-        >
-          <Ionicons name="arrow-back" size={22} color={birdUi.text} />
+        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} hitSlop={12}>
+          <Ionicons name="chevron-back" size={22} color={birdUi.text} />
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Band a bird</Text>
-          <Text style={styles.sub}>From unbanded cohort · creates a new individual record</Text>
-        </View>
+        <Text style={styles.title}>Register band</Text>
       </View>
+      <Text style={styles.sub}>
+        Converts one unbanded bird into a banded individual. Live population stays the same.
+      </Text>
+      <Text style={styles.meta}>
+        {formatBirdAge({
+          hatch_date: f.hatch_date,
+          estimated_age_days: f.estimated_age_days,
+        })}{" "}
+        · {f.unbanded_count} unbanded
+      </Text>
 
-      <View style={styles.info}>
-        <Text style={styles.infoText}>
-          Unbanded birds have no personal history. This assigns a band to one bird from the group
-          count, reuses the group’s age metadata, and keeps the live total unchanged.
-        </Text>
-      </View>
-
-      {flock.data ? (
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>{flock.data.batch_code}</Text>
-          <Text style={styles.meta}>
-            Unbanded {flock.data.unbanded_count} · Banded {flock.data.banded_count} · Live{" "}
-            {flock.data.current_count}
-          </Text>
-          <Text style={styles.meta}>
-            Age: {flock.data.dob_confidence}
-            {flock.data.hatch_date ? ` · hatch ${flock.data.hatch_date}` : ""}
-            {flock.data.estimated_age_days != null ? ` · ~${flock.data.estimated_age_days}d` : ""}
-          </Text>
-        </View>
-      ) : null}
-
-      <Text style={styles.label}>Band number *</Text>
+      <Text style={styles.label}>Band number</Text>
       <TextInput
         style={styles.input}
         value={bandId}
-        onChangeText={(t) => {
-          setBandId(t);
-          setMsg(null);
-        }}
-        placeholder="Enter unique band number"
-        placeholderTextColor={birdUi.muted}
+        onChangeText={setBandId}
         autoCapitalize="characters"
-        autoCorrect={false}
+        placeholder="e.g. A-102"
+        placeholderTextColor={birdUi.muted}
       />
 
       {msg ? <Text style={styles.error}>{msg}</Text> : null}
-
-      <Button
-        label="Create banded bird"
-        onPress={() => void save()}
-        loading={busy}
-        disabled={!bandId.trim() || busy || (flock.data?.unbanded_count ?? 0) < 1}
-      />
+      <Button label={busy ? "Saving…" : "Save band"} onPress={() => void save()} disabled={busy} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", alignItems: "center", gap: 10 },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: birdUi.paleMint,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: { fontSize: 22, fontWeight: "800", color: birdUi.text },
-  sub: { fontSize: 13, color: birdUi.muted, marginTop: 2 },
-  info: {
-    backgroundColor: birdUi.bluePale,
-    borderRadius: 14,
-    padding: 12,
-  },
-  infoText: { fontSize: 13, color: birdUi.textSecondary, lineHeight: 18 },
-  card: {
-    backgroundColor: birdUi.white,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: birdUi.border,
-    padding: 14,
-    gap: 4,
-  },
-  cardTitle: { fontSize: 16, fontWeight: "800", color: birdUi.text },
-  meta: { fontSize: 13, color: birdUi.muted },
-  label: { fontSize: 13, fontWeight: "700", color: birdUi.muted },
+  header: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  title: { fontSize: 22, fontWeight: "700", color: birdUi.text },
+  sub: { color: birdUi.muted, marginBottom: 8, lineHeight: 20 },
+  meta: { color: birdUi.text, fontWeight: "600", marginBottom: 16 },
+  label: { fontWeight: "600", color: birdUi.text, marginBottom: 6 },
   input: {
     borderWidth: 1,
     borderColor: birdUi.border,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    backgroundColor: birdUi.white,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
     color: birdUi.text,
-    fontSize: 17,
-    fontWeight: "600",
-    minHeight: 52,
+    backgroundColor: "#fff",
   },
-  error: { color: birdUi.error, fontWeight: "600" },
+  error: { color: "#B42318", marginBottom: 12 },
 });

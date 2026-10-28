@@ -54,6 +54,7 @@ export default function AppLayout() {
   if (!user) return <Redirect href="/(auth)/login" />;
 
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
+  const canVaccination = hasPermission(user, ownerAccountId, "vaccination.view");
 
   return (
     <Tabs
@@ -100,11 +101,21 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="vaccination/index"
+        options={{
+          title: "Vaccination",
+          tabBarLabel: "Vaccination",
+          headerShown: false,
+          href: canVaccination ? undefined : null,
+          tabBarIcon: tabIcon("medkit", "medkit-outline"),
+        }}
+      />
+      <Tabs.Screen
         name="flocks/index"
         options={{
-          title: "Batches",
-          tabBarLabel: "Batches",
-          // Groups/batches stay reachable from deep links / manage flows, not the primary tab bar.
+          title: "Populations",
+          tabBarLabel: "Populations",
+          // Legacy flocks list stays reachable from deep links / manage flows, not the primary tab bar.
           href: null,
           tabBarIcon: tabIcon("egg", "egg-outline"),
         }}
@@ -114,17 +125,13 @@ export default function AppLayout() {
         options={{ title: "More", tabBarLabel: "More", tabBarIcon: tabIcon("menu", "menu-outline") }}
       />
 
-      {/* Vaccination / Tasks — unmounted from product UI (kept as hidden files for future rebuild). */}
-      <Tabs.Screen name="doses/index" options={{ ...hidden("Tasks"), href: null }} />
-      <Tabs.Screen name="vaccines/index" options={{ ...hidden("Vaccines"), href: null }} />
-
       <Tabs.Screen name="sheds/[id]/index" options={hidden("Shed overview")} />
       <Tabs.Screen name="sheds/[id]/groups" options={hidden("Groups")} />
       <Tabs.Screen name="sheds/[id]/birds" options={hidden("Birds")} />
       <Tabs.Screen name="sheds/create" options={hidden("New shed")} />
       <Tabs.Screen name="sheds/edit/[id]" options={hidden("Edit shed")} />
-      <Tabs.Screen name="flocks/[id]" options={hidden("Batch")} />
-      <Tabs.Screen name="flocks/create" options={hidden("Onboard batch")} />
+      <Tabs.Screen name="flocks/[id]" options={hidden("Population")} />
+      <Tabs.Screen name="flocks/create" options={hidden("Add birds")} />
       <Tabs.Screen name="search" options={hidden("Search")} />
       <Tabs.Screen name="birds/search" options={hidden("Search")} />
       <Tabs.Screen name="birds/[id]" options={hidden("Bird profile")} />
@@ -137,10 +144,15 @@ export default function AppLayout() {
       <Tabs.Screen name="birds/bird-added" options={hidden("Bird added")} />
       <Tabs.Screen name="birds/edit/[id]" options={hidden("Change band number")} />
       <Tabs.Screen name="lifecycle-bulk" options={hidden("Bulk lifecycle")} />
-      <Tabs.Screen name="lifecycle-batch" options={hidden("Batch lifecycle")} />
+      <Tabs.Screen name="lifecycle-batch" options={hidden("Unbanded count action")} />
       <Tabs.Screen name="farmers/index" options={hidden("Farmers")} />
       <Tabs.Screen name="farmers/create" options={hidden("Add farmer")} />
       <Tabs.Screen name="farmers/[id]" options={hidden("Farmer")} />
+      <Tabs.Screen name="catalogues/index" options={hidden("Catalogues")} />
+      <Tabs.Screen name="catalogues/create" options={hidden("Create catalogue")} />
+      <Tabs.Screen name="catalogues/[id]" options={hidden("Catalogue")} />
+      <Tabs.Screen name="catalogues/item-edit" options={hidden("Edit vaccine")} />
+      <Tabs.Screen name="vaccination/[id]" options={hidden("Vaccination details")} />
     </Tabs>
   );
 }

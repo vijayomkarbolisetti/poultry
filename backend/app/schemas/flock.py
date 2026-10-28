@@ -24,6 +24,8 @@ class FlockCreate(BaseModel):
     tracking_mode: TrackingMode
     notes: str | None = None
     unbanded_count: int | None = Field(default=None, ge=0)
+    # NULL / omitted = inherit farm default catalogue (A2′).
+    vaccination_catalogue_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_age(self) -> "FlockCreate":
@@ -43,6 +45,19 @@ class FlockUpdate(BaseModel):
     current_count: int | None = Field(default=None, ge=0)
     # Increment unbanded headcount (does not replace totals).
     add_unbanded: int | None = Field(default=None, ge=1)
+    # Exact hatch correction for schedule recalculation (open doses only).
+    hatch_date: date | None = None
+    # Set to a catalogue id for override; omit to leave unchanged.
+    # Clear override (inherit farm default) by sending explicit null via dedicated flag if needed —
+    # use clear_vaccination_catalogue_override=True.
+    vaccination_catalogue_id: UUID | None = None
+    clear_vaccination_catalogue_override: bool = False
+
+    @model_validator(mode="after")
+    def _hatch_not_future(self):
+        if self.hatch_date is not None and self.hatch_date > date.today():
+            raise ValueError("hatch_date cannot be in the future")
+        return self
 
 
 class FlockOut(BaseModel):
@@ -66,6 +81,7 @@ class FlockOut(BaseModel):
     onboarded_at: datetime
     count_mismatch: bool
     notes: str | None
+    vaccination_catalogue_id: UUID | None = None
     created_at: datetime
 
 
@@ -150,6 +166,87 @@ class BandFromUnbandedIn(BaseModel):
     breed: str | None = None
     sex: str | None = None
     notes: str | None = None
+
+
+class _CohortAgeMixin(BaseModel):
+    """XOR: hatch_date OR (estimated_age_days + age_reported_on). Unknown rejected."""
+
+    hatch_date: date | None = None
+    estimated_age_days: int | None = Field(default=None, ge=0)
+    age_reported_on: date | None = None
+
+    @model_validator(mode="after")
+    def validate_cohort_age(self) -> "_CohortAgeMixin":
+        exact = self.hatch_date is not None
+        estimated = self.estimated_age_days is not None and self.age_reported_on is not None
+        if exact and (self.estimated_age_days is not None or self.age_reported_on is not None):
+            raise ValueError("Use either hatch_date or estimated age fields, not both")
+        if not exact and not estimated:
+            raise ValueError("Provide hatch_date or both estimated_age_days and age_reported_on")
+        if exact and self.hatch_date is not None and self.hatch_date > date.today():
+            raise ValueError("hatch_date cannot be in the future")
+        if estimated and self.age_reported_on is not None and self.age_reported_on > date.today():
+            raise ValueError("age_reported_on cannot be in the future")
+        if self.estimated_age_days is not None and self.age_reported_on is None:
+            raise ValueError("age_reported_on required with estimated_age_days")
+        if self.age_reported_on is not None and self.estimated_age_days is None:
+            raise ValueError("estimated_age_days required with age_reported_on")
+        return self
+
+
+class BandFromUnbandedByCohortIn(_CohortAgeMixin):
+    """Shed-centric banding — resolves active cohort by exact or estimated age key."""
+
+    shed_id: UUID
+    band_id: str = Field(min_length=1, max_length=64)
+    idempotency_key: str = Field(min_length=8, max_length=128)
+    breed: str | None = None
+    sex: str | None = None
+    notes: str | None = None
+
+
+class UnbandedLifecycleByCohortIn(_CohortAgeMixin):
+    """Count-only mortality/sale/exit-transfer for an unbanded shed cohort."""
+
+    shed_id: UUID
+    event_type: LifecycleEventType
+    effective_date: date
+    quantity: int = Field(ge=1)
+    reason: str | None = None
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_event(self) -> "UnbandedLifecycleByCohortIn":
+        allowed = {
+            LifecycleEventType.mortality,
+            LifecycleEventType.sale,
+            LifecycleEventType.transfer,
+        }
+        if self.event_type not in allowed:
+            raise ValueError("event_type must be mortality, sale, or transfer")
+        return self
+
+
+class ShedTransferByCohortIn(_CohortAgeMixin):
+    """Shed-centric transfer; server resolves/creates destination cohort under lifecycle.record."""
+
+    destination_shed_id: UUID
+    effective_date: date
+    bird_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    source_shed_id: UUID | None = None
+    quantity: int | None = Field(default=None, ge=1)
+    reason: str | None = None
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_transfer_scope(self) -> "ShedTransferByCohortIn":
+        has_birds = bool(self.bird_ids)
+        has_count = self.source_shed_id is not None and self.quantity is not None
+        if has_birds == has_count:
+            raise ValueError(
+                "Provide either bird_ids or (source_shed_id + quantity), not both or neither"
+            )
+        return self
 
 
 class BirdUpdate(BaseModel):
@@ -304,6 +401,11 @@ class BirdProfileVaccinationEventOut(BaseModel):
     administration_date: date
     birds_covered: int
     lot_number: str | None
+    product_expiry: date | None = None
+    manufacturer_or_brand: str | None = None
+    vaccine_type_or_strain: str | None = None
+    dose_amount: str | None = None
+    route: str | None = None
     timing_status: str
     verification_status: str
     notes: str | None

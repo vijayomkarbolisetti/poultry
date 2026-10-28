@@ -21,9 +21,6 @@ const DEFAULT_FARMER_PERMS = [
   "shed.view",
   "flock.view",
   "bird.view",
-  "vaccination.view",
-  "vaccination.record",
-  "schedule.view",
   "report.view",
 ];
 

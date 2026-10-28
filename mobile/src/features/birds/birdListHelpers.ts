@@ -4,6 +4,39 @@ export function formatLifecycleLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+export function formatSexLabel(sex: string | null | undefined): string {
+  if (!sex) return "—";
+  const s = sex.trim().toLowerCase();
+  if (s === "m" || s === "male") return "Male";
+  if (s === "f" || s === "female") return "Female";
+  return sex.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Human-readable relative age for list cards (e.g. "3 months"). */
+export function formatRelativeAgeLabel(opts: {
+  hatch_date: string | null;
+  estimated_age_days: number | null;
+  nowMs?: number;
+}): string {
+  const now = opts.nowMs ?? Date.now();
+  if (opts.hatch_date) {
+    const hatchMs = Date.parse(opts.hatch_date);
+    if (!Number.isFinite(hatchMs)) return `Hatch ${opts.hatch_date}`;
+    const days = Math.floor((now - hatchMs) / 86_400_000);
+    if (days < 0) return `Hatch ${opts.hatch_date}`;
+    if (days < 60) return `${days} day${days === 1 ? "" : "s"}`;
+    const months = Math.max(1, Math.floor(days / 30));
+    return `${months} month${months === 1 ? "" : "s"}`;
+  }
+  if (opts.estimated_age_days != null) {
+    const d = opts.estimated_age_days;
+    if (d < 60) return `~${d} day${d === 1 ? "" : "s"}`;
+    const months = Math.max(1, Math.floor(d / 30));
+    return `~${months} month${months === 1 ? "" : "s"}`;
+  }
+  return "Age unknown";
+}
+
 export function formatBirdAge(opts: {
   hatch_date: string | null;
   estimated_age_days: number | null;
@@ -13,9 +46,14 @@ export function formatBirdAge(opts: {
   return "Age unknown";
 }
 
-export function formatVaccSummary(count: number): string {
-  if (count <= 0) return "No individual vaccinations";
-  return `${count} individual vaccination${count === 1 ? "" : "s"}`;
+/** User-facing label for an unbanded population row (never shows batch_code). */
+export function formatUnbandedCohortLabel(opts: {
+  hatch_date: string | null;
+  estimated_age_days: number | null;
+  unbanded_count: number;
+}): string {
+  const age = formatBirdAge(opts);
+  return `${age} · ${opts.unbanded_count} unbanded`;
 }
 
 export const LIFECYCLE_FILTER_OPTIONS = [
@@ -34,14 +72,14 @@ export const BIRD_LIFECYCLE_ACTIONS = [
     label: "Record mortality",
     confirmTitle: "Record mortality?",
     consequence:
-      "This marks the bird as dead and removes it from the live population. Vaccination and lifecycle history are preserved for audit.",
+      "This marks the bird as dead and removes it from the live population. Lifecycle history is preserved for audit.",
   },
   {
     value: "sale",
     label: "Record sale",
     confirmTitle: "Record sale?",
     consequence:
-      "This marks the bird as sold and removes it from the live population. Historical vaccination records remain auditable.",
+      "This marks the bird as sold and removes it from the live population. Historical records remain auditable.",
   },
   {
     value: "transfer",

@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Date, DateTime, Enum, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -11,6 +11,16 @@ from app.models.enums import LifecycleEventType
 
 class LifecycleEvent(Base):
     __tablename__ = "lifecycle_events"
+    __table_args__ = (
+        # Mirrors migration 0007; create_all (pytest) must match Alembic.
+        Index(
+            "uq_lifecycle_owner_idempotency_key",
+            "owner_account_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_account_id: Mapped[uuid.UUID] = mapped_column(
@@ -33,7 +43,9 @@ class LifecycleEvent(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     recorded_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
-    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    # Uniqueness is owner-scoped via partial index uq_lifecycle_owner_idempotency_key (migration 0007).
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_payload_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

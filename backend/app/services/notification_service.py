@@ -9,7 +9,7 @@ from app.authorization.deps import AuthContext
 from app.models.flock import Flock
 from app.models.membership import OwnerMembership
 from app.models.notification import Notification
-from app.models.shed import ShedMembership
+from app.models.shed import Shed, ShedMembership
 from app.models.vaccine import ScheduledDose
 from app.services.schedule_engine import (
     STATUS_DUE_SOON,
@@ -19,12 +19,22 @@ from app.services.schedule_engine import (
 )
 
 
-def format_dose_alert_body(*, due_date: date, batch_code: str | None) -> str:
-    """Build user-facing dose alert body using Batch terminology (never raw flock UUIDs)."""
+def format_dose_alert_body(
+    *,
+    due_date: date,
+    shed_name: str | None = None,
+    hatch_date: date | None = None,
+) -> str:
+    """Build user-facing dose alert body (shed / hatch context; never flock UUIDs or batch codes)."""
     due = due_date.isoformat()
-    code = (batch_code or "").strip()
-    if code:
-        return f"Dose due {due} (batch {code})"
+    bits: list[str] = []
+    name = (shed_name or "").strip()
+    if name:
+        bits.append(name)
+    if hatch_date is not None:
+        bits.append(f"hatch {hatch_date.isoformat()}")
+    if bits:
+        return f"Dose due {due} ({' \u00b7 '.join(bits)})"
     return f"Dose due {due}"
 
 
@@ -51,10 +61,16 @@ async def generate_dose_alerts(db: AsyncSession, ctx: AuthContext) -> int:
         )
     )
     flock_ids = {dose.flock_id for dose in doses if dose.flock_id is not None}
-    batch_codes: dict[UUID, str] = {}
+    hatch_by_flock: dict[UUID, date | None] = {}
     if flock_ids:
-        rows = await db.execute(select(Flock.id, Flock.batch_code).where(Flock.id.in_(flock_ids)))
-        batch_codes = {row.id: row.batch_code for row in rows}
+        rows = await db.execute(select(Flock.id, Flock.hatch_date).where(Flock.id.in_(flock_ids)))
+        hatch_by_flock = {row.id: row.hatch_date for row in rows}
+
+    shed_ids = {dose.shed_id for dose in doses if dose.shed_id is not None}
+    shed_names: dict[UUID, str] = {}
+    if shed_ids:
+        rows = await db.execute(select(Shed.id, Shed.name).where(Shed.id.in_(shed_ids)))
+        shed_names = {row.id: row.name for row in rows}
 
     created = 0
     for dose in doses:
@@ -62,7 +78,8 @@ async def generate_dose_alerts(db: AsyncSession, ctx: AuthContext) -> int:
         title = f"Vaccine {dose.status.replace('_', ' ')}"
         body = format_dose_alert_body(
             due_date=dose.due_date,
-            batch_code=batch_codes.get(dose.flock_id) if dose.flock_id else None,
+            shed_name=shed_names.get(dose.shed_id) if dose.shed_id else None,
+            hatch_date=hatch_by_flock.get(dose.flock_id) if dose.flock_id else None,
         )
         severity = "warning" if dose.status == STATUS_OVERDUE else "info"
         for mem in memberships:

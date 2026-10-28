@@ -128,7 +128,7 @@ async def test_single_and_bulk_lifecycle_preserve_history(client: AsyncClient) -
     )
     assert single.status_code == 201, single.text
 
-    # Idempotent single replay
+    # Idempotent single replay (payload must match, including reason)
     again = await client.post(
         "/api/v1/lifecycle-events",
         headers=a["headers"],
@@ -138,6 +138,7 @@ async def test_single_and_bulk_lifecycle_preserve_history(client: AsyncClient) -
             "bird_id": b1["id"],
             "quantity": 1,
             "idempotency_key": f"single-mort-{b1['id']}",
+            "reason": "single",
         },
     )
     assert again.status_code == 201
@@ -354,6 +355,64 @@ async def test_bulk_idempotent_replay_and_foreign_ids(client: AsyncClient) -> No
         },
     )
     assert missing.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_bulk_changed_payload_conflicts(client: AsyncClient) -> None:
+    """Same bulk idempotency key with a different payload must 409, not re-apply."""
+    a = await _owner(client, f"bulk-life-conflict-{uuid4().hex[:8]}@example.com", "Bulk Conflict")
+    sid = await _shed(client, a["headers"], f"BC{uuid4().hex[:4].upper()}")
+    flock = await _mixed(client, a["headers"], sid, f"BX-BC-{uuid4().hex[:4].upper()}", 6)
+    b1 = await _bird(client, a["headers"], flock["id"], f"BC-1-{uuid4().hex[:4].upper()}")
+    b2 = await _bird(client, a["headers"], flock["id"], f"BC-2-{uuid4().hex[:4].upper()}")
+    b3 = await _bird(client, a["headers"], flock["id"], f"BC-3-{uuid4().hex[:4].upper()}")
+    key = f"bulk-conflict-{uuid4().hex}"
+
+    first = await client.post(
+        "/api/v1/lifecycle-events/bulk",
+        headers=a["headers"],
+        json={
+            "event_type": "mortality",
+            "effective_date": date.today().isoformat(),
+            "bird_ids": [b1["id"], b2["id"]],
+            "idempotency_key": key,
+            "reason": "first",
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    type_conflict = await client.post(
+        "/api/v1/lifecycle-events/bulk",
+        headers=a["headers"],
+        json={
+            "event_type": "sale",
+            "effective_date": date.today().isoformat(),
+            "bird_ids": [b1["id"], b2["id"]],
+            "idempotency_key": key,
+            "reason": "first",
+        },
+    )
+    assert type_conflict.status_code == 409, type_conflict.text
+
+    birds_conflict = await client.post(
+        "/api/v1/lifecycle-events/bulk",
+        headers=a["headers"],
+        json={
+            "event_type": "mortality",
+            "effective_date": date.today().isoformat(),
+            "bird_ids": [b3["id"]],
+            "idempotency_key": key,
+            "reason": "first",
+        },
+    )
+    assert birds_conflict.status_code == 409, birds_conflict.text
+
+    # Unchanged birds must still be dead from the first apply only.
+    for bid in (b1["id"], b2["id"]):
+        prof = await client.get(f"/api/v1/birds/{bid}/profile", headers=a["headers"])
+        assert prof.json()["lifecycle_status"] == "dead"
+    live = await client.get(f"/api/v1/birds/{b3['id']}/profile", headers=a["headers"])
+    assert live.json()["lifecycle_status"] == "active"
 
 
 @pytest.mark.asyncio

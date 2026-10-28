@@ -243,8 +243,15 @@ async def test_band_from_unbanded_conversion(client: AsyncClient) -> None:
     )
     assert empty.status_code == 400, empty.text
 
-    # duplicate band
-    flock2 = await _flock_unbanded(client, h, shed, f"BG2-{uuid4().hex[:4].upper()}", unbanded=2)
+    # duplicate band — distinct estimated age key (P5 active-cohort uniqueness)
+    flock2 = await _flock_unbanded(
+        client,
+        h,
+        shed,
+        f"BG2-{uuid4().hex[:4].upper()}",
+        unbanded=2,
+        estimated_age_days=14,
+    )
     dup = await client.post(
         "/api/v1/birds/band-from-unbanded",
         headers=h,

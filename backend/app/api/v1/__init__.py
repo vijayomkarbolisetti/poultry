@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import (
     auth,
     birds,
+    catalogues,
     dashboard,
     farmers,
     flocks,
@@ -27,6 +28,7 @@ api_router.include_router(flocks.router, prefix="/flocks", tags=["flocks"])
 api_router.include_router(birds.router, prefix="/birds", tags=["birds"])
 api_router.include_router(lifecycle.router, prefix="/lifecycle-events", tags=["lifecycle"])
 api_router.include_router(vaccines.router, prefix="/vaccines", tags=["vaccines"])
+api_router.include_router(catalogues.router, prefix="/vaccine-catalogues", tags=["vaccine-catalogues"])
 api_router.include_router(vaccinations.router, prefix="/vaccination-events", tags=["vaccinations"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])

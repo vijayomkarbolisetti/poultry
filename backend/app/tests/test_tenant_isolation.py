@@ -99,30 +99,31 @@ async def test_rls_hides_other_owner_rows(db_session: AsyncSession, client: Asyn
     )
     try:
         async with app_engine.connect() as conn:
-            trans = await conn.begin()
-            await set_rls_bypass(conn, False)  # type: ignore[arg-type]
-            await set_rls_context(
-                conn,  # type: ignore[arg-type]
-                user_id=a["user_id"],
-                owner_account_id=a["owner_id"],
-                role="owner",
-            )
-            visible = (
-                await conn.execute(text("SELECT id::text, name FROM owner_accounts ORDER BY name"))
-            ).all()
-            names = [row[1] for row in visible]
-            assert "RLS Farm A" in names
-            assert "RLS Farm B" not in names
+            async with conn.begin():
+                await set_rls_bypass(conn, False)  # type: ignore[arg-type]
+                await set_rls_context(
+                    conn,  # type: ignore[arg-type]
+                    user_id=a["user_id"],
+                    owner_account_id=a["owner_id"],
+                    role="owner",
+                )
+                visible = (
+                    await conn.execute(
+                        text("SELECT id::text, name FROM owner_accounts ORDER BY name")
+                    )
+                ).all()
+                names = [row[1] for row in visible]
+                assert "RLS Farm A" in names
+                assert "RLS Farm B" not in names
 
-            row = await conn.scalar(
-                text("SELECT name FROM owner_accounts WHERE id = CAST(:id AS uuid)"),
-                {"id": b["owner_id"]},
-            )
-            assert row is None
+                row = await conn.scalar(
+                    text("SELECT name FROM owner_accounts WHERE id = CAST(:id AS uuid)"),
+                    {"id": b["owner_id"]},
+                )
+                assert row is None
 
-            await set_rls_bypass(conn, True)  # type: ignore[arg-type]
-            count = await conn.scalar(text("SELECT count(*) FROM owner_accounts"))
-            assert count >= 2
-            await trans.commit()
+                await set_rls_bypass(conn, True)  # type: ignore[arg-type]
+                count = await conn.scalar(text("SELECT count(*) FROM owner_accounts"))
+                assert count >= 2
     finally:
         await app_engine.dispose()
