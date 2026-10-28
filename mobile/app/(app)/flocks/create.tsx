@@ -1,22 +1,27 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { StyleSheet, Text } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { z } from "zod";
 
+import { getCatalogueAssignment, listCatalogues } from "../../../src/api/catalogues";
 import { createFlock } from "../../../src/api/flocks";
 import { describeApiError } from "../../../src/api/client";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
-import { DateField } from "../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { RadioChips } from "../../../src/components/ui/RadioChips";
 import { Screen } from "../../../src/components/ui/Screen";
 import { SelectField } from "../../../src/components/ui/SelectField";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { TextField } from "../../../src/components/ui/TextField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
+import { hasPermission } from "../../../src/features/auth/permissions";
 import { colors } from "../../../src/theme/tokens";
+import { vaccineUi } from "../../../src/theme/vaccineUi";
 
 const schema = z
   .object({
@@ -37,11 +42,11 @@ type FormValues = z.infer<typeof schema>;
 const DOB_OPTIONS = [
   { value: "exact", label: "Exact hatch date", hint: "You know the hatch / DOB day" },
   { value: "estimated", label: "Estimated age", hint: "Age in days is approximate" },
-  { value: "unknown", label: "Unknown", hint: "Age unknown — schedules may need review" },
+  { value: "unknown", label: "Unknown", hint: "Age unknown — may need review later" },
 ];
 
 const MODE_OPTIONS = [
-  { value: "batch", label: "Batch counts", hint: "Track by headcount in the batch" },
+  { value: "batch", label: "Headcount", hint: "Track by unbanded headcount in the shed" },
   { value: "individual", label: "Individual", hint: "Track banded birds" },
   { value: "mixed", label: "Mixed", hint: "Banded + unbanded together" },
 ];
@@ -49,15 +54,39 @@ const MODE_OPTIONS = [
 export default function CreateFlockScreen() {
   const { shedId: shedIdParam } = useLocalSearchParams<{ shedId?: string }>();
   const lockedShedId = typeof shedIdParam === "string" && shedIdParam.length > 0 ? shedIdParam : null;
-  const { ownerAccountId } = useAuth();
+  const { user, ownerAccountId } = useAuth();
+  const canCatalogue = hasPermission(user, ownerAccountId, "schedule.view");
   const qc = useQueryClient();
   const sheds = useQuery({ queryKey: ["sheds", ownerAccountId], queryFn: () => listSheds() });
+  const catalogues = useQuery({
+    queryKey: ["catalogues", ownerAccountId],
+    queryFn: () => listCatalogues(),
+    enabled: canCatalogue,
+  });
+  const assignment = useQuery({
+    queryKey: ["catalogue-assignment", ownerAccountId],
+    queryFn: () => getCatalogueAssignment(),
+    enabled: canCatalogue,
+  });
+
   const [shedId, setShedId] = useState<string | null>(lockedShedId);
   const [shedError, setShedError] = useState<string | null>(null);
+  /** null = inherit farm default catalogue (A2′). */
+  const [catalogueId, setCatalogueId] = useState<string | null>(null);
+  const [catalogueReady, setCatalogueReady] = useState(false);
 
   useEffect(() => {
     if (lockedShedId) setShedId(lockedShedId);
   }, [lockedShedId]);
+
+  useEffect(() => {
+    if (!canCatalogue || catalogueReady) return;
+    if (assignment.isLoading || catalogues.isLoading) return;
+    // Keep null = inherit farm default (A2′). UI shows “Farm default” via __inherit__.
+    setCatalogueId(null);
+    setCatalogueReady(true);
+  }, [canCatalogue, catalogueReady, assignment.isLoading, catalogues.isLoading]);
+
   const [mode, setMode] = useState<"batch" | "individual" | "mixed">("batch");
   const [dobConfidence, setDobConfidence] = useState<"exact" | "estimated" | "unknown">("estimated");
   const [hatchDate, setHatchDate] = useState<string | null>(null);
@@ -130,20 +159,24 @@ export default function CreateFlockScreen() {
         dob_confidence: dobConfidence,
         hatch_date: dobConfidence === "exact" ? hatchDate : undefined,
         estimated_age_days: age,
-        age_reported_on: age != null ? new Date().toISOString().slice(0, 10) : undefined,
+        age_reported_on: age != null ? todayIsoDate() : undefined,
         breed: values.breed || undefined,
         unbanded_count: mode === "individual" ? 0 : count,
+        // null / omit = inherit farm default; explicit id = flock override (A2′).
+        vaccination_catalogue_id:
+          !canCatalogue || !catalogueId || catalogueId === "__inherit__" ? null : catalogueId,
       });
       void qc.invalidateQueries({ queryKey: ["flocks", ownerAccountId] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      void qc.invalidateQueries({ queryKey: ["vaccination"] });
       if (lockedShedId) {
         void qc.invalidateQueries({ queryKey: ["shed-overview", lockedShedId] });
-        router.replace(`/(app)/sheds/${lockedShedId}`);
+        router.replace(`/(app)/sheds/${lockedShedId}/birds`);
       } else {
         router.replace(`/(app)/flocks/${flock.id}`);
       }
     } catch (e: unknown) {
-      setError(describeApiError(e, "create the batch"));
+      setError(describeApiError(e, "add birds"));
     } finally {
       setLoading(false);
     }
@@ -170,8 +203,8 @@ export default function CreateFlockScreen() {
         emptyMessage="No active sheds yet — create a shed first"
         helper={
           lockedShedId
-            ? "This batch will be created in the selected shed"
-            : "Required — batches belong to one shed"
+            ? "These birds will be added in the selected shed"
+            : "Required — birds belong to one shed"
         }
       />
 
@@ -190,14 +223,16 @@ export default function CreateFlockScreen() {
         options={DOB_OPTIONS}
         onChange={onDobChange}
         error={dobError ?? undefined}
-        helper="Schedules use hatch date or estimated age when available"
+        helper="Hatch date or estimated age helps track bird age"
       />
 
       {dobConfidence === "exact" ? (
-        <DateField
+        <AppDatePicker
           label="Hatch / DOB date"
           required
           value={hatchDate}
+          maximumDate={todayIsoDate()}
+          placeholder="Select hatch date"
           onChange={(v) => {
             setHatchDate(v);
             setDobError(null);
@@ -210,15 +245,130 @@ export default function CreateFlockScreen() {
         <TextField control={control} name="estimated_age_days" label="Estimated age (days)" />
       ) : null}
 
-      <TextField control={control} name="batch_code" label="Batch code" autoCapitalize="characters" />
+      <TextField control={control} name="batch_code" label="Internal code" autoCapitalize="characters" />
       <TextField control={control} name="initial_count" label="Initial count" keyboardType="default" />
       <TextField control={control} name="breed" label="Breed (optional)" autoCapitalize="words" />
+
+      {canCatalogue ? (
+        <View style={styles.catalogueBlock}>
+          <Text style={styles.catalogueLabel}>Select Vaccination Catalogue</Text>
+          <Text style={styles.catalogueHelper}>
+            Farm default is preselected. Override only when this flock needs a different schedule.
+          </Text>
+          {(catalogues.data ?? []).length === 0 && !catalogues.isLoading ? (
+            <Text style={styles.catalogueEmpty}>
+              No catalogues available — set a farm default under More → Catalogues
+            </Text>
+          ) : (
+            <View style={styles.catalogueList}>
+              <Pressable
+                style={[
+                  styles.catalogueCard,
+                  (!catalogueId || catalogueId === "__inherit__") && styles.catalogueCardOn,
+                ]}
+                onPress={() => setCatalogueId(null)}
+              >
+                <View style={[styles.catalogueIcon, { backgroundColor: vaccineUi.brandSoft }]}>
+                  <Ionicons name="leaf" size={20} color={vaccineUi.brand} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.catalogueTitle}>Farm default</Text>
+                  <Text style={styles.catalogueMeta} numberOfLines={2}>
+                    {assignment.data?.catalogue_name
+                      ? `Inherit ${assignment.data.catalogue_name}`
+                      : "Inherit farm assignment"}
+                  </Text>
+                </View>
+                {(!catalogueId || catalogueId === "__inherit__") ? (
+                  <Ionicons name="checkmark-circle" size={22} color={vaccineUi.brand} />
+                ) : null}
+              </Pressable>
+              {(catalogues.data ?? []).map((c, index) => {
+                const selected = catalogueId === c.id;
+                const iconColor = vaccineUi.iconPalette[index % vaccineUi.iconPalette.length];
+                const iconBg = vaccineUi.iconSoftPalette[index % vaccineUi.iconSoftPalette.length];
+                const isFarmDefault = assignment.data?.catalogue_id === c.id;
+                return (
+                  <Pressable
+                    key={c.id}
+                    style={[styles.catalogueCard, selected && styles.catalogueCardOn]}
+                    onPress={() => setCatalogueId(c.id)}
+                  >
+                    <View style={[styles.catalogueIcon, { backgroundColor: iconBg }]}>
+                      <Ionicons name="paw" size={20} color={iconColor} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.catalogueTitle} numberOfLines={2}>
+                        {c.name}
+                      </Text>
+                      <Text style={styles.catalogueMeta}>
+                        {c.is_platform ? "Platform" : "Farm"} · {c.item_count} vaccine
+                        {c.item_count === 1 ? "" : "s"}
+                        {isFarmDefault ? " · farm default" : ""}
+                      </Text>
+                    </View>
+                    {selected ? <Ionicons name="checkmark-circle" size={22} color={vaccineUi.brand} /> : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          <View style={styles.infoBox}>
+            <Ionicons name="information-circle" size={18} color={vaccineUi.infoText} />
+            <Text style={styles.infoText}>
+              The catalogue sets due dates from hatch age. Farm default applies unless you pick an
+              explicit override for this flock.
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button label="Create batch" onPress={onSubmit} loading={loading} />
+      <Button label="Add birds" onPress={onSubmit} loading={loading} />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   error: { color: colors.danger },
+  catalogueBlock: { gap: 8 },
+  catalogueLabel: { fontSize: 14, fontWeight: "700", color: colors.ink },
+  catalogueHelper: { fontSize: 12, fontWeight: "600", color: colors.inkMuted, lineHeight: 16 },
+  catalogueEmpty: { fontSize: 13, color: colors.inkMuted, fontWeight: "600" },
+  catalogueList: { gap: 8 },
+  catalogueCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: vaccineUi.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: vaccineUi.cardBorder,
+    padding: 12,
+  },
+  catalogueCardOn: {
+    borderColor: vaccineUi.brand,
+    backgroundColor: vaccineUi.brandSoft,
+  },
+  catalogueIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  catalogueTitle: { fontSize: 15, fontWeight: "800", color: vaccineUi.ink },
+  catalogueMeta: { fontSize: 12, fontWeight: "600", color: vaccineUi.muted, marginTop: 2 },
+  infoBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    backgroundColor: vaccineUi.infoBg,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: vaccineUi.infoBorder,
+    padding: 12,
+    marginTop: 4,
+  },
+  infoText: { flex: 1, fontSize: 12, fontWeight: "600", color: vaccineUi.infoText, lineHeight: 17 },
 });

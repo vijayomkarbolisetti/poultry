@@ -57,12 +57,14 @@ export default function FlocksScreen() {
     <Screen style={{ paddingTop: space.md }}>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Batches</Text>
+          <Text style={styles.title}>Shed populations</Text>
           <Text style={styles.sub}>
-            {data ? `${data.length} batch${data.length === 1 ? "" : "es"}` : "Your bird groups"}
+            {data
+              ? `${data.length} hatch-date population${data.length === 1 ? "" : "s"}`
+              : "Birds by shed hatch date"}
           </Text>
         </View>
-        {canCreate ? <Button label="Add batch" onPress={() => router.push("/(app)/flocks/create")} /> : null}
+        {canCreate ? <Button label="Add birds" onPress={() => router.push("/(app)/flocks/create")} /> : null}
       </View>
 
       <SelectField
@@ -83,7 +85,7 @@ export default function FlocksScreen() {
         clearStale={false}
       />
 
-      {flocks.isError ? <Text style={styles.error}>Could not load batches</Text> : null}
+      {flocks.isError ? <Text style={styles.error}>Could not load populations</Text> : null}
 
       <FlatList
         style={{ flex: 1 }}
@@ -92,20 +94,26 @@ export default function FlocksScreen() {
         contentContainerStyle={{ gap: space.sm, paddingBottom: 40 }}
         ListEmptyComponent={
           flocks.isLoading ? (
-            <HenLoader label="Loading batches…" />
+            <HenLoader label="Loading populations…" />
           ) : (
             <EmptyState
-              title="No batches yet"
-              body="Start a batch to track birds, ages, and vaccination plans in one place."
+              title="No populations yet"
+              body="Add birds in a shed to track ages and populations in one place."
               imageUri={media.flockHen}
-              actionLabel={canCreate ? "Onboard first batch" : undefined}
+              actionLabel={canCreate ? "Add birds" : undefined}
               onAction={canCreate ? () => router.push("/(app)/flocks/create") : undefined}
             />
           )
         }
         renderItem={({ item }) => (
           <MediaCard
-            title={item.batch_code}
+            title={
+              item.hatch_date
+                ? `Hatch ${item.hatch_date}`
+                : item.estimated_age_days != null
+                  ? `~${item.estimated_age_days}d`
+                  : "Age unknown"
+            }
             subtitle={item.breed ? `${item.breed}` : "Mixed / unknown breed"}
             meta={`${item.current_count} hens · ${item.tracking_mode} · ${item.dob_confidence} age`}
             imageUri={media.flockHen}

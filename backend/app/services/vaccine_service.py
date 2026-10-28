@@ -11,7 +11,9 @@ from app.models.audit import AuditLog
 from app.models.enums import DobConfidence, FlockStatus, MembershipRole
 from app.models.flock import Bird, Flock
 from app.models.owner import OwnerAccount
+from app.models.shed import Shed
 from app.models.vaccine import ScheduledDose, ScheduleRule, VaccineDefinition, VaccineScheduleVersion
+from app.schemas.vaccine import ScheduledDoseOut
 from app.services.schedule_engine import (
     STATUS_INACTIVE,
     STATUS_NEEDS_REVIEW,
@@ -168,12 +170,13 @@ async def generate_schedules_for_flock(
     flock_id: UUID,
     *,
     vaccine_definition_ids: list[UUID] | None = None,
+    commit: bool = True,
 ) -> list[ScheduledDose]:
     flock = await db.scalar(
         select(Flock).where(Flock.id == flock_id, Flock.owner_account_id == ctx.owner_account_id)
     )
     if not flock:
-        raise VaccineError("Flock not found", "NOT_FOUND")
+        raise VaccineError("Population not found", "NOT_FOUND")
     await assert_shed_access(db, ctx, flock.shed_id, permission_code="schedule.view")
     from app.services import shed_service
 
@@ -236,12 +239,17 @@ async def generate_schedules_for_flock(
                 created.append(dose)
                 continue
             for n, due in enumerate(dues, start=rule.dose_number):
+                # Deduplicate on the logical dose identity. Catalogue rematerialize
+                # historically minted new schedule_rule_ids for unchanged rules; matching
+                # only on schedule_rule_id then created twin Marex/ND cards for one flock.
                 exists = await db.scalar(
                     select(ScheduledDose.id).where(
                         ScheduledDose.flock_id == flock.id,
-                        ScheduledDose.schedule_rule_id == rule.id,
+                        ScheduledDose.vaccine_definition_id == definition.id,
+                        ScheduledDose.dose_number == n,
                         ScheduledDose.due_date == due,
                         ScheduledDose.bird_id.is_(None),
+                        ScheduledDose.is_active.is_(True),
                     )
                 )
                 if exists:
@@ -273,8 +281,64 @@ async def generate_schedules_for_flock(
                 )
                 db.add(dose)
                 created.append(dose)
-    await db.commit()
+    await reconcile_duplicate_scheduled_doses(db, owner_account_id=ctx.owner_account_id, flock_id=flock.id)
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return created
+
+
+async def reconcile_duplicate_scheduled_doses(
+    db: AsyncSession,
+    *,
+    owner_account_id: UUID,
+    flock_id: UUID | None = None,
+    shed_id: UUID | None = None,
+    commit: bool = False,
+) -> int:
+    """Deactivate superseded twin flock-level doses (same vaccine/due/dose_number).
+
+    Keeps completed doses; among open twins keeps the earliest created row.
+    Does not delete events or rewrite completed_count.
+    """
+    stmt = select(ScheduledDose).where(
+        ScheduledDose.owner_account_id == owner_account_id,
+        ScheduledDose.is_active.is_(True),
+        ScheduledDose.bird_id.is_(None),
+    )
+    if flock_id is not None:
+        stmt = stmt.where(ScheduledDose.flock_id == flock_id)
+    if shed_id is not None:
+        stmt = stmt.where(ScheduledDose.shed_id == shed_id)
+    doses = list(await db.scalars(stmt.order_by(ScheduledDose.created_at.asc())))
+    groups: dict[tuple, list[ScheduledDose]] = {}
+    for dose in doses:
+        key = (dose.flock_id, dose.vaccine_definition_id, dose.dose_number, dose.due_date)
+        groups.setdefault(key, []).append(dose)
+
+    deactivated = 0
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        completed = [d for d in group if str(d.status).startswith("completed")]
+        open_doses = [d for d in group if d not in completed]
+        if completed:
+            # Keep earliest completed twin; retire open + extra completed clones.
+            victims = open_doses + completed[1:]
+        else:
+            # Keep earliest open twin; deactivate the rest.
+            victims = open_doses[1:]
+        for dose in victims:
+            dose.is_active = False
+            if not str(dose.status).startswith("completed"):
+                dose.status = STATUS_INACTIVE
+            deactivated += 1
+    if deactivated:
+        await db.flush()
+        if commit:
+            await db.commit()
+    return deactivated
 
 
 async def list_scheduled_doses(
@@ -318,9 +382,97 @@ async def list_scheduled_doses(
         refresh_shed_id = flock.shed_id
     if status:
         stmt = stmt.where(ScheduledDose.status == status)
+    # Collapse historical twin cards from repeated catalogue rematerialize.
+    # Commit so the next dashboard load does not resurrect deactivated twins.
+    deactivated = await reconcile_duplicate_scheduled_doses(
+        db,
+        owner_account_id=ctx.owner_account_id,
+        flock_id=flock_id,
+        shed_id=shed_id if flock_id is None else None,
+        commit=True,
+    )
+    if deactivated:
+        from app.core.database import set_rls_context
+
+        await set_rls_context(
+            db,
+            user_id=ctx.user.id,
+            owner_account_id=ctx.owner_account_id,
+            role=ctx.membership.role.value if ctx.membership else None,
+        )
     if refresh_shed_id is not None:
         await refresh_dose_statuses(db, ctx, shed_id=refresh_shed_id, commit=False)
+    else:
+        # Keep dashboard statuses accurate for "All sheds" without requiring schedule.manage.
+        await refresh_dose_statuses(db, ctx, commit=False)
     return list(await db.scalars(stmt.order_by(ScheduledDose.due_date).limit(limit)))
+
+
+async def enrich_scheduled_doses(
+    db: AsyncSession,
+    ctx: AuthContext,
+    doses: list[ScheduledDose],
+) -> list[ScheduledDoseOut]:
+    """Attach display labels + flock population counts within the caller's owner scope.
+
+    Vaccine names come from owner-scoped definitions — no schedule.view required.
+    """
+    assert ctx.owner_account_id is not None
+    if not doses:
+        return []
+
+    vaccine_ids = {d.vaccine_definition_id for d in doses}
+    shed_ids = {d.shed_id for d in doses}
+    flock_ids = {d.flock_id for d in doses}
+
+    vaccines = {
+        row.id: row.name
+        for row in await db.scalars(
+            select(VaccineDefinition).where(
+                VaccineDefinition.owner_account_id == ctx.owner_account_id,
+                VaccineDefinition.id.in_(vaccine_ids),
+            )
+        )
+    }
+    sheds = {
+        row.id: row.name
+        for row in await db.scalars(
+            select(Shed).where(
+                Shed.owner_account_id == ctx.owner_account_id,
+                Shed.id.in_(shed_ids),
+            )
+        )
+    }
+    flocks = {
+        row.id: row
+        for row in await db.scalars(
+            select(Flock).where(
+                Flock.owner_account_id == ctx.owner_account_id,
+                Flock.id.in_(flock_ids),
+            )
+        )
+    }
+
+    out: list[ScheduledDoseOut] = []
+    for dose in doses:
+        flock = flocks.get(dose.flock_id)
+        eligible = int(dose.eligible_count or 0)
+        completed = int(dose.completed_count or 0)
+        remaining = max(0, eligible - completed)
+        base = ScheduledDoseOut.model_validate(dose)
+        out.append(
+            base.model_copy(
+                update={
+                    "vaccine_name": vaccines.get(dose.vaccine_definition_id),
+                    "shed_name": sheds.get(dose.shed_id),
+                    "flock_label": (flock.batch_code if flock and flock.batch_code else None),
+                    "banded_count": int(flock.banded_count) if flock is not None else None,
+                    "unbanded_count": int(flock.unbanded_count) if flock is not None else None,
+                    "remaining_count": remaining,
+                }
+            )
+        )
+    return out
 
 
 async def refresh_dose_statuses(

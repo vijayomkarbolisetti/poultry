@@ -7,18 +7,15 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { describeApiError } from "../../../src/api/client";
 import { registerBandedInShed } from "../../../src/api/birds";
 import { Button } from "../../../src/components/ui/Button";
-import { DateField } from "../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { Screen } from "../../../src/components/ui/Screen";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { validateBandNumber } from "../../../src/features/birds/groupOnboardingHelpers";
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default function RegisterBandedBirdScreen() {
   const params = useLocalSearchParams<{ shedId?: string | string[] }>();
@@ -62,7 +59,7 @@ export default function RegisterBandedBirdScreen() {
       setMsg("Hatch date is required");
       return;
     }
-    if (hatchDate > todayIso()) {
+    if (hatchDate > todayIsoDate()) {
       setMsg("Hatch date cannot be in the future");
       return;
     }
@@ -123,7 +120,7 @@ export default function RegisterBandedBirdScreen() {
     <Screen scroll edges={["left", "right", "bottom"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => safeBack(`/(app)/sheds/${shedId}`)}
+          onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)}
           hitSlop={12}
           accessibilityRole="button"
           accessibilityLabel="Back"
@@ -155,10 +152,12 @@ export default function RegisterBandedBirdScreen() {
         accessibilityLabel="Band number"
       />
 
-      <DateField
-        label="Hatch date *"
+      <AppDatePicker
+        label="Hatch date"
         required
         value={hatchDate}
+        maximumDate={todayIsoDate()}
+        placeholder="Select hatch date"
         onChange={(v) => {
           setHatchDate(v);
           setMsg(null);

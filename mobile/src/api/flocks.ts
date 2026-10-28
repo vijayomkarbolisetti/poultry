@@ -22,6 +22,8 @@ export type Flock = {
   status: "active" | "closed";
   count_mismatch: boolean;
   notes: string | null;
+  /** Null/absent = inherit farm default catalogue (A2′). */
+  vaccination_catalogue_id?: string | null;
 };
 
 /** Legacy alias for {@link Flock} (prefer hatch-date labels in UI). */

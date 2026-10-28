@@ -34,7 +34,7 @@ export default function ShedGroupsScreen() {
     return (
       <Screen>
         <Text style={styles.error}>You do not have permission to view groups.</Text>
-        <Button label="Back" variant="secondary" onPress={() => safeBack(id ? `/(app)/sheds/${id}` : undefined)} />
+        <Button label="Back" variant="secondary" onPress={() => safeBack(id ? `/(app)/sheds/${id}/birds` : undefined)} />
       </Screen>
     );
   }
@@ -63,7 +63,7 @@ export default function ShedGroupsScreen() {
     <Screen scroll edges={["left", "right", "bottom"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => safeBack(`/(app)/sheds/${id}`)}
+          onPress={() => safeBack(`/(app)/sheds/${id}/birds`)}
           style={styles.backBtn}
           accessibilityLabel="Back"
         >
@@ -107,13 +107,13 @@ export default function ShedGroupsScreen() {
               style={({ pressed }) => [styles.card, pressed && { opacity: 0.92 }]}
               onPress={() => router.push(`/(app)/flocks/${b.id}`)}
               accessibilityRole="button"
-              accessibilityLabel={`Open ${b.batch_code}`}
+              accessibilityLabel={`Open hatch ${hatch}`}
             >
               <View style={styles.cardTop}>
-                <Text style={styles.code}>{b.batch_code}</Text>
+                <Text style={styles.code}>{hatch.startsWith("~") || hatch === "Age unknown" ? hatch : `Hatch ${hatch}`}</Text>
                 <Text style={styles.status}>{b.status}</Text>
               </View>
-              <Text style={styles.meta}>{b.breed ?? "Mixed / unknown breed"} · {hatch}</Text>
+              <Text style={styles.meta}>{b.breed ?? "Mixed / unknown breed"}</Text>
               <Text style={styles.count}>{b.current_count} live</Text>
               <Text style={styles.meta}>
                 Banded {b.banded_count} · Unbanded {b.unbanded_count}

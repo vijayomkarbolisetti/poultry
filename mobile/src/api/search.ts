@@ -66,7 +66,7 @@ export async function globalSearch(opts: {
       q: opts.q,
       limit: opts.limit ?? 10,
       include_inactive: opts.include_inactive ?? true,
-      types: opts.types ?? "birds,batches,sheds",
+      types: opts.types ?? "birds,sheds",
     },
   });
   return data;

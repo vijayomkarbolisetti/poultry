@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
-import { useRef, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { getBirdProfile } from "../../../src/api/birds";
@@ -11,6 +11,7 @@ import { Button } from "../../../src/components/ui/Button";
 import { DataQualityBanner } from "../../../src/components/ui/DataQualityBanner";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { formatLifecycleLabel } from "../../../src/features/birds/birdListHelpers";
@@ -35,6 +36,13 @@ export default function BirdProfileScreen() {
     queryFn: () => getBirdProfile(id!),
     enabled: !!id && canView,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!id || !canView) return;
+      void profile.refetch();
+    }, [id, canView]),
+  );
 
   const backTarget = fromShedId ? `/(app)/sheds/${fromShedId}/birds` : "/(app)/search";
 
@@ -70,7 +78,7 @@ export default function BirdProfileScreen() {
             try {
               await recordLifecycle({
                 event_type: "mortality",
-                effective_date: new Date().toISOString().slice(0, 10),
+                effective_date: todayIsoDate(),
                 bird_id: id,
                 quantity: 1,
                 reason: "Recorded from bird profile (mortality)",
@@ -129,6 +137,8 @@ export default function BirdProfileScreen() {
           ? "Unknown"
           : p.dob_confidence;
   const addedOn = p.created_at ? new Date(p.created_at).toLocaleDateString() : "—";
+  const parentLabel = (ref: { band_id: string | null; display_code: string | null; id: string } | null) =>
+    ref ? ref.band_id ?? ref.display_code ?? ref.id.slice(0, 8) : "—";
 
   return (
     <Screen scroll edges={["left", "right", "bottom"]}>
@@ -153,8 +163,16 @@ export default function BirdProfileScreen() {
       <View style={styles.card}>
         <Row label="Shed" value={`${p.shed_name ?? "—"} (${p.shed_code ?? "—"})`} />
         <Row label="Hatch / age" value={ageLabel} />
+        <Row label="Breed" value={p.breed?.trim() || "—"} />
+        <Row label="Sex" value={p.sex?.trim() || "—"} />
         <Row label="Added on" value={addedOn} />
         <Row label="Notes" value={p.notes?.trim() || "—"} last />
+      </View>
+
+      <Text style={styles.section}>Parents</Text>
+      <View style={styles.card}>
+        <Row label="Sire" value={parentLabel(p.sire)} />
+        <Row label="Dam" value={parentLabel(p.dam)} last />
       </View>
 
       {p.is_active ? (
@@ -196,6 +214,21 @@ export default function BirdProfileScreen() {
             />
           ) : null}
         </View>
+      ) : null}
+
+      {(p.lifecycle_events ?? []).length > 0 ? (
+        <>
+          <Text style={styles.section}>Lifecycle history</Text>
+          {(p.lifecycle_events ?? []).map((ev) => (
+            <View key={ev.id} style={styles.lifeCard}>
+              <Text style={styles.lifeTitle}>{formatLifecycleLabel(ev.event_type)}</Text>
+              <Text style={styles.meta}>
+                {ev.effective_date}
+                {ev.reason ? ` · ${ev.reason}` : ""}
+              </Text>
+            </View>
+          ))}
+        </>
       ) : null}
 
       {lifeMsg ? <Text style={styles.meta}>{lifeMsg}</Text> : null}
@@ -286,7 +319,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: birdUi.border,
     paddingHorizontal: 8,
+    marginBottom: 12,
   },
+  section: {
+    marginTop: 8,
+    marginBottom: 8,
+    fontSize: 13,
+    fontWeight: "800",
+    color: birdUi.muted,
+    textTransform: "uppercase",
+  },
+  lifeCard: {
+    backgroundColor: birdUi.white,
+    borderRadius: birdUi.cardRadius,
+    borderWidth: 1,
+    borderColor: birdUi.border,
+    padding: 12,
+    gap: 4,
+    marginBottom: 8,
+  },
+  lifeTitle: { fontWeight: "800", color: birdUi.text },
   row: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 12 },
   rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: birdUi.border },
   rowLabel: { color: birdUi.muted, fontSize: 14 },
@@ -307,6 +359,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   actionLabel: { flex: 1, fontSize: 15, fontWeight: "700", color: birdUi.text },
-  meta: { color: birdUi.muted, marginTop: 8 },
+  meta: { color: birdUi.muted, marginTop: 8, fontSize: 13 },
   error: { color: birdUi.error, fontWeight: "600" },
 });

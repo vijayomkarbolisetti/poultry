@@ -50,7 +50,7 @@ _OPEN_DOSE_STATUSES = {
     STATUS_OVERDUE,
     STATUS_NEEDS_REVIEW,
 }
-_BATCH_DOSE_NOTE = "Batch schedule — not confirmed as an individual vaccination"
+_BATCH_DOSE_NOTE = "Shed hatch-date schedule — not confirmed as an individual vaccination"
 
 
 class FlockError(Exception):
@@ -127,6 +127,15 @@ async def create_flock(db: AsyncSession, ctx: AuthContext, data) -> Flock:
         else:
             unbanded = data.initial_count
 
+    catalogue_override = getattr(data, "vaccination_catalogue_id", None)
+    if catalogue_override is not None:
+        from app.services import catalogue_service
+
+        try:
+            await catalogue_service.assert_catalogue_assignable(db, ctx, catalogue_override)
+        except catalogue_service.CatalogueError as exc:
+            raise FlockError(exc.message, exc.code) from exc
+
     flock = Flock(
         owner_account_id=ctx.owner_account_id,
         shed_id=data.shed_id,
@@ -143,6 +152,7 @@ async def create_flock(db: AsyncSession, ctx: AuthContext, data) -> Flock:
         tracking_mode=data.tracking_mode,
         status=FlockStatus.active,
         notes=data.notes,
+        vaccination_catalogue_id=catalogue_override,
     )
     await reconcile_flock_counts(db, flock)
     db.add(flock)
@@ -179,8 +189,11 @@ async def create_flock(db: AsyncSession, ctx: AuthContext, data) -> Flock:
                 "An active population with this age key already exists in this shed",
                 "DUPLICATE_COHORT",
             ) from exc
-        raise FlockError("Batch code already exists", "DUPLICATE_BATCH") from exc
+        raise FlockError("Population code already exists", "DUPLICATE_BATCH") from exc
     await db.refresh(flock)
+    from app.services import catalogue_service
+
+    await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
     return flock
 
 
@@ -206,7 +219,7 @@ async def get_flock(db: AsyncSession, ctx: AuthContext, flock_id: UUID) -> Flock
         select(Flock).where(Flock.id == flock_id, Flock.owner_account_id == ctx.owner_account_id)
     )
     if flock is None:
-        raise FlockError("Flock not found", "NOT_FOUND")
+        raise FlockError("Population not found", "NOT_FOUND")
     await assert_shed_access(db, ctx, flock.shed_id, permission_code="flock.view")
     return flock
 
@@ -247,7 +260,7 @@ async def update_flock(db: AsyncSession, ctx: AuthContext, flock_id: UUID, data)
             )
         add_n = int(data.add_unbanded)
         if flock.status != FlockStatus.active:
-            raise FlockError("Batch is not active", "INACTIVE_BATCH")
+            raise FlockError("This population is not active", "INACTIVE_BATCH")
         if flock.tracking_mode == TrackingMode.individual:
             flock.tracking_mode = TrackingMode.mixed
         flock.unbanded_count += add_n
@@ -264,7 +277,52 @@ async def update_flock(db: AsyncSession, ctx: AuthContext, flock_id: UUID, data)
                 recorded_by_user_id=ctx.user.id,
             )
         )
+    hatch_corrected = False
+    if getattr(data, "hatch_date", None) is not None:
+        if data.hatch_date > date.today():
+            raise FlockError("Hatch date cannot be in the future", "INVALID_DOB")
+        flock.hatch_date = data.hatch_date
+        flock.dob_confidence = DobConfidence.exact
+        flock.estimated_age_days = None
+        flock.age_reported_on = None
+        hatch_corrected = True
+        db.add(
+            AuditLog(
+                owner_account_id=ctx.owner_account_id,
+                actor_user_id=ctx.user.id,
+                action="flock.hatch_correct",
+                entity_type="flock",
+                entity_id=flock.id,
+                after={"hatch_date": data.hatch_date.isoformat()},
+            )
+        )
+    catalogue_changed = False
+    from app.services import catalogue_service, vaccine_service
+
+    if getattr(data, "clear_vaccination_catalogue_override", False):
+        flock.vaccination_catalogue_id = None
+        catalogue_changed = True
+    elif getattr(data, "vaccination_catalogue_id", None) is not None:
+        try:
+            await catalogue_service.assert_catalogue_assignable(db, ctx, data.vaccination_catalogue_id)
+        except catalogue_service.CatalogueError as exc:
+            raise FlockError(exc.message, exc.code) from exc
+        flock.vaccination_catalogue_id = data.vaccination_catalogue_id
+        catalogue_changed = True
+
     await reconcile_flock_counts(db, flock)
+
+    if hatch_corrected:
+        await catalogue_service.recalculate_open_doses_for_hatch(db, ctx, flock.id)
+        try:
+            await vaccine_service.generate_schedules_for_flock(db, ctx, flock.id, commit=False)
+        except vaccine_service.VaccineError:
+            pass
+    elif catalogue_changed:
+        await db.flush()
+        await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
+    elif data.current_count is not None or getattr(data, "add_unbanded", None) is not None:
+        await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
     await db.commit()
     await db.refresh(flock)
     return flock
@@ -395,6 +453,11 @@ async def add_unbanded_in_shed(db: AsyncSession, ctx: AuthContext, data) -> dict
                 await db.commit()
                 await db.refresh(flock)
 
+        from app.services import catalogue_service
+
+        await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
+        await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
+        await db.commit()
         return {
             "flock": FlockOut.model_validate(flock),
             "created_cohort": True,
@@ -405,7 +468,7 @@ async def add_unbanded_in_shed(db: AsyncSession, ctx: AuthContext, data) -> dict
     # Existing cohort — increment unbanded (and promote individual → mixed).
     await assert_shed_access(db, ctx, flock.shed_id, permission_code="flock.update")
     if flock.status != FlockStatus.active:
-        raise FlockError("Batch is not active", "INACTIVE_BATCH")
+        raise FlockError("This population is not active", "INACTIVE_BATCH")
     if flock.tracking_mode == TrackingMode.individual:
         flock.tracking_mode = TrackingMode.mixed
     elif flock.tracking_mode == TrackingMode.batch:
@@ -450,6 +513,11 @@ async def add_unbanded_in_shed(db: AsyncSession, ctx: AuthContext, data) -> dict
         raise FlockError("Could not add unbanded birds", "CONFLICT") from exc
     await db.refresh(flock)
     from app.schemas.flock import FlockOut
+    from app.services import catalogue_service
+
+    await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
+    await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
+    await db.commit()
 
     return {
         "flock": FlockOut.model_validate(flock),
@@ -540,6 +608,11 @@ async def create_bird(db: AsyncSession, ctx: AuthContext, data) -> Bird:
         await db.rollback()
         raise FlockError("Band ID conflict", "DUPLICATE_BAND") from exc
     await db.refresh(bird)
+    from app.services import catalogue_service
+
+    await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
+    await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
+    await db.commit()
     return bird
 
 
@@ -598,7 +671,7 @@ async def band_from_unbanded(db: AsyncSession, ctx: AuthContext, data) -> dict:
         .with_for_update()
     )
     if flock is None:
-        raise FlockError("Flock not found", "NOT_FOUND")
+        raise FlockError("Population not found", "NOT_FOUND")
     await assert_shed_access(db, ctx, flock.shed_id, permission_code="bird.create")
     from app.services import shed_service
 
@@ -607,7 +680,7 @@ async def band_from_unbanded(db: AsyncSession, ctx: AuthContext, data) -> dict:
     except shed_service.ShedError as exc:
         raise FlockError(exc.message, exc.code) from exc
     if flock.status != FlockStatus.active:
-        raise FlockError("Batch is not active", "INACTIVE_BATCH")
+        raise FlockError("This population is not active", "INACTIVE_BATCH")
     if flock.unbanded_count < 1:
         raise FlockError("No unbanded birds available to band", "ZERO_UNBANDED")
 
@@ -1095,7 +1168,7 @@ async def record_lifecycle(db: AsyncSession, ctx: AuthContext, data) -> Lifecycl
             .with_for_update()
         )
         if flock is None:
-            raise FlockError("Flock not found", "NOT_FOUND")
+            raise FlockError("Population not found", "NOT_FOUND")
         await assert_shed_access(db, ctx, flock.shed_id, permission_code="lifecycle.record")
         shed_id = flock.shed_id
     else:
@@ -1123,11 +1196,11 @@ async def record_lifecycle(db: AsyncSession, ctx: AuthContext, data) -> Lifecycl
             # Count-only ops affect unbanded population — never fabricate individual bird events.
             if flock.tracking_mode == TrackingMode.individual:
                 raise FlockError(
-                    "Select individual birds for this batch; count-only lifecycle is not supported",
+                    "Select individual birds for this hatch-date population; count-only lifecycle is not supported",
                     "SELECT_BIRDS",
                 )
             if flock.status != FlockStatus.active:
-                raise FlockError("Batch is not active", "INACTIVE_BATCH")
+                raise FlockError("This population is not active", "INACTIVE_BATCH")
             if qty > flock.unbanded_count:
                 raise FlockError(
                     "Quantity exceeds eligible unbanded population",
@@ -1191,6 +1264,11 @@ async def record_lifecycle(db: AsyncSession, ctx: AuthContext, data) -> Lifecycl
                 return raced
         raise FlockError("Lifecycle conflict", "CONFLICT") from exc
     await db.refresh(event)
+    if flock is not None:
+        from app.services import catalogue_service
+
+        await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
+        await db.commit()
     return event
 
 
@@ -1589,7 +1667,7 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
     except shed_service.ShedError as exc:
         raise FlockError(exc.message, exc.code) from exc
     if dest.status != FlockStatus.active:
-        raise FlockError("Destination group is not active", "INACTIVE_DEST")
+        raise FlockError("Destination shed population is not active", "INACTIVE_DEST")
 
     moved_ids: list[UUID] = []
     qty = 0
@@ -1668,11 +1746,11 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
         source_flock = await get_flock(db, ctx, data.source_flock_id)
         await assert_shed_access(db, ctx, source_flock.shed_id, permission_code="lifecycle.record")
         if source_flock.id == dest.id:
-            raise FlockError("Source and destination groups must differ", "SAME_DEST")
+            raise FlockError("Source and destination populations must differ", "SAME_DEST")
         if source_flock.shed_id == dest.shed_id:
             raise FlockError("Choose a destination in a different shed", "SAME_SHED")
         if source_flock.status != FlockStatus.active:
-            raise FlockError("Source group is not active", "INACTIVE_SOURCE")
+            raise FlockError("Source population is not active", "INACTIVE_SOURCE")
         if source_flock.tracking_mode == TrackingMode.individual:
             raise FlockError(
                 "Select individual birds; count-only transfer is not supported",
@@ -1959,6 +2037,11 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
             administration_date=ev.administration_date,
             birds_covered=ev.birds_covered,
             lot_number=ev.lot_number,
+            product_expiry=ev.product_expiry,
+            manufacturer_or_brand=ev.manufacturer_or_brand,
+            vaccine_type_or_strain=ev.vaccine_type_or_strain,
+            dose_amount=ev.dose_amount,
+            route=ev.route,
             timing_status=ev.timing_status,
             verification_status=ev.verification_status,
             notes=ev.notes,

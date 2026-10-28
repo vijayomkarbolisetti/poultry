@@ -99,7 +99,7 @@ async def global_search(
             out.batches = BatchSearchSection(total=0, exact_count=0, items=[], error=exc.message)
         except Exception:
             out.batches = BatchSearchSection(
-                total=0, exact_count=0, items=[], error="Batch search failed"
+                total=0, exact_count=0, items=[], error="Population search failed"
             )
 
     if "sheds" in wanted and await _may(db, ctx, "shed.view"):

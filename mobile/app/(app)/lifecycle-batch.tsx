@@ -9,6 +9,7 @@ import { Button } from "../../src/components/ui/Button";
 import { HenLoader } from "../../src/components/ui/HenLoader";
 import { Screen } from "../../src/components/ui/Screen";
 import { SelectField } from "../../src/components/ui/SelectField";
+import { todayIsoDate } from "../../src/components/ui/selectUtils";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
 import { BIRD_LIFECYCLE_ACTIONS, formatBirdAge } from "../../src/features/birds/birdListHelpers";
@@ -106,7 +107,7 @@ export default function BatchLifecycleScreen() {
       await recordUnbandedLifecycleByCohort({
         shed_id: shedId,
         event_type: action.value as EventValue,
-        effective_date: new Date().toISOString().slice(0, 10),
+        effective_date: todayIsoDate(),
         quantity: qty,
         reason: reason.trim() || `Unbanded count ${action.value}`,
         idempotency_key: idemKey.current,
@@ -160,7 +161,7 @@ export default function BatchLifecycleScreen() {
     return (
       <Screen>
         <Text style={styles.error}>{describeApiError(flock.error, "load unbanded population")}</Text>
-        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}`)} />
+        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} />
       </Screen>
     );
   }
@@ -176,7 +177,7 @@ export default function BatchLifecycleScreen() {
       <Text style={styles.title}>Unbanded count action</Text>
       <Text style={styles.meta}>
         This adjusts the unbanded population count only. It does not select or fabricate individual bird
-        records, and it does not create individual vaccination events.
+        records.
       </Text>
 
       <View style={styles.card}>
@@ -229,11 +230,11 @@ export default function BatchLifecycleScreen() {
             label="Cancel"
             variant="secondary"
             disabled={busy}
-            onPress={() => safeBack(`/(app)/sheds/${shedId}`)}
+            onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)}
           />
         </>
       ) : (
-        <Button label="Done" onPress={() => safeBack(`/(app)/sheds/${shedId}`)} />
+        <Button label="Done" onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} />
       )}
     </Screen>
   );

@@ -40,6 +40,8 @@ class VaccinationEvent(Base):
     recorded_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     lot_number: Mapped[str | None] = mapped_column(String(64), nullable=True)
     product_expiry: Mapped[date | None] = mapped_column(Date, nullable=True)
+    manufacturer_or_brand: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    vaccine_type_or_strain: Mapped[str | None] = mapped_column(String(128), nullable=True)
     dose_amount: Mapped[str | None] = mapped_column(String(64), nullable=True)
     route: Mapped[str | None] = mapped_column(String(64), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

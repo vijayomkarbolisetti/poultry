@@ -54,6 +54,7 @@ async def create_shed(
             location_notes=body.location_notes,
             is_owner_managed=body.is_owner_managed,
             initial_farmer_membership_id=body.initial_farmer_membership_id,
+            capacity=body.capacity,
         )
     except shed_service.ShedError as exc:
         code = 409 if exc.code == "DUPLICATE_CODE" else 400
@@ -132,6 +133,8 @@ async def update_shed(
             is_owner_managed=body.is_owner_managed,
             is_active=body.is_active,
             initial_farmer_membership_id=body.initial_farmer_membership_id,
+            capacity=body.capacity,
+            capacity_provided="capacity" in body.model_fields_set,
         )
     except shed_service.ShedError as exc:
         code = 404 if exc.code == "NOT_FOUND" else 400

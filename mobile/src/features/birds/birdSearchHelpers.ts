@@ -43,5 +43,5 @@ export function birdResultSubtitle(hit: {
 }): string {
   const shed = hit.shed_name ?? hit.shed_code ?? "Shed";
   const status = hit.is_active ? "Active" : hit.lifecycle_status.replace(/_/g, " ");
-  return `${shed} · Batch ${hit.batch_code} · ${status}`;
+  return `${shed} · ${status}`;
 }

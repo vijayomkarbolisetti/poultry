@@ -192,10 +192,10 @@ function LoginForm({
       </View>
 
       <View style={styles.intro}>
-        <Text style={styles.headline}>Smarter Farms. Healthier Flocks.</Text>
+        <Text style={styles.headline}>Smarter Farms. Healthier Birds.</Text>
         <Text style={styles.introBody}>
-          Manage sheds, bird records, and flock health monitoring in one place — for
-          every life stage on your farm.
+          Manage sheds, bird records, and farm health in one place — for every life
+          stage on your farm.
         </Text>
       </View>
 

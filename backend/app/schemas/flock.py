@@ -24,6 +24,8 @@ class FlockCreate(BaseModel):
     tracking_mode: TrackingMode
     notes: str | None = None
     unbanded_count: int | None = Field(default=None, ge=0)
+    # NULL / omitted = inherit farm default catalogue (A2′).
+    vaccination_catalogue_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_age(self) -> "FlockCreate":
@@ -43,6 +45,19 @@ class FlockUpdate(BaseModel):
     current_count: int | None = Field(default=None, ge=0)
     # Increment unbanded headcount (does not replace totals).
     add_unbanded: int | None = Field(default=None, ge=1)
+    # Exact hatch correction for schedule recalculation (open doses only).
+    hatch_date: date | None = None
+    # Set to a catalogue id for override; omit to leave unchanged.
+    # Clear override (inherit farm default) by sending explicit null via dedicated flag if needed —
+    # use clear_vaccination_catalogue_override=True.
+    vaccination_catalogue_id: UUID | None = None
+    clear_vaccination_catalogue_override: bool = False
+
+    @model_validator(mode="after")
+    def _hatch_not_future(self):
+        if self.hatch_date is not None and self.hatch_date > date.today():
+            raise ValueError("hatch_date cannot be in the future")
+        return self
 
 
 class FlockOut(BaseModel):
@@ -66,6 +81,7 @@ class FlockOut(BaseModel):
     onboarded_at: datetime
     count_mismatch: bool
     notes: str | None
+    vaccination_catalogue_id: UUID | None = None
     created_at: datetime
 
 
@@ -385,6 +401,11 @@ class BirdProfileVaccinationEventOut(BaseModel):
     administration_date: date
     birds_covered: int
     lot_number: str | None
+    product_expiry: date | None = None
+    manufacturer_or_brand: str | None = None
+    vaccine_type_or_strain: str | None = None
+    dose_amount: str | None = None
+    route: str | None = None
     timing_status: str
     verification_status: str
     notes: str | None

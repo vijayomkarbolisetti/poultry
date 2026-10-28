@@ -312,10 +312,10 @@ async def engine():
                     """
                 )
             )
-        # Hard-check that migration 0007 artifacts exist (fail loud if create_all sneaks back).
+        # Hard-check that migration chain is applied (fail loud if create_all sneaks back).
         ver = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        if ver != "0007_p5_cohort_idempotency":
-            raise RuntimeError(f"Expected alembic 0007_p5_cohort_idempotency, got {ver!r}")
+        if ver != "0011_shed_capacity":
+            raise RuntimeError(f"Expected alembic 0011_shed_capacity, got {ver!r}")
         idx = await conn.scalar(
             text(
                 """

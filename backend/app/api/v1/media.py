@@ -18,7 +18,13 @@ async def sign_upload(
     ctx: AuthContext = Depends(require_permission("media.upload")),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    return await media_service.sign_upload(db, ctx, shed_id=body.shed_id, folder_suffix=body.folder_suffix)
+    try:
+        return await media_service.sign_upload(
+            db, ctx, shed_id=body.shed_id, folder_suffix=body.folder_suffix
+        )
+    except media_service.MediaError as exc:
+        status_code = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=exc.message) from exc
 
 
 @router.post("", response_model=MediaOut, status_code=status.HTTP_201_CREATED)
@@ -30,17 +36,21 @@ async def register(
     try:
         row = await media_service.register_media(db, ctx, body)
     except media_service.MediaError as exc:
-        raise HTTPException(status_code=400, detail=exc.message) from exc
+        status_code = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=exc.message) from exc
     return MediaOut.model_validate(row)
 
 
 @router.get("", response_model=list[MediaOut])
 async def list_media(
     bird_id: UUID | None = Query(None),
+    vaccination_event_id: UUID | None = Query(None),
     ctx: AuthContext = Depends(require_permission("media.view")),
     db: AsyncSession = Depends(get_db),
 ) -> list[MediaOut]:
-    rows = await media_service.list_media(db, ctx, bird_id=bird_id)
+    rows = await media_service.list_media(
+        db, ctx, bird_id=bird_id, vaccination_event_id=vaccination_event_id
+    )
     return [MediaOut.model_validate(r) for r in rows]
 
 

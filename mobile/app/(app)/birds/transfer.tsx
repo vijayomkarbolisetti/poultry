@@ -9,10 +9,11 @@ import { describeApiError } from "../../../src/api/client";
 import { listFlocks, transferToShedByCohort, type Flock } from "../../../src/api/flocks";
 import { listSheds } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
-import { DateField } from "../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { SelectField } from "../../../src/components/ui/SelectField";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { newLifecycleIdempotencyKey } from "../../../src/features/birds/birdSelectionHelpers";
@@ -44,7 +45,7 @@ export default function TransferBirdsScreen() {
   const [sourceFlockId, setSourceFlockId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [selected, setSelected] = useState<Set<string>>(() => new Set(preselected));
-  const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [effectiveDate, setEffectiveDate] = useState(() => todayIsoDate());
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -159,7 +160,7 @@ export default function TransferBirdsScreen() {
       void qc.invalidateQueries({ queryKey: ["shed-birds"] });
       void qc.invalidateQueries({ queryKey: ["flocks"] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
-      safeBack(shedId ? `/(app)/sheds/${shedId}` : "/(app)/sheds");
+      safeBack(shedId ? `/(app)/sheds/${shedId}/birds` : "/(app)/sheds");
     } catch (e: unknown) {
       const apiMsg = describeApiError(e, "transfer birds");
       if (typeof e === "object" && e && "message" in e && typeof (e as Error).message === "string") {
@@ -199,7 +200,7 @@ export default function TransferBirdsScreen() {
   return (
     <Screen scroll edges={["left", "right", "bottom"]}>
       <View style={styles.header}>
-        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}`)} style={styles.backBtn}>
+        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={birdUi.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -233,10 +234,12 @@ export default function TransferBirdsScreen() {
         loading={sheds.isLoading}
         emptyMessage="No other active sheds"
       />
-      <DateField
+      <AppDatePicker
         label="Effective date"
+        required
         value={effectiveDate}
-        onChange={(v) => setEffectiveDate(v ?? new Date().toISOString().slice(0, 10))}
+        maximumDate={todayIsoDate()}
+        onChange={(v) => setEffectiveDate(v ?? todayIsoDate())}
       />
 
       {mode === "banded" ? (

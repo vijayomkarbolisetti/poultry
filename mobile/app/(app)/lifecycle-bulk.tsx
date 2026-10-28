@@ -7,6 +7,7 @@ import { describeApiError } from "../../src/api/client";
 import { recordLifecycleBulk } from "../../src/api/flocks";
 import { Button } from "../../src/components/ui/Button";
 import { Screen } from "../../src/components/ui/Screen";
+import { todayIsoDate } from "../../src/components/ui/selectUtils";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
 import { BIRD_LIFECYCLE_ACTIONS } from "../../src/features/birds/birdListHelpers";
@@ -80,7 +81,7 @@ export default function BulkLifecycleScreen() {
     try {
       const result = await recordLifecycleBulk({
         event_type: action.value as EventValue,
-        effective_date: new Date().toISOString().slice(0, 10),
+        effective_date: todayIsoDate(),
         bird_ids: birdIds,
         reason: reason.trim() || `Bulk ${action.value} from shed overview`,
         idempotency_key: idemKey.current,
@@ -113,7 +114,7 @@ export default function BulkLifecycleScreen() {
     return (
       <Screen>
         <Text style={styles.error}>No birds selected for this action.</Text>
-        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${params.shedId}`)} />
+        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${params.shedId}/birds`)} />
       </Screen>
     );
   }
@@ -124,7 +125,7 @@ export default function BulkLifecycleScreen() {
       <Text style={styles.meta}>{action.consequence}</Text>
       <Text style={styles.section}>
         Affects {birdIds.length} registered bird{birdIds.length === 1 ? "" : "s"} (selection is only birds you
-        checked — not an entire batch):
+        checked — not the whole hatch-date population):
       </Text>
       <View style={styles.card}>
         {(labels.length ? labels : birdIds).slice(0, 40).map((label, i) => (
@@ -153,11 +154,11 @@ export default function BulkLifecycleScreen() {
             label="Cancel"
             variant="secondary"
             disabled={busy}
-            onPress={() => safeBack(`/(app)/sheds/${params.shedId}`)}
+            onPress={() => safeBack(`/(app)/sheds/${params.shedId}/birds`)}
           />
         </>
       ) : (
-        <Button label="Done" onPress={() => safeBack(`/(app)/sheds/${params.shedId}`)} />
+        <Button label="Done" onPress={() => safeBack(`/(app)/sheds/${params.shedId}/birds`)} />
       )}
     </Screen>
   );

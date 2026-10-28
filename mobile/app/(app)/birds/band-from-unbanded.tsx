@@ -134,7 +134,7 @@ export default function BandFromUnbandedScreen() {
     return (
       <Screen>
         <Text style={styles.error}>{describeApiError(flock.error, "load population")}</Text>
-        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}`)} />
+        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} />
       </Screen>
     );
   }
@@ -144,7 +144,7 @@ export default function BandFromUnbandedScreen() {
   return (
     <Screen scroll>
       <View style={styles.header}>
-        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}`)} hitSlop={12}>
+        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} hitSlop={12}>
           <Ionicons name="chevron-back" size={22} color={birdUi.text} />
         </Pressable>
         <Text style={styles.title}>Register band</Text>

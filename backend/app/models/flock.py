@@ -86,6 +86,12 @@ class Flock(Base):
     )
     count_mismatch: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # NULL = inherit farm default catalogue assignment (A2′).
+    vaccination_catalogue_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vaccine_catalogues.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

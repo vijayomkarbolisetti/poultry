@@ -6,21 +6,23 @@ export const PERMISSION_LABELS: Record<string, { title: string; hint: string }> 
   "shed.create": { title: "Create sheds", hint: "Add new sheds" },
   "shed.update": { title: "Update sheds", hint: "Edit shed details" },
   "farmer.manage": { title: "Manage farmers", hint: "Invite and edit farmers" },
-  "flock.view": { title: "View batches", hint: "See batches / birds lists" },
-  "flock.create": { title: "Create batches", hint: "Onboard new batches" },
-  "flock.update": { title: "Update batches", hint: "Edit batch details" },
+  "flock.view": { title: "View shed birds", hint: "See birds and population in sheds" },
+  "flock.create": { title: "Add shed birds", hint: "Add unbanded headcount in sheds" },
+  "flock.update": { title: "Update shed birds", hint: "Adjust shed bird counts and details" },
   "bird.view": { title: "View birds", hint: "See bird records" },
   "bird.create": { title: "Add birds", hint: "Create / import birds" },
   "bird.update": { title: "Update birds", hint: "Edit bird records" },
-  "vaccination.view": { title: "View tasks", hint: "See doses & schedules" },
-  "vaccination.record": { title: "Record vaccination", hint: "Mark doses done" },
-  "vaccination.correct": { title: "Correct vaccination", hint: "Fix past records" },
-  "schedule.view": { title: "View vaccines", hint: "See vaccine catalogue" },
-  "schedule.manage": { title: "Manage schedules", hint: "Create vaccines & generate doses" },
   "report.view": { title: "View reports", hint: "Dashboard & compliance" },
   "lifecycle.record": { title: "Record lifecycle", hint: "Mortality / transfer events" },
   "media.view": { title: "View media", hint: "See uploaded photos" },
   "media.upload": { title: "Upload media", hint: "Attach photos" },
+  "vaccination.view": { title: "View vaccinations", hint: "See due doses and schedule" },
+  "vaccination.record": { title: "Record vaccinations", hint: "Mark doses as given" },
+  "schedule.view": { title: "View catalogues", hint: "See vaccine catalogues and product guidance" },
+  "schedule.manage": {
+    title: "Manage catalogues",
+    hint: "Create, clone, edit, and assign vaccine catalogues",
+  },
 };
 
 export const FARMER_PERM_OPTIONS = [
@@ -31,12 +33,11 @@ export const FARMER_PERM_OPTIONS = [
   "flock.update",
   "bird.view",
   "bird.create",
+  "report.view",
+  "lifecycle.record",
   "vaccination.view",
   "vaccination.record",
   "schedule.view",
-  "schedule.manage",
-  "report.view",
-  "lifecycle.record",
 ] as const;
 
 export function activeMembership(user: UserMe | null, ownerAccountId: string | null): Membership | null {
