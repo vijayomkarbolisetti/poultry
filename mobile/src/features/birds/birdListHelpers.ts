@@ -56,6 +56,11 @@ export function formatUnbandedCohortLabel(opts: {
   return `${age} · ${opts.unbanded_count} unbanded`;
 }
 
+export function formatVaccSummary(count: number): string {
+  if (count <= 0) return "No individual vaccinations";
+  return `${count} individual vaccination${count === 1 ? "" : "s"}`;
+}
+
 export const LIFECYCLE_FILTER_OPTIONS = [
   { value: "", label: "Active only", hint: "Default — live registered birds" },
   { value: "all", label: "All statuses", hint: "Includes dead, sold, transferred" },
