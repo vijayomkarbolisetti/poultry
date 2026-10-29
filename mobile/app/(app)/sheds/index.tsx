@@ -177,20 +177,20 @@ function ShedCard({
         ? "Owner"
         : "No farmer";
   const farm = item.organization_name?.trim() || "—";
-  const openOverview = () =>
-    router.push({ pathname: "/(app)/sheds/[id]", params: { id: item.id } });
+  const openBirdManagement = () =>
+    router.push({ pathname: "/(app)/sheds/[id]/birds", params: { id: item.id } });
   return (
     <View style={[styles.card, softShadow()]}>
       <View style={styles.cardBody}>
         <View style={styles.cardTopRow}>
           <Pressable
-            onPress={openOverview}
+            onPress={openBirdManagement}
             style={({ pressed }) => [
               styles.cardMainPress,
               pressed && { opacity: 0.94 },
             ]}
             accessibilityRole="button"
-            accessibilityLabel={`Open shed ${item.name}`}
+            accessibilityLabel={`Open bird management for ${item.name}`}
           >
             <View style={[styles.illustration, { backgroundColor: tone.bg }]}>
               <Ionicons name="business" size={36} color={tone.icon} />
@@ -255,7 +255,7 @@ function ShedCard({
           ) : null}
         </View>
 
-        <Pressable onPress={openOverview} accessibilityRole="button" accessibilityLabel={`Shed metrics for ${item.name}`}>
+        <Pressable onPress={openBirdManagement} accessibilityRole="button" accessibilityLabel={`Shed metrics for ${item.name}`}>
           <View style={styles.metricsRow}>
             <MetricCell
               mci="bird"
@@ -263,14 +263,6 @@ function ShedCard({
               label="Live birds"
               iconColor={ui.liveIcon}
               circleBg={ui.liveCircle}
-            />
-            <MetricCell
-              icon="layers-outline"
-              value={item.active_batch_count}
-              label={item.active_batch_count === 1 ? "Active batch" : "Active batches"}
-              iconColor={ui.liveIcon}
-              circleBg={ui.liveCircle}
-              showDivider
             />
             <MetricCell
               icon="pricetag-outline"
@@ -486,7 +478,7 @@ export default function ShedsScreen() {
                   ? "Try adjusting search or filters."
                   : statusFilter === "inactive"
                     ? "Deactivated sheds will appear here."
-                    : "Create a shed to house batches and assign farmers."
+                    : "Create a shed to house birds and assign farmers."
               }
               imageUri={media.shedYard}
               actionLabel={canCreate && statusFilter !== "inactive" && !q.trim() ? "Add first shed" : undefined}
@@ -546,10 +538,10 @@ export default function ShedsScreen() {
               onPress={() => {
                 const id = menuItem?.id;
                 setMenuItem(null);
-                if (id) router.push({ pathname: "/(app)/sheds/[id]", params: { id } });
+                if (id) router.push({ pathname: "/(app)/sheds/[id]/birds", params: { id } });
               }}
             >
-              <Text style={styles.menuOptionText}>Open overview</Text>
+              <Text style={styles.menuOptionText}>Manage birds</Text>
             </Pressable>
             {canUpdate && menuItem ? (
               <Pressable
@@ -568,10 +560,11 @@ export default function ShedsScreen() {
               onPress={() => {
                 const id = menuItem?.id;
                 setMenuItem(null);
-                if (id) router.push(`/(app)/sheds/${id}/birds`);
+                // Compatibility: advanced shed admin (assign farmer / deactivate) remains on details.
+                if (id) router.push({ pathname: "/(app)/sheds/[id]", params: { id } });
               }}
             >
-              <Text style={styles.menuOptionText}>View birds</Text>
+              <Text style={styles.menuOptionText}>Shed details</Text>
             </Pressable>
             <Pressable style={[styles.menuOption, { marginTop: 4 }]} onPress={() => setMenuItem(null)}>
               <Text style={[styles.menuOptionText, { color: ui.secondaryText }]}>Cancel</Text>
@@ -774,17 +767,6 @@ const styles = StyleSheet.create({
   metricValue: { fontSize: 15, fontWeight: "800", color: ui.primaryText },
   metricLabel: { fontSize: 10, fontWeight: "600", color: ui.secondaryText, textAlign: "center" },
   mismatch: { fontSize: 12, fontWeight: "700", color: ui.bandedIcon },
-  doseRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    borderTopWidth: 1,
-    borderTopColor: ui.divider,
-    backgroundColor: "#FAFDFB",
-  },
-  doseText: { flex: 1, fontSize: 13, fontWeight: "600", color: ui.secondaryText },
   sheetBackdrop: {
     flex: 1,
     backgroundColor: "rgba(2,44,34,0.35)",

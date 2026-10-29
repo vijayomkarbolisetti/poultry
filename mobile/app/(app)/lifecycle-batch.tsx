@@ -4,19 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 
 import { describeApiError } from "../../src/api/client";
-import { getFlock, recordLifecycle } from "../../src/api/flocks";
+import { getFlock, recordUnbandedLifecycleByCohort } from "../../src/api/flocks";
 import { Button } from "../../src/components/ui/Button";
 import { HenLoader } from "../../src/components/ui/HenLoader";
 import { Screen } from "../../src/components/ui/Screen";
 import { SelectField } from "../../src/components/ui/SelectField";
+import { todayIsoDate } from "../../src/components/ui/selectUtils";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
-import { BIRD_LIFECYCLE_ACTIONS } from "../../src/features/birds/birdListHelpers";
+import { BIRD_LIFECYCLE_ACTIONS, formatBirdAge } from "../../src/features/birds/birdListHelpers";
 import {
   batchCountActionAllowed,
   newLifecycleIdempotencyKey,
   validateUnbandedQuantity,
 } from "../../src/features/birds/birdSelectionHelpers";
+import { cohortAgePayload, cohortKeyFromAge } from "../../src/features/birds/transferHelpers";
 import { safeBack } from "../../src/navigation/safeBack";
 import { colors, radius, space } from "../../src/theme/tokens";
 
@@ -39,7 +41,7 @@ export default function BatchLifecycleScreen() {
   const [msg, setMsg] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const lock = useRef(false);
-  const idemKey = useRef(newLifecycleIdempotencyKey(`batch-${eventParam ?? "mortality"}`));
+  const idemKey = useRef(newLifecycleIdempotencyKey(`count-${eventParam ?? "mortality"}`));
   const paramsKey = `${shedId ?? ""}|${flockIdParam ?? ""}|${eventParam ?? ""}`;
 
   useEffect(() => {
@@ -50,7 +52,7 @@ export default function BatchLifecycleScreen() {
     setMsg(null);
     setDone(false);
     lock.current = false;
-    idemKey.current = newLifecycleIdempotencyKey(`batch-${eventParam ?? "mortality"}`);
+    idemKey.current = newLifecycleIdempotencyKey(`count-${eventParam ?? "mortality"}`);
   }, [paramsKey, eventParam]);
 
   const flock = useQuery({
@@ -82,17 +84,34 @@ export default function BatchLifecycleScreen() {
       setMsg(qtyErr);
       return;
     }
+    if (!shedId) {
+      setMsg("Missing shed. Open this screen from a shed birds list.");
+      return;
+    }
+    const key = cohortKeyFromAge({
+      hatch_date: flock.data.hatch_date,
+      estimated_age_days: flock.data.estimated_age_days,
+      age_reported_on: flock.data.age_reported_on,
+    });
+    const ageFields = cohortAgePayload(key);
+    if (!ageFields) {
+      setMsg(
+        "This population has no hatch date or estimated age key, so count actions by cohort are not available.",
+      );
+      return;
+    }
     lock.current = true;
     setBusy(true);
     setMsg(null);
     try {
-      await recordLifecycle({
-        event_type: action.value,
-        effective_date: new Date().toISOString().slice(0, 10),
-        flock_id: flock.data.id,
+      await recordUnbandedLifecycleByCohort({
+        shed_id: shedId,
+        event_type: action.value as EventValue,
+        effective_date: todayIsoDate(),
         quantity: qty,
-        reason: reason.trim() || `Batch count ${action.value} (unbanded only)`,
+        reason: reason.trim() || `Unbanded count ${action.value}`,
         idempotency_key: idemKey.current,
+        ...ageFields,
       });
       void qc.invalidateQueries({ queryKey: ["shed-birds", shedId] });
       void qc.invalidateQueries({ queryKey: ["shed-overview", shedId] });
@@ -103,7 +122,7 @@ export default function BatchLifecycleScreen() {
       setDone(true);
       setMsg(`Recorded ${action.label.toLowerCase()} for ${qty} unbanded bird${qty === 1 ? "" : "s"}.`);
     } catch (e: unknown) {
-      setMsg(describeApiError(e, "record batch lifecycle"));
+      setMsg(describeApiError(e, "record count action"));
     } finally {
       setBusy(false);
       lock.current = false;
@@ -119,10 +138,21 @@ export default function BatchLifecycleScreen() {
     );
   }
 
+  if (!flockIdParam) {
+    return (
+      <Screen>
+        <Text style={styles.error}>
+          Missing unbanded population. Open this screen from a shed birds list row.
+        </Text>
+        <Button label="Back" variant="secondary" onPress={() => safeBack()} />
+      </Screen>
+    );
+  }
+
   if (flock.isLoading) {
     return (
       <Screen>
-        <HenLoader label="Loading batch…" />
+        <HenLoader label="Loading unbanded population…" />
       </Screen>
     );
   }
@@ -130,25 +160,28 @@ export default function BatchLifecycleScreen() {
   if (flock.isError || !flock.data) {
     return (
       <Screen>
-        <Text style={styles.error}>{describeApiError(flock.error, "load batch")}</Text>
-        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}`)} />
+        <Text style={styles.error}>{describeApiError(flock.error, "load unbanded population")}</Text>
+        <Button label="Back" variant="secondary" onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} />
       </Screen>
     );
   }
 
   const f = flock.data;
+  const ageLabel = formatBirdAge({
+    hatch_date: f.hatch_date,
+    estimated_age_days: f.estimated_age_days,
+  });
 
   return (
     <Screen scroll>
-      <Text style={styles.title}>Batch count action</Text>
+      <Text style={styles.title}>Unbanded count action</Text>
       <Text style={styles.meta}>
         This adjusts the unbanded population count only. It does not select or fabricate individual bird
-        records, and it does not create individual vaccination events.
+        records.
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.band}>{f.batch_code}</Text>
-        <Text style={styles.meta}>Tracking: {f.tracking_mode}</Text>
+        <Text style={styles.band}>{ageLabel}</Text>
         <Text style={styles.meta}>Live: {f.current_count}</Text>
         <Text style={styles.meta}>Banded: {f.banded_count}</Text>
         <Text style={styles.meta}>Unbanded: {f.unbanded_count}</Text>
@@ -164,7 +197,7 @@ export default function BatchLifecycleScreen() {
         }))}
         onChange={(v) => {
           setEventType(v);
-          idemKey.current = newLifecycleIdempotencyKey(`batch-${v}`);
+          idemKey.current = newLifecycleIdempotencyKey(`count-${v}`);
         }}
       />
 
@@ -197,11 +230,11 @@ export default function BatchLifecycleScreen() {
             label="Cancel"
             variant="secondary"
             disabled={busy}
-            onPress={() => safeBack(`/(app)/sheds/${shedId}`)}
+            onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)}
           />
         </>
       ) : (
-        <Button label="Done" onPress={() => safeBack(`/(app)/sheds/${shedId}`)} />
+        <Button label="Done" onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} />
       )}
     </Screen>
   );

@@ -48,15 +48,11 @@ const ui = {
   dueBorder: "#FFE0B8",
   dueIconBg: "#FFF0DE",
   dueTone: "#EA6500",
-  overdueBg: "#FFF3F3",
-  overdueBorder: "#FFBDBD",
-  overdueIconBg: "#FFE0E0",
-  overdueTone: "#E52626",
   complianceBg: "#F2F8FF",
   complianceBorder: "#BFDEFF",
   complianceIconBg: "#DFEDFF",
   complianceTone: "#247FF0",
-  catalogueTone: "#2584F5",
+  accentBlue: "#2584F5",
   reportsTone: "#7434D4",
   snapshotIconBg: "#E8F8F0",
   searchBorder: "#E2EDE7",
@@ -205,8 +201,8 @@ export default function HomeScreen() {
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
   const canBirds = hasPermission(user, ownerAccountId, "flock.view");
   const canBirdSearch = hasPermission(user, ownerAccountId, "bird.view");
-  const canSearch =
-    canBirdSearch || canSheds || canBirds || hasPermission(user, ownerAccountId, "flock.view");
+  // Match global search screen: birds + sheds only (no batch search entry).
+  const canSearch = canBirdSearch || canSheds;
 
   const dash = useQuery({
     queryKey: ["dashboard", ownerAccountId],
@@ -223,7 +219,7 @@ export default function HomeScreen() {
   };
   const goSnapshotDetails = () => {
     if (canSheds) router.push("/(app)/sheds");
-    else if (canBirds) router.push("/(app)/flocks");
+    else if (canBirdSearch) router.push("/(app)/search");
     else router.push("/(app)/settings");
   };
 
@@ -302,10 +298,10 @@ export default function HomeScreen() {
               !canSearch ? { opacity: 0.7 } : null,
             ]}
             accessibilityRole="button"
-            accessibilityLabel="Search birds, batches, sheds"
+            accessibilityLabel="Search birds and sheds"
           >
             <Ionicons name="search" size={18} color="#8A9A93" />
-            <Text style={styles.searchPlaceholder}>Search birds, batches, sheds...</Text>
+            <Text style={styles.searchPlaceholder}>Search birds and sheds...</Text>
           </Pressable>
 
           {dash.isError ? (
@@ -344,7 +340,13 @@ export default function HomeScreen() {
               border={ui.liveBorder}
               iconBg={ui.liveIconBg}
               tone={ui.liveTone}
-              onPress={canBirds ? () => router.push("/(app)/flocks") : undefined}
+              onPress={
+                canSheds
+                  ? () => router.push("/(app)/sheds")
+                  : canBirdSearch
+                    ? () => router.push("/(app)/search")
+                    : undefined
+              }
             />
             <StatCard
               label="Active sheds"
@@ -355,16 +357,6 @@ export default function HomeScreen() {
               iconBg={ui.complianceIconBg}
               tone={ui.complianceTone}
               onPress={canSheds ? () => router.push("/(app)/sheds") : undefined}
-            />
-            <StatCard
-              label="Active groups"
-              value={d?.active_flocks ?? "—"}
-              icon="layers-outline"
-              bg={ui.dueBg}
-              border={ui.dueBorder}
-              iconBg={ui.dueIconBg}
-              tone={ui.dueTone}
-              onPress={canBirds ? () => router.push("/(app)/flocks") : undefined}
             />
             <StatCard
               label="Farmers"
@@ -400,9 +392,9 @@ export default function HomeScreen() {
             />
             <View style={styles.snapshotDivider} />
             <SnapshotMetric
-              icon="layers-outline"
-              value={d?.active_flocks ?? "—"}
-              label="Active batches"
+              icon="egg-outline"
+              value={d?.active_birds ?? "—"}
+              label="Live birds"
             />
             <View style={styles.snapshotDivider} />
             <SnapshotMetric
@@ -424,22 +416,31 @@ export default function HomeScreen() {
                 href="/(app)/sheds"
               />
             ) : null}
-            {canBirds ? (
+            {canSheds ? (
               <QuickAction
-                title="Birds & batches"
-                subtitle="Manage birds and batches"
+                title="Manage birds"
+                subtitle="Open sheds to view and add birds"
                 icon="egg-outline"
                 iconColor={ui.accentGreen}
                 iconBg="#E8F8F0"
-                href="/(app)/flocks"
+                href="/(app)/sheds"
+              />
+            ) : canBirdSearch ? (
+              <QuickAction
+                title="Find birds"
+                subtitle="Search birds by band number"
+                icon="egg-outline"
+                iconColor={ui.accentGreen}
+                iconBg="#E8F8F0"
+                href="/(app)/search"
               />
             ) : null}
             {canSearch ? (
               <QuickAction
                 title="Search"
-                subtitle="Find birds, groups, or sheds"
+                subtitle="Find birds or sheds"
                 icon="search-outline"
-                iconColor={ui.catalogueTone}
+                iconColor={ui.accentBlue}
                 iconBg="#EAF3FE"
                 href="/(app)/search"
               />

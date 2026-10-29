@@ -6,20 +6,26 @@ from httpx import AsyncClient
 from app.services.notification_service import format_dose_alert_body
 
 
-def test_format_dose_alert_body_uses_batch_code() -> None:
-    body = format_dose_alert_body(due_date=date(2026, 9, 10), batch_code="SMOKE-B1")
-    assert body == "Dose due 2026-09-10 (batch SMOKE-B1)"
+def test_format_dose_alert_body_uses_shed_and_hatch() -> None:
+    body = format_dose_alert_body(
+        due_date=date(2026, 9, 10),
+        shed_name="North Shed",
+        hatch_date=date(2026, 1, 1),
+    )
+    assert body == "Dose due 2026-09-10 (North Shed \u00b7 hatch 2026-01-01)"
     assert "flock" not in body.lower()
+    assert "batch" not in body.lower()
 
 
-def test_format_dose_alert_body_fallback_without_batch_code() -> None:
-    body = format_dose_alert_body(due_date=date(2026, 9, 10), batch_code=None)
+def test_format_dose_alert_body_fallback_without_context() -> None:
+    body = format_dose_alert_body(due_date=date(2026, 9, 10))
     assert body == "Dose due 2026-09-10"
     assert "flock" not in body.lower()
+    assert "batch" not in body.lower()
 
 
-def test_format_dose_alert_body_strips_blank_batch_code() -> None:
-    body = format_dose_alert_body(due_date=date(2026, 1, 5), batch_code="  ")
+def test_format_dose_alert_body_strips_blank_shed_name() -> None:
+    body = format_dose_alert_body(due_date=date(2026, 1, 5), shed_name="  ")
     assert body == "Dose due 2026-01-05"
     assert "batch" not in body.lower()
 
@@ -87,13 +93,14 @@ async def _farm_with_overdue_dose(client: AsyncClient) -> dict:
     return {
         "headers": headers,
         "flock_id": flock_id,
-        "batch_code": "NB-ALERT-1",
+        "shed_name": "NShed",
+        "hatch_date": "2026-01-01",
         "due_date": gen.json()[0]["due_date"],
     }
 
 
 @pytest.mark.asyncio
-async def test_generated_notification_body_uses_batch_terminology(client: AsyncClient) -> None:
+async def test_generated_notification_body_uses_shed_hatch_terminology(client: AsyncClient) -> None:
     farm = await _farm_with_overdue_dose(client)
     created = await client.post("/api/v1/notifications/generate", headers=farm["headers"])
     assert created.status_code == 200, created.text
@@ -102,8 +109,9 @@ async def test_generated_notification_body_uses_batch_terminology(client: AsyncC
     assert notes.status_code == 200, notes.text
     bodies = [n["body"] for n in notes.json()]
     assert bodies, "expected at least one notification"
-    expected = f"Dose due {farm['due_date']} (batch {farm['batch_code']})"
+    expected = f"Dose due {farm['due_date']} ({farm['shed_name']} \u00b7 hatch {farm['hatch_date']})"
     assert expected in bodies
     for body in bodies:
         assert "flock" not in body.lower()
+        assert "batch" not in body.lower()
         assert str(farm["flock_id"]) not in body

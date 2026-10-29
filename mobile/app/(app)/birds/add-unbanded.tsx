@@ -8,19 +8,16 @@ import { addUnbandedInShed } from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
 import { getShed } from "../../../src/api/sheds";
 import { Button } from "../../../src/components/ui/Button";
-import { DateField } from "../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
+import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { validateBirdCount } from "../../../src/features/birds/groupOnboardingHelpers";
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function newIdempotencyKey(): string {
   return `ub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -56,7 +53,7 @@ export default function AddUnbandedScreen() {
       setError("Hatch date is required");
       return;
     }
-    if (hatchDate > todayIso()) {
+    if (hatchDate > todayIsoDate()) {
       setError("Hatch date cannot be in the future");
       return;
     }
@@ -104,7 +101,7 @@ export default function AddUnbandedScreen() {
   return (
     <Screen scroll edges={["left", "right", "bottom"]}>
       <View style={styles.header}>
-        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}`)} style={styles.backBtn}>
+        <Pressable onPress={() => safeBack(`/(app)/sheds/${shedId}/birds`)} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={birdUi.text} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -126,10 +123,12 @@ export default function AddUnbandedScreen() {
         <Text style={styles.suffix}>birds</Text>
       </View>
 
-      <DateField
-        label="Hatch date *"
+      <AppDatePicker
+        label="Hatch date"
         required
         value={hatchDate}
+        maximumDate={todayIsoDate()}
+        placeholder="Select hatch date"
         onChange={(v) => {
           setHatchDate(v);
           setError(null);

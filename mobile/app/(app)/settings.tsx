@@ -16,18 +16,31 @@ function MenuRow({
   icon,
   href,
   danger,
+  highlight,
 }: {
   label: string;
   icon: IconName;
   href?: Href;
   danger?: boolean;
+  /** Soft mint highlight for primary manage entries (reference: Catalogues). */
+  highlight?: boolean;
 }) {
   return (
     <Pressable
       onPress={() => (href ? router.push(href) : undefined)}
-      style={({ pressed }) => [styles.row, pressed && href && { opacity: 0.75 }]}
+      style={({ pressed }) => [
+        styles.row,
+        highlight && styles.rowHighlight,
+        pressed && href && { opacity: 0.75 },
+      ]}
     >
-      <View style={[styles.rowIcon, danger && { backgroundColor: "#FDECEA" }]}>
+      <View
+        style={[
+          styles.rowIcon,
+          danger && { backgroundColor: "#FDECEA" },
+          highlight && { backgroundColor: colors.brandSoft },
+        ]}
+      >
         <Ionicons name={icon} size={20} color={danger ? colors.danger : colors.brand} />
       </View>
       <Text style={[styles.rowLabel, danger && { color: colors.danger }]}>{label}</Text>
@@ -41,6 +54,7 @@ export default function SettingsScreen() {
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
   const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
+  const canCatalogues = hasPermission(user, ownerAccountId, "schedule.view");
   const canSearch =
     hasPermission(user, ownerAccountId, "bird.view") ||
     hasPermission(user, ownerAccountId, "shed.view") ||
@@ -51,6 +65,8 @@ export default function SettingsScreen() {
     router.replace("/(auth)/login");
 
   };
+
+  const hasManage = canFarmers || canSearch || canCatalogues;
 
   return (
     <Screen scroll>
@@ -71,8 +87,18 @@ export default function SettingsScreen() {
       <View style={[styles.card, shadow.card]}>
         {canFarmers ? <MenuRow label="Farmers" icon="people-outline" href="/(app)/farmers" /> : null}
         {canSearch ? <MenuRow label="Search" icon="search-outline" href="/(app)/search" /> : null}
-        {!canFarmers && !canSearch ? (
-          <Text style={{ padding: space.md, color: colors.inkMuted }}>No manage modules granted.</Text>
+        {canCatalogues ? (
+          <MenuRow
+            label="Catalogues"
+            icon="book-outline"
+            href="/(app)/catalogues"
+            highlight
+          />
+        ) : null}
+        {!hasManage ? (
+          <Text style={{ padding: space.md, color: colors.inkMuted }}>
+            No manage options available for your role.
+          </Text>
         ) : null}
       </View>
 
@@ -140,6 +166,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
+  },
+  rowHighlight: {
+    backgroundColor: colors.brandSoft,
   },
   rowIcon: {
     width: 36,

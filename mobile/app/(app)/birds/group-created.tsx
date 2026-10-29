@@ -17,13 +17,12 @@ export default function GroupCreatedScreen() {
   }>();
   const shedId = firstRouteParam(params.shedId);
   const flockId = firstRouteParam(params.flockId);
-  const batchCode = firstRouteParam(params.batchCode) ?? "Group";
   const count = firstRouteParam(params.count) ?? "0";
   const shedName = firstRouteParam(params.shedName) ?? "this shed";
 
   const goTag = () => {
     if (!shedId || !flockId) {
-      if (shedId) router.replace(`/(app)/sheds/${shedId}`);
+      if (shedId) router.replace(`/(app)/sheds/${shedId}/birds`);
       else router.replace("/(app)/sheds");
       return;
     }
@@ -34,7 +33,7 @@ export default function GroupCreatedScreen() {
   };
 
   const goDone = () => {
-    if (shedId) router.replace(`/(app)/sheds/${shedId}`);
+    if (shedId) router.replace(`/(app)/sheds/${shedId}/birds`);
     else router.replace("/(app)/sheds");
   };
 
@@ -57,7 +56,6 @@ export default function GroupCreatedScreen() {
         <Text style={styles.body}>
           {count} birds added to {shedName}
         </Text>
-        <Text style={styles.meta}>{batchCode}</Text>
 
         <View style={styles.actions}>
           <Button label="Tag birds now" onPress={goTag} />

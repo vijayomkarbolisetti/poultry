@@ -260,6 +260,12 @@ async def test_bird_profile_individual_history_not_batch_events(client: AsyncCli
             "birds_covered": 1,
             "administration_date": date.today().isoformat(),
             "lot_number": "LOT-1",
+            "product_expiry": "2027-06-01",
+            "manufacturer_or_brand": "Acme",
+            "vaccine_type_or_strain": "ND-LaSota",
+            "dose_amount": "1 drop",
+            "route": "Eye drop",
+            "notes": "Individual dose",
         },
     )
     assert ind.status_code == 201, ind.text
@@ -272,11 +278,20 @@ async def test_bird_profile_individual_history_not_batch_events(client: AsyncCli
     assert p["shed_code"] == "P1"
     assert p["organization_name"] == "Profile Farm"
     assert len(p["individual_vaccinations"]) == 1
-    assert p["individual_vaccinations"][0]["lot_number"] == "LOT-1"
-    assert p["individual_vaccinations"][0]["vaccine_name"] == "ND Profile"
-    # Batch schedule section labeled; may be empty if dose completed fully
+    ev = p["individual_vaccinations"][0]
+    assert ev["lot_number"] == "LOT-1"
+    assert ev["vaccine_name"] == "ND Profile"
+    assert ev["manufacturer_or_brand"] == "Acme"
+    assert ev["vaccine_type_or_strain"] == "ND-LaSota"
+    assert ev["product_expiry"] == "2027-06-01"
+    assert ev["route"] == "Eye drop"
+    assert ev["dose_amount"] == "1 drop"
+    assert ev["notes"] == "Individual dose"
+    # Batch coverage must not appear as an individual vaccination
+    assert all(row.get("birds_covered", 1) == 1 for row in p["individual_vaccinations"])
+    # Hatch-date schedule section labeled; may be empty if dose completed fully
     for d in p["batch_upcoming_doses"]:
-        assert "Batch schedule" in d["attribution_note"]
+        assert "Shed hatch-date schedule" in d["attribution_note"]
         assert "not confirmed as an individual" in d["attribution_note"]
 
     # Empty individual history bird

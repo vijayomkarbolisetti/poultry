@@ -17,6 +17,7 @@ class ShedCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     code: str = Field(min_length=1, max_length=64)
     location_notes: str | None = None
+    capacity: int | None = Field(default=None, ge=0, le=1_000_000)
     is_owner_managed: bool = True
     # Required when is_owner_managed is False — validated below and in the service.
     initial_farmer_membership_id: UUID | None = None
@@ -39,6 +40,8 @@ class ShedUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     code: str | None = Field(default=None, min_length=1, max_length=64)
     location_notes: str | None = None
+    # When present in the JSON body (including null), capacity is updated.
+    capacity: int | None = Field(default=None, ge=0, le=1_000_000)
     is_owner_managed: bool | None = None
     is_active: bool | None = None
     # When flipping to farmer-managed (or replacing manager), pass farmer membership id.
@@ -69,6 +72,7 @@ class ShedOut(BaseModel):
     name: str
     code: str
     location_notes: str | None
+    capacity: int | None = None
     is_owner_managed: bool
     is_active: bool
     created_at: datetime
@@ -108,7 +112,7 @@ class ShedDependenciesOut(BaseModel):
     can_deactivate: bool = True
     can_reactivate: bool = False
     note: str = (
-        "Deactivation preserves batches, birds, vaccination history, and schedules. "
+        "Deactivation preserves birds, vaccination history, and schedules. "
         "Permanent deletion is not supported."
     )
 

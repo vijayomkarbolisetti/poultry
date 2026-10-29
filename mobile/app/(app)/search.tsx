@@ -14,7 +14,6 @@ import {
 import { describeApiError } from "../../src/api/client";
 import {
   globalSearch,
-  type BatchSearchHit,
   type BirdSearchHit,
   type ShedSearchHit,
 } from "../../src/api/search";
@@ -24,7 +23,6 @@ import { Screen } from "../../src/components/ui/Screen";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
 import {
-  batchSubtitle,
   birdSubtitle,
   classifyGlobalSearch,
   MIN_QUERY_LENGTH,
@@ -40,16 +38,15 @@ type IconName = ComponentProps<typeof Ionicons>["name"];
 type ResultRow =
   | { kind: "header"; title: string; key: string }
   | { kind: "bird"; hit: BirdSearchHit; key: string }
-  | { kind: "batch"; hit: BatchSearchHit; key: string }
   | { kind: "shed"; hit: ShedSearchHit; key: string }
   | { kind: "section_error"; message: string; key: string };
 
 export default function GlobalSearchScreen() {
   const { user, ownerAccountId } = useAuth();
   const canBirds = hasPermission(user, ownerAccountId, "bird.view");
-  const canBatches = hasPermission(user, ownerAccountId, "flock.view");
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
-  const canSearch = canBirds || canBatches || canSheds;
+  // P1: default global search is shed-centric (birds + sheds). Batches are not requested or rendered.
+  const canSearch = canBirds || canSheds;
 
   const [draft, setDraft] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -59,13 +56,7 @@ export default function GlobalSearchScreen() {
     return () => clearTimeout(t);
   }, [draft]);
 
-  const types = [
-    canBirds ? "birds" : null,
-    canBatches ? "batches" : null,
-    canSheds ? "sheds" : null,
-  ]
-    .filter(Boolean)
-    .join(",");
+  const types = [canBirds ? "birds" : null, canSheds ? "sheds" : null].filter(Boolean).join(",");
 
   const enabled = canSearch && debounced.length >= MIN_QUERY_LENGTH;
 
@@ -83,12 +74,12 @@ export default function GlobalSearchScreen() {
         loading: query.isFetching,
         fetchError: query.isError,
         birdTotal: query.data?.birds?.total ?? 0,
-        batchTotal: query.data?.batches?.total ?? 0,
+        batchTotal: 0,
         shedTotal: query.data?.sheds?.total ?? 0,
         birdError: query.data?.birds?.error ?? null,
-        batchError: query.data?.batches?.error ?? null,
+        batchError: null,
         shedError: query.data?.sheds?.error ?? null,
-        anySection: Boolean(query.data?.birds || query.data?.batches || query.data?.sheds),
+        anySection: Boolean(query.data?.birds || query.data?.sheds),
       }),
     [debounced, query.isFetching, query.isError, query.data],
   );
@@ -104,20 +95,6 @@ export default function GlobalSearchScreen() {
         out.push({ kind: "header", title: "Birds", key: "birds-h" });
         for (const hit of data.birds.items) {
           out.push({ kind: "bird", hit, key: `bird-${hit.id}` });
-        }
-      }
-    }
-    if (data.batches) {
-      if (data.batches.error) {
-        out.push({
-          kind: "section_error",
-          message: `Batches: ${data.batches.error}`,
-          key: "batches-err",
-        });
-      } else if (data.batches.items.length) {
-        out.push({ kind: "header", title: "Batches", key: "batches-h" });
-        for (const hit of data.batches.items) {
-          out.push({ kind: "batch", hit, key: `batch-${hit.id}` });
         }
       }
     }
@@ -155,13 +132,13 @@ export default function GlobalSearchScreen() {
           style={styles.input}
           value={draft}
           onChangeText={setDraft}
-          placeholder="Search birds, batches, or sheds…"
+          placeholder="Search birds or sheds…"
           placeholderTextColor={colors.inkMuted}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
           clearButtonMode="never"
-          accessibilityLabel="Search birds, batches, or sheds"
+          accessibilityLabel="Search birds or sheds"
         />
         {draft.length > 0 ? (
           <Pressable
@@ -177,7 +154,7 @@ export default function GlobalSearchScreen() {
 
       {uiState === "idle" ? (
         <Text style={styles.meta}>
-          Search by band number, batch code, or shed name. Results stay within your farm access.
+          Search by band number or shed name. Results stay within your farm access.
         </Text>
       ) : null}
       {uiState === "too_short" ? (
@@ -193,7 +170,7 @@ export default function GlobalSearchScreen() {
       {uiState === "empty" ? (
         <View style={styles.card}>
           <Text style={styles.name}>No matches</Text>
-          <Text style={styles.meta}>Nothing matched “{debounced}” in birds, batches, or sheds.</Text>
+          <Text style={styles.meta}>Nothing matched “{debounced}” in birds or sheds.</Text>
         </View>
       ) : null}
       {uiState === "partial_error" ? (
@@ -234,24 +211,13 @@ export default function GlobalSearchScreen() {
                 />
               );
             }
-            if (item.kind === "batch") {
-              return (
-                <ResultCard
-                  icon="layers-outline"
-                  title={item.hit.batch_code}
-                  subtitle={batchSubtitle(item.hit)}
-                  tag={item.hit.match_kind === "exact" ? "Exact" : "Partial"}
-                  onPress={() => onOpen(`/(app)/flocks/${item.hit.id}`)}
-                />
-              );
-            }
             return (
               <ResultCard
                 icon="business-outline"
                 title={item.hit.name}
                 subtitle={shedSubtitle(item.hit)}
                 tag={item.hit.match_kind === "exact" ? "Exact" : "Partial"}
-                onPress={() => onOpen(`/(app)/sheds/${item.hit.id}`)}
+                onPress={() => onOpen(`/(app)/sheds/${item.hit.id}/birds`)}
               />
             );
           }}

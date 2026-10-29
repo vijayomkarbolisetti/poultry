@@ -29,7 +29,7 @@ export function filterSelectOptions(options: SelectOption[], query: string): Sel
   );
 }
 
-/** YYYY-MM-DD local calendar date. */
+/** YYYY-MM-DD local calendar date (avoids UTC day-shift from toISOString). */
 export function formatIsoDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -37,6 +37,7 @@ export function formatIsoDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Parse YYYY-MM-DD as a local calendar Date (noon avoided — midnight local). */
 export function parseIsoDate(value: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const [ys, ms, ds] = value.split("-");
@@ -50,4 +51,29 @@ export function parseIsoDate(value: string): Date | null {
 
 export function todayIsoDate(): string {
   return formatIsoDate(new Date());
+}
+
+/** Human-readable display for date-only fields (value remains YYYY-MM-DD). */
+export function formatDisplayDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = parseIsoDate(iso);
+  if (!d) return iso;
+  return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+/** Compare YYYY-MM-DD strings lexicographically (valid for ISO dates). */
+export function compareIsoDates(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
+export function clampIsoDate(
+  value: string,
+  minimumDate?: string | null,
+  maximumDate?: string | null,
+): string {
+  let next = value;
+  if (minimumDate && compareIsoDates(next, minimumDate) < 0) next = minimumDate;
+  if (maximumDate && compareIsoDates(next, maximumDate) > 0) next = maximumDate;
+  return next;
 }

@@ -17,11 +17,9 @@ export default function BirdAddedScreen() {
   const shedId = firstRouteParam(params.shedId);
   const flockId = firstRouteParam(params.flockId);
   const bandId = firstRouteParam(params.bandId) ?? "—";
-  const batchCode = firstRouteParam(params.batchCode) ?? "Group";
-
   const addAnother = () => {
     if (!shedId || !flockId) {
-      if (shedId) router.replace(`/(app)/sheds/${shedId}`);
+      if (shedId) router.replace(`/(app)/sheds/${shedId}/birds`);
       else router.replace("/(app)/sheds");
       return;
     }
@@ -32,7 +30,7 @@ export default function BirdAddedScreen() {
   };
 
   const done = () => {
-    if (shedId) router.replace(`/(app)/sheds/${shedId}`);
+    if (shedId) router.replace(`/(app)/sheds/${shedId}/birds`);
     else router.replace("/(app)/sheds");
   };
 
@@ -44,7 +42,7 @@ export default function BirdAddedScreen() {
         </View>
         <Text style={styles.title}>Bird added!</Text>
         <Text style={styles.band}>{bandId}</Text>
-        <Text style={styles.meta}>Saved to {batchCode}</Text>
+        <Text style={styles.meta}>Saved in this shed</Text>
 
         <View style={styles.actions}>
           <Button label="Add another bird" onPress={addAnother} />

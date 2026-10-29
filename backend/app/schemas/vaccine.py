@@ -59,6 +59,15 @@ class ScheduledDoseOut(BaseModel):
     eligible_count: int
     completed_count: int
     needs_review: bool
+    # Display labels resolved server-side under owner scope (vaccination.view).
+    # Farmers do not need schedule.view to read these.
+    vaccine_name: str | None = None
+    shed_name: str | None = None
+    flock_label: str | None = None
+    # Population context from the flock (not individual bird identity).
+    banded_count: int | None = None
+    unbanded_count: int | None = None
+    remaining_count: int | None = None
 
 
 class GenerateSchedulesRequest(BaseModel):
@@ -77,11 +86,34 @@ class VaccinationRecordIn(BaseModel):
     birds_covered: int = 1
     lot_number: str | None = None
     product_expiry: date | None = None
+    manufacturer_or_brand: str | None = Field(default=None, max_length=128)
+    vaccine_type_or_strain: str | None = Field(default=None, max_length=128)
     dose_amount: str | None = None
     route: str | None = None
     notes: str | None = None
     verification_status: str = "verified"
     idempotency_key: str | None = None
+
+
+class VaccinationBatchItemIn(BaseModel):
+    scheduled_dose_id: UUID
+    birds_covered: int = Field(ge=1)
+
+
+class VaccinationBatchRecordIn(BaseModel):
+    """Record coverage across one or more population doses in a single transaction."""
+
+    items: list[VaccinationBatchItemIn] = Field(min_length=1)
+    administration_date: date | None = None
+    idempotency_key: str = Field(min_length=8, max_length=100)
+    lot_number: str | None = None
+    product_expiry: date | None = None
+    manufacturer_or_brand: str | None = Field(default=None, max_length=128)
+    vaccine_type_or_strain: str | None = Field(default=None, max_length=128)
+    dose_amount: str | None = None
+    route: str | None = None
+    notes: str | None = None
+    verification_status: str = "verified"
 
 
 class VaccinationCorrectionIn(BaseModel):
@@ -103,6 +135,13 @@ class VaccinationEventOut(BaseModel):
     vaccine_definition_id: UUID
     administration_date: date
     birds_covered: int
+    lot_number: str | None = None
+    product_expiry: date | None = None
+    manufacturer_or_brand: str | None = None
+    vaccine_type_or_strain: str | None = None
+    dose_amount: str | None = None
+    route: str | None = None
+    notes: str | None = None
     verification_status: str
     timing_status: str
     is_void: bool
@@ -153,6 +192,9 @@ class MediaOut(BaseModel):
     versions_meta: list | None
     is_deleted: bool
     bird_id: UUID | None
+    shed_id: UUID | None = None
+    flock_id: UUID | None = None
+    vaccination_event_id: UUID | None = None
     created_at: datetime
 
 

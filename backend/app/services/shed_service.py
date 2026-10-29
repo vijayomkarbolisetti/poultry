@@ -112,7 +112,7 @@ async def assert_shed_accepts_new_records(db: AsyncSession, ctx: AuthContext, sh
         raise ShedError("Shed not found", "NOT_FOUND")
     if not shed.is_active:
         raise ShedError(
-            "This shed is inactive. Reactivate it before adding batches, birds, or schedules.",
+            "This shed is inactive. Reactivate it before adding birds or schedules.",
             "SHED_INACTIVE",
         )
     return shed
@@ -170,6 +170,7 @@ async def create_shed(
     location_notes: str | None,
     is_owner_managed: bool,
     initial_farmer_membership_id: UUID | None = None,
+    capacity: int | None = None,
 ) -> Shed:
     """Create a shed; farmer-managed creates require an initial assignment in the same commit."""
     assert ctx.owner_account_id is not None
@@ -183,12 +184,15 @@ async def create_shed(
             "A farmer assignment is required for farmer-managed sheds",
             "FARMER_REQUIRED",
         )
+    if capacity is not None and capacity < 0:
+        raise ShedError("Capacity must be zero or greater", "INVALID_CAPACITY")
 
     shed = Shed(
         owner_account_id=ctx.owner_account_id,
         name=name.strip(),
         code=code.strip().upper(),
         location_notes=location_notes,
+        capacity=capacity,
         is_owner_managed=is_owner_managed,
         is_active=True,
     )
@@ -288,6 +292,18 @@ async def list_sheds(
     # list dose-task buckets match overview without N+1 per-shed refreshes.
     from app.services import vaccine_service
 
+    deactivated = await vaccine_service.reconcile_duplicate_scheduled_doses(
+        db, owner_account_id=ctx.owner_account_id, commit=True
+    )
+    if deactivated:
+        from app.core.database import set_rls_context
+
+        await set_rls_context(
+            db,
+            user_id=ctx.user.id,
+            owner_account_id=ctx.owner_account_id,
+            role=ctx.membership.role.value if ctx.membership else None,
+        )
     await vaccine_service.refresh_dose_statuses(db, ctx, commit=False)
 
     # Dose-task counts (not birds) — same _task_bucket rules as overview.
@@ -468,6 +484,8 @@ async def update_shed(
     is_owner_managed: bool | None,
     is_active: bool | None,
     initial_farmer_membership_id: UUID | None = None,
+    capacity: int | None = None,
+    capacity_provided: bool = False,
 ) -> Shed:
     """Update shed fields and management mode atomically (single commit)."""
     shed = await get_shed(db, ctx, shed_id)
@@ -476,6 +494,7 @@ async def update_shed(
         "code": shed.code,
         "is_active": shed.is_active,
         "is_owner_managed": shed.is_owner_managed,
+        "capacity": shed.capacity,
     }
     if name is not None:
         shed.name = name.strip()
@@ -483,6 +502,10 @@ async def update_shed(
         shed.code = code.strip().upper()
     if location_notes is not None:
         shed.location_notes = location_notes
+    if capacity_provided:
+        if capacity is not None and capacity < 0:
+            raise ShedError("Capacity must be zero or greater", "INVALID_CAPACITY")
+        shed.capacity = capacity
     # Prefer dedicated deactivate/reactivate endpoints for lifecycle; still allow PATCH.
     if is_active is not None:
         shed.is_active = is_active
@@ -805,8 +828,19 @@ async def get_shed_overview(db: AsyncSession, ctx: AuthContext, shed_id: UUID) -
             .order_by(Flock.created_at.desc())
         )
     )
-    # Shed-scoped status refresh (farm-local today) so overview matches scheduled-dose reads
-    # without an org-wide write. Does not touch completed/skipped/inactive rows.
+    # Collapse twin open doses then refresh statuses so overview matches the vaccination list.
+    deactivated = await vaccine_service.reconcile_duplicate_scheduled_doses(
+        db, owner_account_id=ctx.owner_account_id, shed_id=shed_id, commit=True
+    )
+    if deactivated:
+        from app.core.database import set_rls_context
+
+        await set_rls_context(
+            db,
+            user_id=ctx.user.id,
+            owner_account_id=ctx.owner_account_id,
+            role=ctx.membership.role.value if ctx.membership else None,
+        )
     await vaccine_service.refresh_dose_statuses(db, ctx, shed_id=shed_id, commit=False)
     doses = list(
         await db.scalars(

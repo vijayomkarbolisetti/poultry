@@ -157,7 +157,7 @@ export default function ShedDetailScreen() {
       const deps = await getShedDependencies(id);
       Alert.alert(
         "Deactivate this shed?",
-        `${deps.note}\n\n${deps.active_batch_count} active groups, ${deps.total_live_birds} live birds.`,
+        `${deps.note}\n\n${deps.active_batch_count} active hatch-date populations, ${deps.total_live_birds} live birds.`,
         [
           { text: "Cancel", style: "cancel" },
           {
@@ -186,7 +186,7 @@ export default function ShedDetailScreen() {
 
   const onReactivate = () => {
     if (!id || busy) return;
-    Alert.alert("Reactivate this shed?", "New groups and birds can be added again.", [
+    Alert.alert("Reactivate this shed?", "New birds and schedules can be added again.", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Reactivate",
@@ -295,25 +295,20 @@ export default function ShedDetailScreen() {
         </Pressable>
       ) : null}
 
-      <View style={styles.navCard}>
-        {canViewBirds ? (
+      {canViewBirds ? (
+        <View style={styles.navCard}>
           <NavRow
             icon="egg-outline"
-            title="Birds"
-            subtitle={`${population.banded_birds} banded · ${population.unbanded_birds} unbanded`}
+            title="Manage Birds"
+            subtitle={
+              canLifecycle && shed.is_active
+                ? `${population.banded_birds} banded · ${population.unbanded_birds} unbanded · mortality & transfer`
+                : `${population.banded_birds} banded · ${population.unbanded_birds} unbanded`
+            }
             onPress={() => router.push(`/(app)/sheds/${id}/birds`)}
           />
-        ) : null}
-        {canViewBirds && canLifecycle ? <View style={styles.divider} /> : null}
-        {canLifecycle && shed.is_active ? (
-          <NavRow
-            icon="swap-horizontal-outline"
-            title="Mortality & transfer"
-            subtitle="Record losses or move birds to another shed"
-            onPress={() => router.push({ pathname: "/(app)/sheds/[id]/birds", params: { id: id!, focus: "actions" } })}
-          />
-        ) : null}
-      </View>
+        </View>
+      ) : null}
 
       {showManage ? (
         <View style={styles.manageCard}>

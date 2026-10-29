@@ -1,13 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { bulkImportBirds, createBird, getFlock, listBirds, recordLifecycle } from "../../../src/api/flocks";
 import { describeApiError } from "../../../src/api/client";
 import { Button } from "../../../src/components/ui/Button";
 import { DataQualityBanner } from "../../../src/components/ui/DataQualityBanner";
-import { DateField } from "../../../src/components/ui/DateField";
+import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
 import { SelectField } from "../../../src/components/ui/SelectField";
@@ -20,7 +20,7 @@ import { colors, radius, space } from "../../../src/theme/tokens";
 const BIRD_EVENT_OPTIONS = [
   { value: "mortality", label: "Mortality", hint: "Mark hen as dead" },
   { value: "sale", label: "Sale", hint: "Sold / moved out by sale" },
-  { value: "transfer", label: "Transfer", hint: "Transferred out of this batch" },
+  { value: "transfer", label: "Transfer", hint: "Transferred out of this shed population" },
 ];
 
 export default function FlockDetailScreen() {
@@ -48,6 +48,13 @@ export default function FlockDetailScreen() {
       void qc.invalidateQueries({ queryKey: ["shed-overview", flock.data.shed_id] });
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      void flock.refetch();
+    }, [id]),
+  );
 
   const onAddBird = async () => {
     setBusy(true);
@@ -118,22 +125,37 @@ export default function FlockDetailScreen() {
   if (flock.isLoading) {
     return (
       <Screen>
-        <HenLoader label="Loading this batch…" />
+        <HenLoader label="Loading this population…" />
+      </Screen>
+    );
+  }
+  if (flock.isError) {
+    return (
+      <Screen>
+        <Text style={styles.error}>{describeApiError(flock.error, "load population")}</Text>
+        <Button label="Retry" onPress={() => flock.refetch()} />
       </Screen>
     );
   }
   if (!flock.data) {
     return (
       <Screen>
-        <Text style={styles.error}>Batch not found</Text>
+        <Text style={styles.error}>Population not found</Text>
+        <Button label="Retry" onPress={() => flock.refetch()} />
       </Screen>
     );
   }
   const f = flock.data;
+  const title =
+    f.hatch_date != null
+      ? `Hatch ${f.hatch_date}`
+      : f.estimated_age_days != null
+        ? `~${f.estimated_age_days}d`
+        : "Age unknown";
 
   return (
     <Screen scroll>
-      <Text style={styles.title}>{f.batch_code}</Text>
+      <Text style={styles.title}>{title}</Text>
       <View style={styles.card}>
         <Text style={styles.meta}>Mode: {f.tracking_mode}</Text>
         <Text style={styles.meta}>
@@ -153,7 +175,7 @@ export default function FlockDetailScreen() {
         <View style={styles.unbandedCard}>
           <Text style={styles.unbandedTitle}>{f.unbanded_count} unbanded birds</Text>
           <Text style={styles.meta}>
-            Unbanded birds are a batch population count — they are not individual profiles until banded.
+            Unbanded birds are a shed population count — they are not individual profiles until banded.
           </Text>
           {canCreateBird ? (
             <Text style={styles.meta}>Use Add banded hen or Bulk import below to register bands.</Text>
@@ -203,10 +225,11 @@ export default function FlockDetailScreen() {
             onChange={setEventType}
             required
           />
-          <DateField
+          <AppDatePicker
             label="Effective date"
             required
             value={eventDate}
+            maximumDate={todayIsoDate()}
             onChange={(v) => setEventDate(v ?? todayIsoDate())}
           />
         </>
@@ -214,7 +237,7 @@ export default function FlockDetailScreen() {
 
       <Text style={styles.section}>Registered birds ({birds.data?.length ?? 0})</Text>
       {(birds.data ?? []).length === 0 ? (
-        <Text style={styles.meta}>No banded birds registered in this batch yet.</Text>
+        <Text style={styles.meta}>No banded birds registered for this hatch date yet.</Text>
       ) : null}
       {(birds.data ?? []).map((b) => (
         <View key={b.id} style={styles.card}>

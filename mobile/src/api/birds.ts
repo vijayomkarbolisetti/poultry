@@ -35,6 +35,11 @@ export type BirdProfileVaccinationEvent = {
   administration_date: string;
   birds_covered: number;
   lot_number: string | null;
+  product_expiry?: string | null;
+  manufacturer_or_brand?: string | null;
+  vaccine_type_or_strain?: string | null;
+  dose_amount?: string | null;
+  route?: string | null;
   timing_status: string;
   verification_status: string;
   notes: string | null;
@@ -97,8 +102,9 @@ export type BirdProfile = {
   flock_count_mismatch: boolean;
   sire: BirdParentRef | null;
   dam: BirdParentRef | null;
-  individual_vaccinations: BirdProfileVaccinationEvent[];
-  batch_upcoming_doses: BirdProfileBatchDose[];
+  /** Optional — backend may still send these; UI no longer displays them. */
+  individual_vaccinations?: BirdProfileVaccinationEvent[];
+  batch_upcoming_doses?: BirdProfileBatchDose[];
   lifecycle_events: BirdProfileLifecycle[];
 };
 
@@ -138,7 +144,6 @@ export type ShedBirdListItem = {
   flock_id: string;
   batch_code: string;
   shed_id: string;
-  individual_vaccination_count: number;
   notes: string | null;
 };
 
@@ -227,6 +232,25 @@ export async function bandFromUnbanded(input: {
   return data;
 }
 
+/** Shed-centric banding by exact hatch date or estimated age key (no flock_id). */
+export async function bandFromUnbandedByCohort(input: {
+  shed_id: string;
+  band_id: string;
+  idempotency_key: string;
+  hatch_date?: string;
+  estimated_age_days?: number;
+  age_reported_on?: string;
+  breed?: string | null;
+  sex?: string | null;
+  notes?: string | null;
+}): Promise<BandFromUnbandedResult> {
+  const { data } = await api.post<BandFromUnbandedResult>(
+    "/birds/band-from-unbanded-by-cohort",
+    input,
+  );
+  return data;
+}
+
 /** Shed-centric banded registration — server finds/creates a hidden DOB cohort. */
 export async function registerBandedInShed(input: {
   shed_id: string;
@@ -263,26 +287,4 @@ export async function addUnbandedInShed(input: {
 }): Promise<AddUnbandedInShedResult> {
   const { data } = await api.post<AddUnbandedInShedResult>("/birds/add-unbanded-in-shed", input);
   return data;
-}
-
-export type BirdPdfDownload = {
-  bytes: ArrayBuffer;
-  filename: string;
-  contentType: string;
-};
-
-/** Authenticated PDF download — never uses a public storage URL. */
-export async function downloadBirdVaccinationReport(birdId: string): Promise<BirdPdfDownload> {
-  const res = await api.get<ArrayBuffer>(`/birds/${birdId}/vaccination-report.pdf`, {
-    responseType: "arraybuffer",
-    headers: { Accept: "application/pdf" },
-  });
-  const cd = String(res.headers["content-disposition"] ?? "");
-  const match = /filename="?([^";]+)"?/i.exec(cd);
-  const filename = match?.[1]?.trim() || `Bird_Report_${birdId.slice(0, 8)}.pdf`;
-  return {
-    bytes: res.data,
-    filename,
-    contentType: String(res.headers["content-type"] ?? "application/pdf"),
-  };
 }

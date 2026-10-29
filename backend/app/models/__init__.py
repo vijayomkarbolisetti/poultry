@@ -17,6 +17,12 @@ from app.models.permission import MembershipPermission, Permission
 from app.models.shed import Shed, ShedMembership
 from app.models.token import RefreshToken
 from app.models.user import User
+from app.models.catalogue import (
+    OwnerCatalogueAssignment,
+    VaccineCatalogue,
+    VaccineCatalogueItem,
+    VaccineCatalogueItemRule,
+)
 from app.models.vaccination import VaccinationCorrection, VaccinationEvent
 from app.models.vaccine import ScheduledDose, ScheduleRule, VaccineDefinition, VaccineScheduleVersion
 
@@ -34,6 +40,7 @@ __all__ = [
     "MembershipRole",
     "Notification",
     "OwnerAccount",
+    "OwnerCatalogueAssignment",
     "OwnerMembership",
     "Permission",
     "RefreshToken",
@@ -45,6 +52,9 @@ __all__ = [
     "User",
     "VaccinationCorrection",
     "VaccinationEvent",
+    "VaccineCatalogue",
+    "VaccineCatalogueItem",
+    "VaccineCatalogueItemRule",
     "VaccineDefinition",
     "VaccineScheduleVersion",
 ]
