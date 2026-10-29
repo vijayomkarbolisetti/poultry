@@ -18,6 +18,11 @@ import { listSheds, type ShedListItem } from "../../../src/api/sheds";
 import { listScheduledDoses } from "../../../src/api/vaccines";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
+import {
+  IMMERSIVE_HERO_MIN_HEIGHT,
+  IMMERSIVE_HERO_SHEET_OVERLAP,
+  ImmersiveHeroHeader,
+} from "../../../src/components/ui/ImmersiveHeroHeader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import {
@@ -33,7 +38,7 @@ import {
   statusBadgeLabel,
   summaryCounts,
 } from "../../../src/features/vaccination/dashboardHelpers";
-import { media } from "../../../src/theme/media";
+import { heroArt, media } from "../../../src/theme/media";
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 
 type ShedFilter = "all" | string;
@@ -268,39 +273,51 @@ export default function VaccinationDashboardScreen() {
   const isEmpty = !showInitialLoader && !errorMessage && rows.length === 0;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Vaccination</Text>
-        <Text style={styles.subtitle} numberOfLines={1}>
-          {farmName}
-        </Text>
-      </View>
-
-      {canSheds && shedOptions.length > 0 ? (
-        <View style={styles.filterWrap}>
-          <Pressable
-            style={styles.filterBtn}
-            onPress={() => setShedPickerOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel={`Filter by shed: ${shedLabel}`}
-          >
-            <Ionicons name="options-outline" size={18} color={ui.muted} />
-            <Text style={styles.filterLabel} numberOfLines={1}>
-              {shedLabel}
+    <SafeAreaView style={styles.safe} edges={["left", "right"]}>
+      <ImmersiveHeroHeader
+        source={heroArt.vaccination}
+        curveFill={ui.bg}
+        minHeight={IMMERSIVE_HERO_MIN_HEIGHT}
+        accessibilityLabel="Vaccination farm illustration"
+      >
+        <View style={styles.heroCopy}>
+          <Text style={styles.title}>Vaccination</Text>
+          <View style={styles.farmNameRow}>
+            <Ionicons name="location-sharp" size={13} color={ui.brand} />
+            <Text style={styles.subtitle} numberOfLines={1}>
+              {farmName}
             </Text>
-            <Ionicons name="chevron-down" size={18} color={ui.muted} />
-          </Pressable>
+          </View>
         </View>
-      ) : null}
+      </ImmersiveHeroHeader>
 
-      {!showInitialLoader && !errorMessage ? (
-        <View style={styles.summaryRow}>
-          <SummaryCard label="Overdue" count={summary.overdue} tone="overdue" icon="alert-circle" />
-          <SummaryCard label="Due today" count={summary.dueToday} tone="due" icon="calendar" />
-          <SummaryCard label="Upcoming" count={summary.upcoming} tone="upcoming" icon="time" />
-          <SummaryCard label="Needs review" count={summary.needsReview} tone="review" icon="help-circle" />
-        </View>
-      ) : null}
+      <View style={styles.sheet}>
+        {canSheds && shedOptions.length > 0 ? (
+          <View style={styles.filterWrap}>
+            <Pressable
+              style={styles.filterBtn}
+              onPress={() => setShedPickerOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter by shed: ${shedLabel}`}
+            >
+              <Ionicons name="options-outline" size={18} color={ui.muted} />
+              <Text style={styles.filterLabel} numberOfLines={1}>
+                {shedLabel}
+              </Text>
+              <Ionicons name="chevron-down" size={18} color={ui.muted} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {!showInitialLoader && !errorMessage ? (
+          <View style={styles.summaryRow}>
+            <SummaryCard label="Overdue" count={summary.overdue} tone="overdue" icon="alert-circle" />
+            <SummaryCard label="Due today" count={summary.dueToday} tone="due" icon="calendar" />
+            <SummaryCard label="Upcoming" count={summary.upcoming} tone="upcoming" icon="time" />
+            <SummaryCard label="Needs review" count={summary.needsReview} tone="review" icon="help-circle" />
+          </View>
+        ) : null}
+      </View>
 
       {showInitialLoader ? (
         <View style={styles.center}>
@@ -431,10 +448,34 @@ export default function VaccinationDashboardScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: ui.bg },
-  header: { paddingHorizontal: ui.horizontal, paddingTop: 8, paddingBottom: 4 },
-  title: { fontSize: 28, fontWeight: "800", color: ui.ink },
-  subtitle: { marginTop: 2, fontSize: 14, color: ui.muted, fontWeight: "600" },
-  filterWrap: { paddingHorizontal: ui.horizontal, paddingTop: 10, paddingBottom: 4 },
+  // Mirror Home farmRow / farmTitle / farmName placement over the hero.
+  heroCopy: {
+    marginTop: 18,
+    paddingBottom: 6,
+    gap: 4,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: ui.ink,
+    letterSpacing: -0.5,
+  },
+  farmNameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  subtitle: {
+    flexShrink: 1,
+    fontSize: 13,
+    fontWeight: "700",
+    color: ui.brand,
+  },
+  sheet: {
+    marginTop: IMMERSIVE_HERO_SHEET_OVERLAP,
+    backgroundColor: ui.bg,
+  },
+  filterWrap: {
+    paddingHorizontal: ui.horizontal,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
   filterBtn: {
     flexDirection: "row",
     alignItems: "center",
