@@ -1,7 +1,6 @@
-import { LinearGradient } from "expo-linear-gradient";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
 
-import { colors, gradients, layout, radius, shadows, space, states, typography } from "../../theme/tokens";
+import { colors, layout, radius, space, states, typography } from "../../theme/tokens";
 
 type Props = {
   label: string;
@@ -12,6 +11,10 @@ type Props = {
   style?: ViewStyle;
 };
 
+/**
+ * Shared CTA. Solid fills only — avoid LinearGradient + Android elevation
+ * (that combo paints a dark half-overlay on the button face).
+ */
 export function Button({ label, onPress, loading, variant = "primary", disabled, style }: Props) {
   const isPrimary = variant === "primary";
   const isDanger = variant === "danger";
@@ -26,41 +29,28 @@ export function Button({ label, onPress, loading, variant = "primary", disabled,
       disabled={inactive}
       style={({ pressed }) => [
         styles.pressable,
+        isPrimary && !inactive && styles.primaryLift,
         pressed && !inactive && styles.pressed,
         inactive && styles.disabled,
         style,
       ]}
     >
-      {({ pressed }) => (
-        <View style={styles.inner}>
-          {isPrimary ? (
-            <LinearGradient
-              colors={[...(pressed && !inactive ? gradients.primaryPressed : gradients.primary)]}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={[styles.base, styles.primaryGradient, shadows.button]}
-            >
-              <ButtonLabel label={label} loading={loading} onDark />
-            </LinearGradient>
-          ) : (
-            <View
-              style={[
-                styles.base,
-                isSecondary && styles.secondary,
-                isDanger && styles.danger,
-                isGhost && styles.ghost,
-              ]}
-            >
-              <ButtonLabel
-                label={label}
-                loading={loading}
-                onDark={isDanger}
-                brand={!isDanger}
-              />
-            </View>
-          )}
-        </View>
-      )}
+      <View
+        style={[
+          styles.base,
+          isPrimary && styles.primary,
+          isSecondary && styles.secondary,
+          isDanger && styles.danger,
+          isGhost && styles.ghost,
+        ]}
+      >
+        <ButtonLabel
+          label={label}
+          loading={loading}
+          onDark={isPrimary || isDanger}
+          brand={isSecondary || isGhost}
+        />
+      </View>
     </Pressable>
   );
 }
@@ -91,6 +81,7 @@ function ButtonLabel({
           onDark && styles.labelOnDark,
           brand && styles.labelBrand,
         ]}
+        numberOfLines={1}
       >
         {label}
       </Text>
@@ -99,9 +90,25 @@ function ButtonLabel({
 }
 
 const styles = StyleSheet.create({
-  pressable: { width: "100%" },
-  inner: { width: "100%" },
+  pressable: {
+    width: "100%",
+    alignSelf: "stretch",
+  },
+  /** Soft lift without overlaying the fill (shadow on wrapper, not clipped child). */
+  primaryLift: Platform.select({
+    ios: {
+      shadowColor: "#022C22",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.12,
+      shadowRadius: 8,
+    },
+    android: {
+      elevation: 2,
+    },
+    default: {},
+  }),
   base: {
+    height: layout.buttonMinHeight,
     minHeight: layout.buttonMinHeight,
     borderRadius: radius.md,
     alignItems: "center",
@@ -109,8 +116,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     paddingHorizontal: space.lg,
   },
-  primaryGradient: { overflow: "hidden" },
-  spinner: { marginRight: space.sm },
+  primary: {
+    backgroundColor: colors.primary,
+  },
   secondary: {
     backgroundColor: colors.surface,
     borderWidth: 1.5,
@@ -118,9 +126,15 @@ const styles = StyleSheet.create({
   },
   danger: { backgroundColor: colors.danger },
   ghost: { backgroundColor: "transparent" },
+  spinner: { marginRight: space.sm },
   disabled: { opacity: states.disabledOpacity },
   pressed: { transform: [{ scale: states.pressedScale }], opacity: states.pressedOpacity },
-  label: { ...typography.button },
+  label: {
+    ...typography.button,
+    textAlign: "center",
+    textAlignVertical: "center",
+    includeFontPadding: false,
+  },
   labelOnDark: { color: colors.textOnPrimary },
   labelBrand: { color: colors.primary },
 });

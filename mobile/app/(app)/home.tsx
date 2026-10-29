@@ -1,17 +1,20 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useQuery } from "@tanstack/react-query";
-import { Href, router } from "expo-router";
+import { Href, router, useFocusEffect } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { ComponentProps, ReactNode } from "react";
+import { ComponentProps, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   Dimensions,
+  Image,
   ImageBackground,
+  ImageSourcePropType,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
@@ -22,10 +25,18 @@ import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Screen } from "../../src/components/ui/Screen";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
-import { dashboardArt } from "../../src/theme/media";
+import { HomeInlineSearchPanel } from "../../src/features/search/HomeInlineSearchPanel";
+import {
+  clearHomeSearchDraft,
+  getHomeSearchDraft,
+  setHomeSearchDraft,
+} from "../../src/features/search/homeSearchSession";
+import { normalizeSearchQuery } from "../../src/features/search/globalSearchHelpers";
+import { dashboardArt, homeCardArt } from "../../src/theme/media";
 import { colors, radius, space } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
+type MciName = ComponentProps<typeof MaterialCommunityIcons>["name"];
 
 const HEADER_ART = dashboardArt.header;
 const SCREEN_W = Dimensions.get("window").width;
@@ -38,26 +49,32 @@ const ui = {
   primaryText: "#102A22",
   secondaryText: "#5B6B73",
   subtleBorder: "#D7E8E0",
-  divider: "#DCE8E2",
   white: "#FFFFFF",
-  liveBg: "#F2FBF6",
-  liveBorder: "#C7EBDD",
-  liveIconBg: "#DDF5E8",
-  liveTone: "#087443",
-  dueBg: "#FFF9F1",
-  dueBorder: "#FFE0B8",
-  dueIconBg: "#FFF0DE",
-  dueTone: "#EA6500",
-  complianceBg: "#F2F8FF",
-  complianceBorder: "#BFDEFF",
-  complianceIconBg: "#DFEDFF",
-  complianceTone: "#247FF0",
-  accentBlue: "#2584F5",
-  reportsTone: "#7434D4",
-  snapshotIconBg: "#E8F8F0",
+  // Overview card themes (mock)
+  birdsBg: "#EEF9F2",
+  birdsBorder: "#C8EBD8",
+  birdsIcon: "#D8F3E5",
+  birdsTone: "#0B8A52",
+  shedsBg: "#EEF4FC",
+  shedsBorder: "#C9DBF5",
+  shedsIcon: "#D9E7FA",
+  shedsTone: "#2B78E4",
+  farmersBg: "#FBF3EB",
+  farmersBorder: "#EED9C4",
+  farmersIcon: "#F5E4D4",
+  farmersTone: "#C56A2B",
+  // Quick action accents
+  actionShed: "#0B8A52",
+  actionShedBg: "#E4F6EC",
+  actionBird: "#0F6B45",
+  actionBirdBg: "#E6F3EC",
+  actionVax: "#2B78E4",
+  actionVaxBg: "#E8F1FC",
+  actionCat: "#7B4FC8",
+  actionCatBg: "#F0E9FA",
   searchBorder: "#E2EDE7",
   healthBadgeBg: "#E7F8EF",
-  horizontal: 28,
+  horizontal: 20,
 };
 
 function formatLastUpdated(ts?: number): string {
@@ -105,6 +122,51 @@ function HeaderCurve({ width }: { width: number }) {
   );
 }
 
+/**
+ * Soft pastel landscape behind card copy (subject weighted right).
+ * Falls back to a faint icon if no asset is wired yet.
+ */
+function CardWatermark({
+  source,
+  fallbackIcon,
+  fallbackMci,
+  color,
+  variant = "stat",
+}: {
+  source?: ImageSourcePropType;
+  fallbackIcon?: IconName;
+  fallbackMci?: MciName;
+  color: string;
+  variant?: "stat" | "action";
+}) {
+  if (source) {
+    return (
+      <View
+        style={variant === "stat" ? styles.statArtClip : styles.actionArtClip}
+        pointerEvents="none"
+      >
+        <Image
+          source={source}
+          style={variant === "stat" ? styles.statArtImg : styles.actionArtImg}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }
+  return (
+    <View
+      style={[styles.watermarkFallback, variant === "stat" ? { width: 52, height: 52 } : { width: 64, height: 64 }]}
+      pointerEvents="none"
+    >
+      {fallbackMci ? (
+        <MaterialCommunityIcons name={fallbackMci} size={variant === "stat" ? 38 : 46} color={color} />
+      ) : fallbackIcon ? (
+        <Ionicons name={fallbackIcon} size={variant === "stat" ? 38 : 46} color={color} />
+      ) : null}
+    </View>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -114,6 +176,9 @@ function StatCard({
   border,
   iconBg,
   tone,
+  watermark,
+  watermarkIcon,
+  watermarkMci,
   onPress,
 }: {
   label: string;
@@ -124,6 +189,9 @@ function StatCard({
   border: string;
   iconBg: string;
   tone: string;
+  watermark?: ImageSourcePropType;
+  watermarkIcon?: IconName;
+  watermarkMci?: MciName;
   onPress?: () => void;
 }) {
   return (
@@ -139,14 +207,25 @@ function StatCard({
       accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={`${label}: ${value}`}
     >
+      <CardWatermark
+        source={watermark}
+        fallbackIcon={watermarkIcon}
+        fallbackMci={watermarkMci}
+        color={`${tone}33`}
+        variant="stat"
+      />
       <View style={styles.statTop}>
         <View style={[styles.statIcon, { backgroundColor: iconBg }]}>
-          {customIcon ?? (icon ? <Ionicons name={icon} size={18} color={tone} /> : null)}
+          {customIcon ?? (icon ? <Ionicons name={icon} size={16} color={tone} /> : null)}
         </View>
-        <Ionicons name="chevron-forward" size={16} color="#9AA8A1" />
+        <Ionicons name="chevron-forward" size={14} color="#9AA8A1" />
       </View>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, { color: tone }]}>{value}</Text>
+      <Text style={styles.statLabel} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={[styles.statValue, { color: ui.primaryText }]} numberOfLines={1}>
+        {value}
+      </Text>
     </Pressable>
   );
 }
@@ -157,34 +236,52 @@ function QuickAction({
   icon,
   iconColor,
   iconBg,
+  watermark,
+  watermarkIcon,
+  watermarkMci,
   href,
+  onPress,
 }: {
   title: string;
   subtitle: string;
   icon: IconName;
   iconColor: string;
   iconBg: string;
-  href: Href;
+  watermark?: ImageSourcePropType;
+  watermarkIcon?: IconName;
+  watermarkMci?: MciName;
+  href?: Href;
+  onPress?: () => void;
 }) {
   return (
     <Pressable
-      onPress={() => router.push(href)}
+      onPress={() => {
+        if (onPress) onPress();
+        else if (href) router.push(href);
+      }}
       style={({ pressed }) => [styles.quick, softCardShadow(), pressed && { opacity: 0.88 }]}
       accessibilityRole="button"
       accessibilityLabel={title}
     >
+      <CardWatermark
+        source={watermark}
+        fallbackIcon={watermarkIcon}
+        fallbackMci={watermarkMci}
+        color={`${iconColor}28`}
+        variant="action"
+      />
       <View style={[styles.quickIcon, { backgroundColor: iconBg }]}>
         <Ionicons name={icon} size={18} color={iconColor} />
       </View>
       <View style={styles.quickText}>
-        <Text style={styles.quickTitle} numberOfLines={2}>
+        <Text style={styles.quickTitle} numberOfLines={1}>
           {title}
         </Text>
         <Text style={styles.quickSubtitle} numberOfLines={2}>
           {subtitle}
         </Text>
       </View>
-      <Ionicons name="chevron-forward" size={16} color="#9AA8A1" />
+      <Ionicons name="chevron-forward" size={15} color="#9AA8A1" />
     </Pressable>
   );
 }
@@ -195,14 +292,39 @@ export default function HomeScreen() {
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
   const farmName = membership?.organization_name?.trim() || "Your farm";
-  const farmTitle =
-    user?.full_name?.trim().split(/\s+/).filter(Boolean)[0] || farmName;
+  const farmTitle = user?.full_name?.trim().split(/\s+/).filter(Boolean)[0] || farmName;
 
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
   const canBirds = hasPermission(user, ownerAccountId, "flock.view");
   const canBirdSearch = hasPermission(user, ownerAccountId, "bird.view");
-  // Match global search screen: birds + sheds only (no batch search entry).
   const canSearch = canBirdSearch || canSheds;
+  const canVaccination = hasPermission(user, ownerAccountId, "vaccination.view");
+  const canCatalogues = hasPermission(user, ownerAccountId, "schedule.view");
+  const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
+
+  const searchRef = useRef<TextInput>(null);
+  const [searchDraft, setSearchDraft] = useState(() => getHomeSearchDraft());
+  const searchActive = normalizeSearchQuery(searchDraft).length > 0;
+
+  useEffect(() => {
+    setHomeSearchDraft(searchDraft);
+  }, [searchDraft]);
+
+  useFocusEffect(
+    useCallback(() => {
+      setSearchDraft(getHomeSearchDraft());
+    }, []),
+  );
+
+  const focusHomeSearch = useCallback(() => {
+    if (!canSearch) return;
+    searchRef.current?.focus();
+  }, [canSearch]);
+
+  const clearSearch = useCallback(() => {
+    setSearchDraft("");
+    clearHomeSearchDraft();
+  }, []);
 
   const dash = useQuery({
     queryKey: ["dashboard", ownerAccountId],
@@ -214,24 +336,19 @@ export default function HomeScreen() {
   const health = farmHealthLabel(d?.active_birds, d?.active_sheds);
   const lastUpdated = formatLastUpdated(dash.dataUpdatedAt || undefined);
 
-  const goSearch = () => {
-    if (canSearch) router.push("/(app)/search");
-  };
-  const goSnapshotDetails = () => {
-    if (canSheds) router.push("/(app)/sheds");
-    else if (canBirdSearch) router.push("/(app)/search");
-    else router.push("/(app)/settings");
-  };
+  const hasQuickActions = canSheds || canBirdSearch || canVaccination || canCatalogues;
 
   return (
     <Screen edges={["left", "right"]} style={{ padding: 0, gap: 0, backgroundColor: ui.contentBg }}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <ScrollView
         contentContainerStyle={[styles.scroll, { paddingBottom: space.xl + 8 }]}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
-            refreshing={dash.isRefetching}
+            refreshing={dash.isRefetching && !searchActive}
             onRefresh={() => {
               void dash.refetch();
             }}
@@ -242,7 +359,7 @@ export default function HomeScreen() {
       >
         <ImageBackground
           source={HEADER_ART}
-          style={[styles.header, { paddingTop: Math.max(insets.top, 10) + 6 }]}
+          style={[styles.header, { paddingTop: Math.max(insets.top, 10) + 4 }]}
           imageStyle={styles.headerImg}
           resizeMode="cover"
         >
@@ -251,17 +368,15 @@ export default function HomeScreen() {
               <BrandLogo size={26} preferPng accessibilityLabel="PoultryTrack logo" />
               <Text style={styles.brandName}>PoultryTrack</Text>
             </View>
-            <View style={styles.headerActions}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Account"
-                onPress={() => router.push("/(app)/settings")}
-                style={styles.profileBtn}
-                hitSlop={8}
-              >
-                <Ionicons name="person" size={17} color={ui.forest} />
-              </Pressable>
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Account"
+              onPress={() => router.push("/(app)/settings")}
+              style={styles.profileBtn}
+              hitSlop={8}
+            >
+              <Ionicons name="person" size={17} color={ui.forest} />
+            </Pressable>
           </View>
 
           <View style={styles.farmRow}>
@@ -270,14 +385,14 @@ export default function HomeScreen() {
                 {farmTitle}
               </Text>
               <View style={styles.farmNameRow}>
-                <Ionicons name="location-sharp" size={13} color="rgba(255,255,255,0.92)" />
+                <Ionicons name="location-sharp" size={13} color={ui.accentGreen} />
                 <Text style={styles.farmName} numberOfLines={1}>
                   {farmName}
                 </Text>
               </View>
             </View>
             <View style={styles.healthBadge}>
-              <Ionicons name="pulse" size={14} color={ui.accentGreen} />
+              <Ionicons name="pulse" size={13} color={ui.accentGreen} />
               <Text style={styles.healthText} numberOfLines={1}>
                 Farm health · {health}
               </Text>
@@ -288,167 +403,205 @@ export default function HomeScreen() {
         </ImageBackground>
 
         <View style={styles.sheet}>
-          <Pressable
-            onPress={goSearch}
-            disabled={!canSearch}
-            style={({ pressed }) => [
-              styles.searchBar,
-              softCardShadow(),
-              pressed && canSearch ? { opacity: 0.92 } : null,
-              !canSearch ? { opacity: 0.7 } : null,
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Search birds and sheds"
-          >
+          <View style={[styles.searchBar, softCardShadow(), !canSearch ? { opacity: 0.7 } : null]}>
             <Ionicons name="search" size={18} color="#8A9A93" />
-            <Text style={styles.searchPlaceholder}>Search birds and sheds...</Text>
-          </Pressable>
+            <TextInput
+              ref={searchRef}
+              style={styles.searchInput}
+              value={searchDraft}
+              onChangeText={setSearchDraft}
+              placeholder="Search birds and sheds..."
+              placeholderTextColor="#8A9A93"
+              editable={canSearch}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="never"
+              accessibilityLabel="Search birds and sheds"
+            />
+            {searchDraft.length > 0 ? (
+              <Pressable
+                onPress={clearSearch}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+              >
+                <Ionicons name="close-circle" size={20} color="#8A9A93" />
+              </Pressable>
+            ) : (
+              <View
+                style={styles.searchFilter}
+                pointerEvents="none"
+                importantForAccessibility="no"
+                accessibilityElementsHidden
+              >
+                <Ionicons name="options-outline" size={18} color="#8A9A93" />
+              </View>
+            )}
+          </View>
 
-          {dash.isError ? (
-            <Pressable style={styles.errorBox} onPress={() => dash.refetch()}>
-              <Ionicons name="cloud-offline-outline" size={20} color={colors.danger} />
-              <Text style={styles.errorText}>Could not load dashboard. Tap to retry.</Text>
-            </Pressable>
+          {searchActive && canSearch ? (
+            <HomeInlineSearchPanel
+              draft={searchDraft}
+              colors={{
+                white: ui.white,
+                primaryText: ui.primaryText,
+                secondaryText: ui.secondaryText,
+                subtleBorder: ui.subtleBorder,
+                accentGreen: ui.accentGreen,
+                forest: ui.forest,
+              }}
+            />
           ) : null}
 
-          <View style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Overview</Text>
-            <View style={styles.refreshRow}>
-              <Text style={styles.lastUpdated} numberOfLines={1}>
-                {lastUpdated}
+          {!searchActive ? (
+            <>
+              {dash.isError ? (
+                <Pressable style={styles.errorBox} onPress={() => dash.refetch()}>
+                  <Ionicons name="cloud-offline-outline" size={20} color={colors.danger} />
+                  <Text style={styles.errorText}>Could not load dashboard. Tap to retry.</Text>
+                </Pressable>
+              ) : null}
+
+              <View style={styles.sectionHead}>
+                <Text style={styles.sectionTitle}>Overview</Text>
+                <View style={styles.refreshRow}>
+                  <Text style={styles.lastUpdated} numberOfLines={1}>
+                    {lastUpdated}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Refresh dashboard"
+                    onPress={() => dash.refetch()}
+                    hitSlop={10}
+                    style={styles.refreshBtn}
+                  >
+                    <Ionicons name="refresh" size={15} color={ui.secondaryText} />
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* Three equal cards in one row — mock layout */}
+              <View style={styles.statRow}>
+                <StatCard
+                  label="Live birds"
+                  value={d?.active_birds ?? "—"}
+                  customIcon={<MaterialCommunityIcons name="bird" size={16} color={ui.birdsTone} />}
+                  bg={ui.birdsBg}
+                  border={ui.birdsBorder}
+                  iconBg={ui.birdsIcon}
+                  tone={ui.birdsTone}
+                  watermark={homeCardArt.liveBirds}
+                  watermarkMci="bird"
+                  onPress={
+                    canSheds
+                      ? () => router.push("/(app)/sheds")
+                      : canBirdSearch
+                        ? focusHomeSearch
+                        : undefined
+                  }
+                />
+                <StatCard
+                  label="Active sheds"
+                  value={d?.active_sheds ?? "—"}
+                  icon="business"
+                  bg={ui.shedsBg}
+                  border={ui.shedsBorder}
+                  iconBg={ui.shedsIcon}
+                  tone={ui.shedsTone}
+                  watermark={homeCardArt.activeSheds}
+                  watermarkIcon="business"
+                  onPress={canSheds ? () => router.push("/(app)/sheds") : undefined}
+                />
+                <StatCard
+                  label="Farmers"
+                  value={d?.active_farmers ?? "—"}
+                  icon="people"
+                  bg={ui.farmersBg}
+                  border={ui.farmersBorder}
+                  iconBg={ui.farmersIcon}
+                  tone={ui.farmersTone}
+                  watermark={homeCardArt.farmers}
+                  watermarkIcon="people"
+                  onPress={
+                    canFarmers
+                      ? () => router.push("/(app)/farmers")
+                      : () => router.push("/(app)/settings")
+                  }
+                />
+              </View>
+
+              <Text style={[styles.sectionTitle, { marginTop: 22, marginBottom: 12 }]}>
+                Quick actions
               </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Refresh dashboard"
-                onPress={() => dash.refetch()}
-                hitSlop={10}
-                style={styles.refreshBtn}
-              >
-                <Ionicons name="refresh" size={15} color={ui.secondaryText} />
-              </Pressable>
-            </View>
-          </View>
+              <View style={styles.quickGrid}>
+                {canSheds ? (
+                  <QuickAction
+                    title="Manage sheds"
+                    subtitle="View and manage your sheds"
+                    icon="home-outline"
+                    iconColor={ui.actionShed}
+                    iconBg={ui.actionShedBg}
+                    watermark={homeCardArt.manageSheds}
+                    watermarkIcon="home"
+                    href="/(app)/sheds"
+                  />
+                ) : null}
+                {canSheds ? (
+                  <QuickAction
+                    title="Manage birds"
+                    subtitle="Open sheds to view and add birds"
+                    icon="egg-outline"
+                    iconColor={ui.actionBird}
+                    iconBg={ui.actionBirdBg}
+                    watermark={homeCardArt.manageBirds}
+                    watermarkMci="bird"
+                    href="/(app)/sheds"
+                  />
+                ) : canBirdSearch ? (
+                  <QuickAction
+                    title="Find birds"
+                    subtitle="Search birds by band number"
+                    icon="egg-outline"
+                    iconColor={ui.actionBird}
+                    iconBg={ui.actionBirdBg}
+                    watermark={homeCardArt.manageBirds}
+                    watermarkMci="bird"
+                    onPress={focusHomeSearch}
+                  />
+                ) : null}
+                {canVaccination ? (
+                  <QuickAction
+                    title="Vaccination"
+                    subtitle="View vaccination tasks and records"
+                    icon="medkit-outline"
+                    iconColor={ui.actionVax}
+                    iconBg={ui.actionVaxBg}
+                    watermark={homeCardArt.vaccination}
+                    watermarkIcon="medkit"
+                    href="/(app)/vaccination"
+                  />
+                ) : null}
+                {canCatalogues ? (
+                  <QuickAction
+                    title="Catalogues"
+                    subtitle="Manage vaccination catalogues"
+                    icon="book-outline"
+                    iconColor={ui.actionCat}
+                    iconBg={ui.actionCatBg}
+                    watermark={homeCardArt.catalogues}
+                    watermarkIcon="book"
+                    href="/(app)/catalogues"
+                  />
+                ) : null}
+              </View>
 
-          <View style={styles.grid}>
-            <StatCard
-              label="Live birds"
-              value={d?.active_birds ?? "—"}
-              customIcon={
-                <MaterialCommunityIcons name="bird" size={18} color={ui.liveTone} />
-              }
-              bg={ui.liveBg}
-              border={ui.liveBorder}
-              iconBg={ui.liveIconBg}
-              tone={ui.liveTone}
-              onPress={
-                canSheds
-                  ? () => router.push("/(app)/sheds")
-                  : canBirdSearch
-                    ? () => router.push("/(app)/search")
-                    : undefined
-              }
-            />
-            <StatCard
-              label="Active sheds"
-              value={d?.active_sheds ?? "—"}
-              icon="business-outline"
-              bg={ui.complianceBg}
-              border={ui.complianceBorder}
-              iconBg={ui.complianceIconBg}
-              tone={ui.complianceTone}
-              onPress={canSheds ? () => router.push("/(app)/sheds") : undefined}
-            />
-            <StatCard
-              label="Farmers"
-              value={d?.active_farmers ?? "—"}
-              icon="people-outline"
-              bg={ui.liveBg}
-              border={ui.liveBorder}
-              iconBg={ui.liveIconBg}
-              tone={ui.liveTone}
-              onPress={() => router.push("/(app)/settings")}
-            />
-          </View>
-
-          <View style={[styles.sectionHead, { marginTop: 22 }]}>
-            <Text style={styles.sectionTitle}>Farm snapshot</Text>
-            <Pressable
-              onPress={goSnapshotDetails}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="View farm details"
-            >
-              <Text style={styles.viewDetails}>
-                View details <Text style={styles.viewDetailsChevron}>›</Text>
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={[styles.snapshot, softCardShadow()]}>
-            <SnapshotMetric
-              icon="business-outline"
-              value={d?.active_sheds ?? "—"}
-              label="Active sheds"
-            />
-            <View style={styles.snapshotDivider} />
-            <SnapshotMetric
-              icon="egg-outline"
-              value={d?.active_birds ?? "—"}
-              label="Live birds"
-            />
-            <View style={styles.snapshotDivider} />
-            <SnapshotMetric
-              icon="people-outline"
-              value={d?.active_farmers ?? "—"}
-              label="Farmers"
-            />
-          </View>
-
-          <Text style={[styles.sectionTitle, { marginTop: 22, marginBottom: 12 }]}>Quick actions</Text>
-          <View style={styles.quickGrid}>
-            {canSheds ? (
-              <QuickAction
-                title="Manage sheds"
-                subtitle="View and manage your sheds"
-                icon="business-outline"
-                iconColor={ui.accentGreen}
-                iconBg="#E8F8F0"
-                href="/(app)/sheds"
-              />
-            ) : null}
-            {canSheds ? (
-              <QuickAction
-                title="Manage birds"
-                subtitle="Open sheds to view and add birds"
-                icon="egg-outline"
-                iconColor={ui.accentGreen}
-                iconBg="#E8F8F0"
-                href="/(app)/sheds"
-              />
-            ) : canBirdSearch ? (
-              <QuickAction
-                title="Find birds"
-                subtitle="Search birds by band number"
-                icon="egg-outline"
-                iconColor={ui.accentGreen}
-                iconBg="#E8F8F0"
-                href="/(app)/search"
-              />
-            ) : null}
-            {canSearch ? (
-              <QuickAction
-                title="Search"
-                subtitle="Find birds or sheds"
-                icon="search-outline"
-                iconColor={ui.accentBlue}
-                iconBg="#EAF3FE"
-                href="/(app)/search"
-              />
-            ) : null}
-          </View>
-
-          {!canSheds && !canBirds && !canSearch ? (
-            <Text style={styles.muted}>No modules granted yet. Ask your farm owner for permissions.</Text>
+              {!hasQuickActions ? (
+                <Text style={styles.muted}>
+                  No modules granted yet. Ask your farm owner for permissions.
+                </Text>
+              ) : null}
+            </>
           ) : null}
         </View>
       </ScrollView>
@@ -456,32 +609,12 @@ export default function HomeScreen() {
   );
 }
 
-function SnapshotMetric({
-  icon,
-  value,
-  label,
-}: {
-  icon: IconName;
-  value: number | string;
-  label: string;
-}) {
-  return (
-    <View style={styles.snapshotMetric}>
-      <View style={styles.snapshotIcon}>
-        <Ionicons name={icon} size={16} color={ui.accentGreen} />
-      </View>
-      <Text style={styles.snapshotValue}>{value}</Text>
-      <Text style={styles.snapshotLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1, backgroundColor: ui.contentBg },
   header: {
-    minHeight: 196,
+    minHeight: 188,
     paddingHorizontal: ui.horizontal,
-    paddingBottom: 44,
+    paddingBottom: 40,
     overflow: "hidden",
   },
   headerImg: { resizeMode: "cover" },
@@ -492,59 +625,42 @@ const styles = StyleSheet.create({
   },
   brandRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   brandName: {
-    color: ui.white,
+    color: ui.forest,
     fontSize: 17,
     fontWeight: "800",
     letterSpacing: -0.2,
-  },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
-  headerIconBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  notifDot: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#E52626",
-    borderWidth: 1.5,
-    borderColor: ui.forest,
   },
   profileBtn: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: "#F3F6F4",
-    borderWidth: 1.5,
-    borderColor: "rgba(255,255,255,0.85)",
+    backgroundColor: ui.white,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.9)",
     alignItems: "center",
     justifyContent: "center",
+    ...softCardShadow(),
   },
   farmRow: {
-    marginTop: 20,
+    marginTop: 18,
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 10,
-    paddingBottom: 8,
+    paddingBottom: 6,
   },
   farmIdentity: { flex: 1, minWidth: 0, gap: 4 },
   farmTitle: {
-    color: ui.white,
-    fontSize: 26,
+    color: ui.primaryText,
+    fontSize: 28,
     fontWeight: "800",
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
   },
   farmNameRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   farmName: {
-    color: "rgba(255,255,255,0.92)",
+    color: ui.accentGreen,
     fontSize: 13,
-    fontWeight: "600",
+    fontWeight: "700",
     flexShrink: 1,
   },
   healthBadge: {
@@ -557,8 +673,8 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderWidth: 1,
     borderColor: "#C7EBDD",
-    maxWidth: "54%",
-    marginTop: 4,
+    maxWidth: "52%",
+    marginTop: 6,
   },
   healthText: {
     color: ui.accentGreen,
@@ -589,13 +705,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 50,
     marginTop: -8,
-    marginBottom: 20,
+    marginBottom: 18,
   },
-  searchPlaceholder: {
+  searchInput: {
     flex: 1,
-    color: "#8A9A93",
+    color: ui.primaryText,
     fontSize: 14,
     fontWeight: "500",
+    paddingVertical: 0,
+    margin: 0,
+  },
+  searchFilter: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sectionHead: {
     flexDirection: "row",
@@ -624,149 +748,72 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  grid: {
+  statRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
+    gap: 10,
   },
   stat: {
-    width: "47.5%",
-    flexGrow: 1,
-    borderRadius: 20,
+    flex: 1,
+    borderRadius: 18,
     borderWidth: 1,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingTop: 12,
-    paddingBottom: 14,
-    minHeight: 118,
+    paddingBottom: 12,
+    minHeight: 112,
+    overflow: "hidden",
+  },
+  /** Overview KPI — art fills card, subject sits on the right. */
+  statArtClip: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.55,
+  },
+  statArtImg: {
+    width: "100%",
+    height: "100%",
+  },
+  /** Quick action — softer fill so title/subtitle stay readable. */
+  actionArtClip: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.28,
+  },
+  actionArtImg: {
+    width: "100%",
+    height: "100%",
+  },
+  watermarkFallback: {
+    position: "absolute",
+    right: -4,
+    bottom: -2,
+    opacity: 0.9,
+    alignItems: "center",
+    justifyContent: "center",
   },
   statTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 10,
+    zIndex: 1,
   },
   statIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   statLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
     color: ui.secondaryText,
     marginBottom: 2,
+    zIndex: 1,
   },
   statValue: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: "800",
     letterSpacing: -0.5,
-  },
-  viewDetails: {
-    color: ui.accentGreen,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  viewDetailsChevron: { fontSize: 15, fontWeight: "700" },
-  snapshot: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    backgroundColor: ui.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: ui.subtleBorder,
-    paddingVertical: 16,
-    paddingHorizontal: 6,
-    marginBottom: 18,
-  },
-  snapshotMetric: {
-    flex: 1,
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 4,
-  },
-  snapshotIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: ui.snapshotIconBg,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 2,
-  },
-  snapshotValue: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: ui.primaryText,
-  },
-  snapshotLabel: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: ui.secondaryText,
-    textAlign: "center",
-  },
-  snapshotDivider: {
-    width: 1,
-    backgroundColor: ui.divider,
-    marginVertical: 6,
-  },
-  vaxBanner: {
-    height: 124,
-    borderRadius: 20,
-    overflow: "hidden",
-    backgroundColor: ui.forest,
-    marginBottom: 4,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingRight: 12,
-  },
-  vaxArtClip: {
-    width: "36%",
-    height: "100%",
-    overflow: "hidden",
-  },
-  vaxArtWide: {
-    height: "100%",
-    width: SCREEN_W,
-  },
-  vaxDivider: {
-    width: 1,
-    height: "56%",
-    backgroundColor: "rgba(255,255,255,0.35)",
-    marginHorizontal: 10,
-  },
-  vaxCopy: {
-    flex: 1,
-    gap: 3,
-    paddingVertical: 10,
-    paddingRight: 6,
-    minWidth: 0,
-  },
-  vaxTitle: {
-    color: ui.white,
-    fontSize: 15,
-    fontWeight: "800",
-  },
-  vaxDesc: {
-    color: "rgba(255,255,255,0.9)",
-    fontSize: 11,
-    fontWeight: "500",
-    lineHeight: 15,
-  },
-  vaxBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 2,
-    backgroundColor: ui.white,
-    borderRadius: 16,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  vaxBtnText: {
-    color: ui.primaryText,
-    fontSize: 12,
-    fontWeight: "700",
+    zIndex: 1,
   },
   quickGrid: {
     flexDirection: "row",
@@ -776,15 +823,16 @@ const styles = StyleSheet.create({
   quick: {
     width: "47.5%",
     flexGrow: 1,
-    minHeight: 96,
+    minHeight: 88,
     backgroundColor: ui.white,
-    borderRadius: 20,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: ui.subtleBorder,
     padding: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    overflow: "hidden",
   },
   quickIcon: {
     width: 36,
@@ -792,8 +840,9 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 1,
   },
-  quickText: { flex: 1, gap: 2, minWidth: 0 },
+  quickText: { flex: 1, gap: 2, minWidth: 0, zIndex: 1 },
   quickTitle: {
     fontSize: 13,
     fontWeight: "800",

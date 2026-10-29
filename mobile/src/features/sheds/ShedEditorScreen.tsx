@@ -4,12 +4,10 @@
  */
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -32,7 +30,9 @@ import {
 import { describeApiError } from "../../api/client";
 import { listFarmers, type Farmer } from "../../api/farmers";
 import { createShed, getShedOverview, updateShed } from "../../api/sheds";
+import { BrandLogo } from "../../components/brand/BrandLogo";
 import { AddFarmerModal } from "../../components/sheds/AddFarmerModal";
+import { AppDialog } from "../../components/ui/AppDialog";
 import { HenLoader } from "../../components/ui/HenLoader";
 import { useAuth } from "../auth/AuthContext";
 import { hasPermission } from "../auth/permissions";
@@ -40,8 +40,14 @@ import {
   catalogueAgeRangeLabel,
   catalogueListMetaLine,
 } from "../catalogues/catalogueListHelpers";
+import {
+  markTransferDraftPreferDest,
+  peekTransferDraft,
+} from "../birds/transferDraftStore";
+import { firstRouteParam } from "../../navigation/routeParams";
 import { safeBack } from "../../navigation/safeBack";
 import { vaccineUi as ui } from "../../theme/vaccineUi";
+import { toast } from "../../ui/toast/toastStore";
 import {
   createShedPayload,
   mergeCreatedFarmerIntoList,
@@ -52,8 +58,6 @@ import {
   validateCreateShedDraft,
 } from "./createShedForm";
 
-const brandLogo = require("../../../assets/brand-logo.png");
-
 type Mode = "create" | "edit";
 
 type Props = {
@@ -62,6 +66,14 @@ type Props = {
 };
 
 export function ShedEditorScreen({ mode, shedId }: Props) {
+  const params = useLocalSearchParams<{
+    returnTo?: string | string[];
+    sourceShedId?: string | string[];
+  }>();
+  const returnTo = firstRouteParam(params.returnTo);
+  const sourceShedId = firstRouteParam(params.sourceShedId);
+  const resumeTransfer = mode === "create" && returnTo === "transfer" && !!sourceShedId;
+
   const { user, ownerAccountId } = useAuth();
   const qc = useQueryClient();
   const canCreate = hasPermission(user, ownerAccountId, "shed.create");
@@ -84,6 +96,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
   const [cataloguePickerOpen, setCataloguePickerOpen] = useState(false);
   const [farmerPickerOpen, setFarmerPickerOpen] = useState(false);
   const [addFarmerOpen, setAddFarmerOpen] = useState(false);
+  const [ownerManagedConfirmOpen, setOwnerManagedConfirmOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -262,27 +275,19 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     });
   };
 
+  const applyOwnerManaged = () => {
+    setOwnerManaged(true);
+    setFarmerId(null);
+    setFieldErrors((e) => {
+      const { farmer: _, ...rest } = e;
+      return rest;
+    });
+  };
+
   const applyManagementMode = (nextOwnerManaged: boolean) => {
     if (nextOwnerManaged === ownerManaged) return;
     if (nextOwnerManaged && mode === "edit") {
-      Alert.alert(
-        "Switch to Owner Managed?",
-        "Saving will revoke active farmer assignments for this shed. Farm ownership and bird/vaccination history are unchanged.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Continue",
-            onPress: () => {
-              setOwnerManaged(true);
-              setFarmerId(null);
-              setFieldErrors((e) => {
-                const { farmer: _, ...rest } = e;
-                return rest;
-              });
-            },
-          },
-        ],
-      );
+      setOwnerManagedConfirmOpen(true);
       return;
     }
     setOwnerManaged(nextOwnerManaged);
@@ -387,11 +392,19 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
       }
 
       await invalidateAfterSave(id!);
-      if (mode === "create") {
-        router.replace({ pathname: "/(app)/sheds/[id]", params: { id: id! } });
-      } else {
-        router.replace({ pathname: "/(app)/sheds/[id]", params: { id: id! } });
+      toast.success(mode === "create" ? "Shed created" : "Shed updated");
+
+      if (resumeTransfer && sourceShedId && id) {
+        // Keep transfer draft; prefer the newly created shed as destination.
+        if (peekTransferDraft()) markTransferDraftPreferDest(id);
+        router.replace({
+          pathname: "/(app)/sheds/[id]/birds",
+          params: { id: sourceShedId, resumeTransfer: "1" },
+        });
+        return;
       }
+
+      router.replace({ pathname: "/(app)/sheds/[id]/birds", params: { id: id! } });
     } catch (e: unknown) {
       setError(describeApiError(e, mode === "create" ? "create the shed" : "save the shed"));
     } finally {
@@ -400,11 +413,23 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     }
   };
 
+  const onBack = () => {
+    if (resumeTransfer && sourceShedId) {
+      // Draft remains so the source shed screen can reopen Transfer unchanged.
+      router.replace({
+        pathname: "/(app)/sheds/[id]/birds",
+        params: { id: sourceShedId, resumeTransfer: "1" },
+      });
+      return;
+    }
+    safeBack();
+  };
+
   if (!permitted) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
         <View style={styles.header}>
-          <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Back" style={styles.backBtn}>
+          <Pressable onPress={onBack} hitSlop={12} accessibilityLabel="Back" style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={ui.ink} />
           </Pressable>
           <Text style={styles.headerTitle}>{mode === "create" ? "Create Shed" : "Edit Shed"}</Text>
@@ -449,7 +474,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => safeBack()}
+          onPress={onBack}
           hitSlop={12}
           accessibilityLabel="Back"
           style={styles.backBtn}
@@ -626,7 +651,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
               accessibilityLabel="Select vaccination catalogue"
             >
               <View style={styles.catalogueIcon}>
-                <Image source={brandLogo} style={styles.catalogueIconImg} resizeMode="contain" />
+                <BrandLogo size={28} accessibilityLabel="PoultryTrack" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.catalogueTitle} numberOfLines={2}>
@@ -734,6 +759,27 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
         visible={addFarmerOpen}
         onClose={() => setAddFarmerOpen(false)}
         onCreated={onFarmerCreated}
+      />
+
+      <AppDialog
+        visible={ownerManagedConfirmOpen}
+        title="Switch to Owner Managed?"
+        description="Saving will revoke active farmer assignments for this shed. Farm ownership and bird/vaccination history are unchanged."
+        tone="warning"
+        onDismiss={() => setOwnerManagedConfirmOpen(false)}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setOwnerManagedConfirmOpen(false),
+        }}
+        primary={{
+          label: "Continue",
+          variant: "primary",
+          onPress: () => {
+            setOwnerManagedConfirmOpen(false);
+            applyOwnerManaged();
+          },
+        }}
       />
     </SafeAreaView>
   );
@@ -914,7 +960,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  catalogueIconImg: { width: 28, height: 28 },
   catalogueTitle: { fontSize: 15, fontWeight: "700", color: ui.ink },
   catalogueMeta: { fontSize: 12, color: ui.muted, marginTop: 2, fontWeight: "600" },
   catalogueLoading: {

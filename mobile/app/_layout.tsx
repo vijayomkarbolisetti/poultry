@@ -3,7 +3,9 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { ToastHost } from "../src/components/ui/ToastHost";
 import { AuthProvider } from "../src/features/auth/AuthContext";
 import { KeepAlive } from "../src/features/auth/KeepAlive";
 import { colors } from "../src/theme/tokens";
@@ -26,22 +28,25 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <QueryClientProvider client={client}>
-        <AuthProvider>
-          <KeepAlive />
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(auth)/welcome" />
-            <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="(auth)/register"
-              options={{ headerShown: true, title: "Create farm", headerTintColor: colors.primary }}
-            />
-            <Stack.Screen name="(app)" />
-          </Stack>
-        </AuthProvider>
-      </QueryClientProvider>
+      <SafeAreaProvider>
+        <QueryClientProvider client={client}>
+          <AuthProvider>
+            <KeepAlive />
+            <StatusBar style="dark" />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(auth)/welcome" />
+              <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="(auth)/register"
+                options={{ headerShown: true, title: "Create farm", headerTintColor: colors.primary }}
+              />
+              <Stack.Screen name="(app)" />
+            </Stack>
+            <ToastHost />
+          </AuthProvider>
+        </QueryClientProvider>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

@@ -14,7 +14,7 @@
       "package": "com.vijayomkar.poultrytracker",
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
-        "backgroundColor": "#064E3B",
+        "backgroundColor": "#F0FDEF",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

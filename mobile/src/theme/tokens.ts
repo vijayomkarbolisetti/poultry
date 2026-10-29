@@ -156,12 +156,13 @@ export const shadows = {
     shadowRadius: 12,
     elevation: 2,
   },
+  /** Prefer applying on an outer wrapper — not on clipped / gradient fills. */
   button: {
     shadowColor: "#022C22",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 2,
   },
 };
 

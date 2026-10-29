@@ -5,7 +5,6 @@ import { ComponentProps, useCallback, useEffect, useMemo, useRef, useState } fro
 import {
   Alert,
   FlatList,
-  ImageBackground,
   Pressable,
   StyleSheet,
   Text,
@@ -31,12 +30,20 @@ import {
   type MortalityUnbandedPayload,
 } from "../../../../src/components/birds/MortalityActionSheet";
 import {
+  SaleActionSheet,
+  unbandedSalePayload,
+  type SaleBandedPayload,
+  type SaleUnbandedPayload,
+} from "../../../../src/components/birds/SaleActionSheet";
+import {
   TransferActionSheet,
   type TransferBandedPayload,
   type TransferUnbandedPayload,
 } from "../../../../src/components/birds/TransferActionSheet";
+import { ShedManagePanel } from "../../../../src/components/sheds/ShedManagePanel";
 import { Button } from "../../../../src/components/ui/Button";
 import { HenLoader } from "../../../../src/components/ui/HenLoader";
+import { ImmersiveHeroHeader } from "../../../../src/components/ui/ImmersiveHeroHeader";
 import { Screen } from "../../../../src/components/ui/Screen";
 import { useAuth } from "../../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../../src/features/auth/permissions";
@@ -46,6 +53,13 @@ import {
   formatSexLabel,
   formatUnbandedCohortLabel,
 } from "../../../../src/features/birds/birdListHelpers";
+import {
+  clearTransferDraft,
+  consumeTransferDraft,
+  peekTransferDraft,
+  resumeFieldsFromDraft,
+  type TransferSheetResume,
+} from "../../../../src/features/birds/transferDraftStore";
 import {
   areAllEligibleSelected,
   birdLabel,
@@ -80,9 +94,14 @@ type UnbandedRow = {
 };
 
 export default function ShedBirdsScreen() {
-  const params = useLocalSearchParams<{ id: string | string[]; focus?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    focus?: string | string[];
+    resumeTransfer?: string | string[];
+  }>();
   const id = firstRouteParam(params.id);
   const focus = firstRouteParam(params.focus);
+  const resumeTransferFlag = firstRouteParam(params.resumeTransfer);
   const insets = useSafeAreaInsets();
   const { user, ownerAccountId } = useAuth();
   const qc = useQueryClient();
@@ -94,6 +113,7 @@ export default function ShedBirdsScreen() {
 
   const [tab, setTab] = useState<TabKey>("banded");
   const [addOpen, setAddOpen] = useState(false);
+  const [showManage, setShowManage] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [filters, setFilters] = useState<BirdsFilterState>(DEFAULT_BIRDS_FILTERS);
   const [q, setQ] = useState("");
@@ -102,15 +122,40 @@ export default function ShedBirdsScreen() {
   const [mortalityPayload, setMortalityPayload] = useState<
     MortalityBandedPayload | MortalityUnbandedPayload | null
   >(null);
+  const [salePayload, setSalePayload] = useState<SaleBandedPayload | SaleUnbandedPayload | null>(
+    null,
+  );
   const [transferPayload, setTransferPayload] = useState<
     TransferBandedPayload | TransferUnbandedPayload | null
   >(null);
+  const [transferResume, setTransferResume] = useState<TransferSheetResume | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterKey = useRef("");
 
   useEffect(() => {
     if (focus === "add" && (canCreate || canCreateGroup)) setAddOpen(true);
   }, [focus, canCreate, canCreateGroup]);
+
+  // Resume Transfer after Create Shed (or cancel-back from create while draft exists).
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+      const pending = peekTransferDraft();
+      if (!pending || pending.payload.shedId !== id) return;
+      const draft = consumeTransferDraft();
+      if (!draft || draft.payload.shedId !== id) return;
+      setTransferResume(resumeFieldsFromDraft(draft));
+      setTransferPayload(draft.payload);
+      if (draft.payload.mode === "banded") {
+        setSelected(new Set(draft.payload.birdIds));
+        setTab("banded");
+      } else {
+        setSelected(new Set([draft.payload.flockId]));
+        setTab("unbanded");
+      }
+      void qc.invalidateQueries({ queryKey: ["sheds"] });
+    }, [id, resumeTransferFlag, qc]),
+  );
 
   const overview = useQuery({
     queryKey: ["shed-overview", id],
@@ -217,9 +262,10 @@ export default function ShedBirdsScreen() {
     );
   }, [unbandedBatchesApi, overviewByFlockId, debouncedQ]);
 
-  // Never carry selection across sheds.
+  // Never carry selection or manage panel across sheds.
   useEffect(() => {
     setSelected(new Set());
+    setShowManage(false);
     filterKey.current = "";
   }, [id]);
 
@@ -339,7 +385,35 @@ export default function ShedBirdsScreen() {
     });
   };
 
+  const openSale = () => {
+    if (!id || selected.size === 0) return;
+    if (tab === "banded") {
+      const labels = items.filter((b) => selected.has(b.id)).map(birdLabel);
+      setSalePayload({ mode: "banded", birdIds: [...selected], labels });
+      return;
+    }
+    if (selected.size !== 1) {
+      setSalePayload(null);
+      return;
+    }
+    const flockId = [...selected][0]!;
+    const row = unbandedRows.find((r) => r.flock_id === flockId);
+    if (!row) return;
+    setSalePayload(
+      unbandedSalePayload({
+        shedId: id,
+        flockId: row.flock_id,
+        label: row.label,
+        unbandedCount: row.unbanded_count,
+        hatch_date: row.hatch_date,
+        estimated_age_days: row.estimated_age_days,
+      }),
+    );
+  };
+
   const onActionSuccess = () => {
+    clearTransferDraft();
+    setTransferResume(null);
     setSelected(new Set());
     invalidate();
     void overview.refetch();
@@ -409,13 +483,14 @@ export default function ShedBirdsScreen() {
 
   const listHeader = (
     <View style={styles.headerBlock}>
-      <ImageBackground
+      <ImmersiveHeroHeader
         source={shedHeaderArt}
-        style={[styles.hero, { paddingTop: Math.max(insets.top, 8) }]}
-        imageStyle={styles.heroImage}
-        resizeMode="cover"
+        curveFill={birdUi.bg}
+        minHeight={140}
+        accessibilityLabel="Shed header illustration"
+        contentStyle={styles.heroCopy}
       >
-        <View style={[styles.heroTop, { top: Math.max(insets.top, 8) }]}>
+        <View style={styles.heroTop}>
           <Pressable
             onPress={() => safeBack("/(app)/sheds")}
             style={styles.backBtn}
@@ -425,39 +500,67 @@ export default function ShedBirdsScreen() {
           </Pressable>
           {canUpdateShed ? (
             <Pressable
-              onPress={() => router.push(`/(app)/sheds/edit/${id}`)}
+              onPress={() => setShowManage((v) => !v)}
               style={styles.manageBtn}
-              accessibilityLabel="Manage shed"
+              accessibilityRole="button"
+              accessibilityState={{ expanded: showManage }}
+              accessibilityLabel={showManage ? "Close shed management" : "Manage shed"}
             >
               <Ionicons name="settings-outline" size={16} color={birdUi.primary} />
-              <Text style={styles.manageBtnText}>Manage</Text>
+              <Text style={styles.manageBtnText}>{showManage ? "Close" : "Manage"}</Text>
             </Pressable>
           ) : (
             <View style={{ width: 40 }} />
           )}
         </View>
-        <Text style={styles.shedName}>{shed?.name}</Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.shedMeta}>
-            {[shed?.code, organizationName].filter(Boolean).join(" · ")}
-          </Text>
-          <View style={[styles.pill, shed?.is_active ? styles.pillOn : styles.pillOff]}>
-            <View style={[styles.pillDot, { backgroundColor: shed?.is_active ? birdUi.successText : birdUi.error }]} />
-            <Text
-              style={[
-                styles.pillText,
-                { color: shed?.is_active ? birdUi.successText : birdUi.error },
-              ]}
-            >
-              {shed?.is_active ? "Active" : "Inactive"}
+        <View style={styles.heroIdentity}>
+          <Text style={styles.shedName}>{shed?.name}</Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.shedMeta}>
+              {[shed?.code, organizationName].filter(Boolean).join(" · ")}
             </Text>
+            <View style={[styles.pill, shed?.is_active ? styles.pillOn : styles.pillOff]}>
+              <View
+                style={[
+                  styles.pillDot,
+                  { backgroundColor: shed?.is_active ? birdUi.successText : birdUi.error },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.pillText,
+                  { color: shed?.is_active ? birdUi.successText : birdUi.error },
+                ]}
+              >
+                {shed?.is_active ? "Active" : "Inactive"}
+              </Text>
+            </View>
           </View>
+          <Text style={styles.managed}>
+            {managedLabel}
+            {farmerNames ? ` · ${farmerNames}` : " · No farmer assigned"}
+          </Text>
         </View>
-        <Text style={styles.managed}>
-          {managedLabel}
-          {farmerNames ? ` by ${farmerNames}` : " · No farmer assigned"}
+      </ImmersiveHeroHeader>
+
+      {showManage && shed && id ? (
+        <ShedManagePanel
+          shedId={id}
+          shed={shed}
+          assignments={assignments}
+          onChanged={() => {
+            void overview.refetch();
+            void birds.refetch();
+            void birdsSummary.refetch();
+          }}
+        />
+      ) : null}
+
+      {!shed?.is_active ? (
+        <Text style={styles.warnBanner}>
+          Inactive — history stays available. Reactivate before adding birds.
         </Text>
-      </ImageBackground>
+      ) : null}
 
       <View style={styles.metricsCard}>
         <Metric
@@ -606,6 +709,16 @@ export default function ShedBirdsScreen() {
               >
                 <Ionicons name="swap-horizontal" size={16} color="#fff" />
                 <Text style={styles.transferBtnText}>Transfer</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.soldBtn, bulkDisabledUnbanded && styles.btnDisabled]}
+                onPress={openSale}
+                disabled={bulkDisabledUnbanded}
+                accessibilityRole="button"
+                accessibilityLabel="Sold"
+              >
+                <Ionicons name="pricetag-outline" size={16} color="#fff" />
+                <Text style={styles.soldBtnText}>Sold</Text>
               </Pressable>
             </View>
           ) : null}
@@ -774,10 +887,29 @@ export default function ShedBirdsScreen() {
         onClose={() => setMortalityPayload(null)}
         onSuccess={onActionSuccess}
       />
+      <SaleActionSheet
+        visible={!!salePayload}
+        payload={salePayload}
+        onClose={() => setSalePayload(null)}
+        onSuccess={() => {
+          onActionSuccess();
+          void qc.invalidateQueries({ queryKey: ["sold-birds"] });
+        }}
+      />
       <TransferActionSheet
         visible={!!transferPayload}
         payload={transferPayload}
-        onClose={() => setTransferPayload(null)}
+        resume={transferResume}
+        onResumeConsumed={() => setTransferResume(null)}
+        onClose={() => {
+          // Keep draft when Add Shed paused the sheet (store already has this shed's draft).
+          const pending = peekTransferDraft();
+          if (!(pending && id && pending.payload.shedId === id)) {
+            clearTransferDraft();
+          }
+          setTransferResume(null);
+          setTransferPayload(null);
+        }}
         onSuccess={onActionSuccess}
       />
     </Screen>
@@ -970,22 +1102,17 @@ function UnbandedCohortRow({
 const styles = StyleSheet.create({
   listContent: { paddingBottom: 24, gap: 10 },
   headerBlock: { gap: 12, marginBottom: 4 },
-  hero: {
-    minHeight: 168,
-    paddingHorizontal: birdUi.horizontal,
-    paddingBottom: 16,
-    justifyContent: "flex-end",
-    overflow: "hidden",
+  heroCopy: {
+    gap: 12,
+    justifyContent: "space-between",
+    minHeight: 108,
   },
-  heroImage: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   heroTop: {
-    position: "absolute",
-    left: birdUi.horizontal,
-    right: birdUi.horizontal,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
+  heroIdentity: { gap: 6 },
   backBtn: {
     width: 40,
     height: 40,
@@ -1005,14 +1132,13 @@ const styles = StyleSheet.create({
   },
   manageBtnText: { fontSize: 13, fontWeight: "700", color: birdUi.primary },
   shedName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "800",
     color: birdUi.deepGreen,
     letterSpacing: -0.4,
-    marginTop: 48,
   },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  shedMeta: { fontSize: 14, fontWeight: "600", color: birdUi.textSecondary },
+  shedMeta: { fontSize: 13, fontWeight: "600", color: birdUi.textSecondary },
   pill: {
     flexDirection: "row",
     alignItems: "center",
@@ -1025,7 +1151,17 @@ const styles = StyleSheet.create({
   pillOff: { backgroundColor: birdUi.errorPale },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
   pillText: { fontSize: 12, fontWeight: "700" },
-  managed: { fontSize: 13, color: birdUi.muted, marginTop: 2 },
+  managed: { fontSize: 12, color: birdUi.muted, marginTop: 2 },
+  warnBanner: {
+    marginHorizontal: birdUi.horizontal,
+    backgroundColor: birdUi.orangePale,
+    color: birdUi.orange,
+    fontWeight: "600",
+    fontSize: 13,
+    padding: 10,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
   metricsCard: {
     marginHorizontal: birdUi.horizontal,
     flexDirection: "row",
@@ -1156,6 +1292,16 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   transferBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+  soldBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: birdUi.orange,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  soldBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   btnDisabled: { opacity: 0.45 },
   birdCard: {
     marginHorizontal: birdUi.horizontal,
