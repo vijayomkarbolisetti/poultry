@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from typing import Literal
+
 from app.models.enums import (
     BirdLifecycleStatus,
     DobConfidence,
@@ -10,6 +12,31 @@ from app.models.enums import (
     LifecycleEventType,
     TrackingMode,
 )
+from app.services.sale_helpers import normalize_buyer_mobile, normalize_buyer_name
+
+
+class BirdParentInput(BaseModel):
+    """Optional sire/dam: link an existing bird or store descriptive details."""
+
+    mode: Literal["unknown", "existing", "manual"] = "unknown"
+    bird_id: UUID | None = None
+    display_name: str | None = Field(default=None, max_length=120)
+    band_number: str | None = Field(default=None, max_length=64)
+    breed: str | None = Field(default=None, max_length=128)
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def validate_mode(self) -> "BirdParentInput":
+        if self.mode == "existing" and self.bird_id is None:
+            raise ValueError("bird_id is required when mode is existing")
+        if self.mode != "existing":
+            self.bird_id = None
+        if self.mode == "unknown":
+            self.display_name = None
+            self.band_number = None
+            self.breed = None
+            self.notes = None
+        return self
 
 
 class FlockCreate(BaseModel):
@@ -95,6 +122,8 @@ class BirdCreate(BaseModel):
     breed: str | None = None
     sex: str | None = None
     notes: str | None = None
+    sire: BirdParentInput | None = None
+    dam: BirdParentInput | None = None
     # When true, DOB may be omitted and is copied from the flock (band-from-unbanded / inherit).
     inherit_flock_dob: bool = False
 
@@ -127,6 +156,8 @@ class RegisterBandedInShedIn(BaseModel):
     breed: str | None = None
     sex: str | None = None
     notes: str | None = None
+    sire: BirdParentInput | None = None
+    dam: BirdParentInput | None = None
 
     @model_validator(mode="after")
     def validate_exact_dob(self) -> "RegisterBandedInShedIn":
@@ -213,6 +244,8 @@ class UnbandedLifecycleByCohortIn(_CohortAgeMixin):
     effective_date: date
     quantity: int = Field(ge=1)
     reason: str | None = None
+    buyer_name: str | None = None
+    buyer_mobile: str | None = None
     idempotency_key: str = Field(min_length=8, max_length=128)
 
     @model_validator(mode="after")
@@ -224,6 +257,12 @@ class UnbandedLifecycleByCohortIn(_CohortAgeMixin):
         }
         if self.event_type not in allowed:
             raise ValueError("event_type must be mortality, sale, or transfer")
+        if self.event_type == LifecycleEventType.sale:
+            self.buyer_name = normalize_buyer_name(self.buyer_name)
+            self.buyer_mobile = normalize_buyer_mobile(self.buyer_mobile)
+        else:
+            self.buyer_name = None
+            self.buyer_mobile = None
         return self
 
 
@@ -260,6 +299,8 @@ class BirdUpdate(BaseModel):
     breed: str | None = None
     sex: str | None = None
     notes: str | None = None
+    sire: BirdParentInput | None = None
+    dam: BirdParentInput | None = None
 
     @model_validator(mode="after")
     def validate_dob(self) -> "BirdUpdate":
@@ -387,13 +428,33 @@ class BirdSearchOut(BaseModel):
 
 
 class BirdParentRefOut(BaseModel):
+    """Legacy linked-parent shape (kept for older clients). Prefer BirdParentageOut."""
+
     id: UUID
     band_id: str | None
     display_code: str | None
 
 
+class BirdParentageOut(BaseModel):
+    """Unified parentage view for profile UI."""
+
+    source: Literal["unknown", "linked", "manual"] = "unknown"
+    bird_id: UUID | None = None
+    band_id: str | None = None
+    display_name: str | None = None
+    breed: str | None = None
+    notes: str | None = None
+    label: str = "Unknown"
+
+
 class BirdProfileVaccinationEventOut(BaseModel):
-    """Individual recorded event (bird_id must match). Not batch coverage."""
+    """Vaccination history row for a bird profile / PDF report.
+
+    ``coverage_scope``:
+    - ``individual`` — event tagged to this bird_id
+    - ``cohort`` — flock population recording that fully covered every banded bird
+      already present in the hatch cohort (not an ambiguous partial)
+    """
 
     id: UUID
     vaccine_definition_id: UUID
@@ -411,6 +472,7 @@ class BirdProfileVaccinationEventOut(BaseModel):
     notes: str | None
     scheduled_dose_id: UUID | None
     created_at: datetime
+    coverage_scope: str = "individual"
 
 
 class BirdProfileBatchDoseOut(BaseModel):
@@ -436,7 +498,19 @@ class BirdProfileLifecycleOut(BaseModel):
     effective_date: date
     quantity: int
     reason: str | None
+    buyer_name: str | None = None
+    buyer_mobile: str | None = None
     created_at: datetime
+
+
+class BirdSaleDetailsOut(BaseModel):
+    """Latest sale event details when lifecycle_status is sold."""
+
+    event_id: UUID
+    sold_on: date
+    buyer_name: str | None
+    buyer_mobile: str | None
+    recorded_at: datetime
 
 
 class BirdProfileOut(BaseModel):
@@ -466,9 +540,35 @@ class BirdProfileOut(BaseModel):
     flock_count_mismatch: bool
     sire: BirdParentRefOut | None = None
     dam: BirdParentRefOut | None = None
+    sire_parentage: BirdParentageOut = Field(default_factory=lambda: BirdParentageOut())
+    dam_parentage: BirdParentageOut = Field(default_factory=lambda: BirdParentageOut())
+    sale: BirdSaleDetailsOut | None = None
     individual_vaccinations: list[BirdProfileVaccinationEventOut]
     batch_upcoming_doses: list[BirdProfileBatchDoseOut]
     lifecycle_events: list[BirdProfileLifecycleOut]
+
+
+class SoldBirdHitOut(BaseModel):
+    id: UUID
+    band_id: str | None
+    display_code: str | None
+    breed: str | None
+    batch_code: str
+    shed_id: UUID
+    shed_name: str | None
+    shed_code: str | None
+    sold_on: date
+    buyer_name: str | None
+    buyer_mobile: str | None
+    lifecycle_status: BirdLifecycleStatus
+    is_active: bool
+
+
+class SoldBirdListOut(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[SoldBirdHitOut]
 
 
 class LifecycleCreate(BaseModel):
@@ -478,7 +578,19 @@ class LifecycleCreate(BaseModel):
     bird_id: UUID | None = None
     quantity: int = Field(default=1, ge=1)
     reason: str | None = None
+    buyer_name: str | None = None
+    buyer_mobile: str | None = None
     idempotency_key: str | None = None
+
+    @model_validator(mode="after")
+    def validate_sale_buyer(self) -> "LifecycleCreate":
+        if self.event_type == LifecycleEventType.sale:
+            self.buyer_name = normalize_buyer_name(self.buyer_name)
+            self.buyer_mobile = normalize_buyer_mobile(self.buyer_mobile)
+        else:
+            self.buyer_name = None
+            self.buyer_mobile = None
+        return self
 
 
 class LifecycleOut(BaseModel):
@@ -491,6 +603,8 @@ class LifecycleOut(BaseModel):
     bird_id: UUID | None
     quantity: int
     reason: str | None
+    buyer_name: str | None = None
+    buyer_mobile: str | None = None
     created_at: datetime
 
 
@@ -501,7 +615,19 @@ class LifecycleBulkCreate(BaseModel):
     effective_date: date
     bird_ids: list[UUID] = Field(min_length=1, max_length=100)
     reason: str | None = None
+    buyer_name: str | None = None
+    buyer_mobile: str | None = None
     idempotency_key: str = Field(min_length=8, max_length=128)
+
+    @model_validator(mode="after")
+    def validate_sale_buyer(self) -> "LifecycleBulkCreate":
+        if self.event_type == LifecycleEventType.sale:
+            self.buyer_name = normalize_buyer_name(self.buyer_name)
+            self.buyer_mobile = normalize_buyer_mobile(self.buyer_mobile)
+        else:
+            self.buyer_name = None
+            self.buyer_mobile = None
+        return self
 
 
 class LifecycleBulkItemOut(BaseModel):

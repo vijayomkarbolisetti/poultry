@@ -28,6 +28,7 @@ from app.schemas.catalogue import (
     CatalogueCloneIn,
     CatalogueCreateIn,
     CatalogueItemIn,
+    CataloguePreviewUpdateIn,
     CatalogueUpdateIn,
 )
 from app.services import vaccine_service
@@ -118,10 +119,75 @@ async def catalogue_item_counts(db: AsyncSession, catalogue_ids: list[UUID]) -> 
         return {}
     rows = await db.execute(
         select(VaccineCatalogueItem.catalogue_id, func.count())
-        .where(VaccineCatalogueItem.catalogue_id.in_(catalogue_ids))
+        .where(
+            VaccineCatalogueItem.catalogue_id.in_(catalogue_ids),
+            VaccineCatalogueItem.is_active.is_(True),
+        )
         .group_by(VaccineCatalogueItem.catalogue_id)
     )
     return {cid: int(n) for cid, n in rows.all()}
+
+
+async def assignment_fingerprint(
+    db: AsyncSession,
+    ctx: AuthContext,
+    catalogue_id: UUID,
+) -> dict:
+    """Tenant-scoped assignment + override counts for stale-preview checks."""
+    assert ctx.owner_account_id is not None
+    current = await current_assignment(db, ctx.owner_account_id)
+    override_count = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(Flock)
+            .where(
+                Flock.owner_account_id == ctx.owner_account_id,
+                Flock.status == FlockStatus.active,
+                Flock.vaccination_catalogue_id == catalogue_id,
+            )
+        )
+        or 0
+    )
+    is_farm_default = bool(current and current.catalogue_id == catalogue_id)
+    inheriting = 0
+    if is_farm_default:
+        inheriting = int(
+            await db.scalar(
+                select(func.count())
+                .select_from(Flock)
+                .where(
+                    Flock.owner_account_id == ctx.owner_account_id,
+                    Flock.status == FlockStatus.active,
+                    Flock.vaccination_catalogue_id.is_(None),
+                )
+            )
+            or 0
+        )
+    return {
+        "expected_assignment_catalogue_id": current.catalogue_id if current else None,
+        "expected_override_flock_count": override_count,
+        "is_farm_default": is_farm_default,
+        "inheriting_flock_count_if_default": inheriting,
+    }
+
+
+def _rules_signature(rules: list) -> list[tuple]:
+    return sorted(
+        (
+            int(getattr(r, "dose_number", 1) or 1),
+            getattr(r, "target_age_days", None),
+            getattr(r, "repeat_interval_days", None),
+            getattr(r, "max_repeats", None),
+            int(getattr(r, "grace_period_days", 0) or 0),
+            int(getattr(r, "reminder_lead_days", 3) or 3),
+            bool(getattr(r, "is_manual_only", False)),
+        )
+        for r in (rules or [])
+    )
+
+
+def _item_impactful(body: CatalogueUpdateIn | CataloguePreviewUpdateIn) -> bool:
+    return body.items is not None or bool(body.remove_item_ids)
 
 
 async def current_assignment(db: AsyncSession, owner_account_id: UUID) -> OwnerCatalogueAssignment | None:
@@ -152,7 +218,39 @@ async def resolve_effective_catalogue(
     return await get_catalogue(db, assignment.catalogue_id)
 
 
+def _set_item_fields(item: VaccineCatalogueItem, item_in: CatalogueItemIn, idx: int) -> None:
+    item.sort_order = item_in.sort_order if item_in.sort_order else idx
+    item.name = item_in.name.strip()
+    item.category = item_in.category or "vaccine"
+    item.description = item_in.description
+    item.disease_label = item_in.disease_label
+    item.instructions = item_in.instructions
+    item.recommended_dose_text = item_in.recommended_dose_text
+    item.route = item_in.route
+    item.diluent_instructions = item_in.diluent_instructions
+
+
+def _add_item_rules(db: AsyncSession, item_id: UUID, rules: list) -> None:
+    for rule_in in rules:
+        db.add(
+            VaccineCatalogueItemRule(
+                id=uuid4(),
+                catalogue_item_id=item_id,
+                dose_number=rule_in.dose_number,
+                target_age_days=rule_in.target_age_days,
+                display_day_label=rule_in.display_day_label,
+                repeat_interval_days=rule_in.repeat_interval_days,
+                max_repeats=rule_in.max_repeats,
+                grace_period_days=rule_in.grace_period_days,
+                reminder_lead_days=rule_in.reminder_lead_days,
+                is_manual_only=rule_in.is_manual_only,
+                label=rule_in.label,
+            )
+        )
+
+
 def _add_items(db: AsyncSession, catalogue_id: UUID, items: list[CatalogueItemIn]) -> None:
+    """Insert new catalogue items (create/clone). Ignores any client-supplied id."""
     for idx, item_in in enumerate(items):
         item = VaccineCatalogueItem(
             id=uuid4(),
@@ -166,24 +264,93 @@ def _add_items(db: AsyncSession, catalogue_id: UUID, items: list[CatalogueItemIn
             recommended_dose_text=item_in.recommended_dose_text,
             route=item_in.route,
             diluent_instructions=item_in.diluent_instructions,
+            is_active=True,
         )
         db.add(item)
-        for rule_in in item_in.rules:
-            db.add(
-                VaccineCatalogueItemRule(
-                    id=uuid4(),
-                    catalogue_item_id=item.id,
-                    dose_number=rule_in.dose_number,
-                    target_age_days=rule_in.target_age_days,
-                    display_day_label=rule_in.display_day_label,
-                    repeat_interval_days=rule_in.repeat_interval_days,
-                    max_repeats=rule_in.max_repeats,
-                    grace_period_days=rule_in.grace_period_days,
-                    reminder_lead_days=rule_in.reminder_lead_days,
-                    is_manual_only=rule_in.is_manual_only,
-                    label=rule_in.label,
-                )
+        _add_item_rules(db, item.id, item_in.rules)
+
+
+async def _replace_item_rules(db: AsyncSession, item_id: UUID, rules: list) -> None:
+    """Replace schedule rules for one item; parent item row / PK unchanged."""
+    await db.execute(
+        delete(VaccineCatalogueItemRule).where(VaccineCatalogueItemRule.catalogue_item_id == item_id)
+    )
+    await db.flush()
+    _add_item_rules(db, item_id, rules)
+
+
+async def _upsert_catalogue_items(
+    db: AsyncSession,
+    catalogue: VaccineCatalogue,
+    items: list[CatalogueItemIn],
+    *,
+    remove_item_ids: list[UUID] | None = None,
+) -> dict[str, int]:
+    """Upsert items by stable id; soft-remove via remove_item_ids (no hard delete).
+
+    - id present and belonging to this catalogue → update in place + replace rules (+ reactivate)
+    - id omitted → create new active item
+    - remove_item_ids → is_active=False; keep row and source_catalogue_item_id links
+    """
+    remove_ids = list(remove_item_ids or [])
+    seen: set[UUID] = set()
+    for item_in in items:
+        if item_in.id is None:
+            continue
+        if item_in.id in seen:
+            raise CatalogueError("Duplicate catalogue item id in request", "DUPLICATE_ITEM_ID")
+        seen.add(item_in.id)
+    remove_seen: set[UUID] = set()
+    for rid in remove_ids:
+        if rid in remove_seen:
+            raise CatalogueError("Duplicate catalogue item id in remove_item_ids", "DUPLICATE_ITEM_ID")
+        remove_seen.add(rid)
+        if rid in seen:
+            raise CatalogueError(
+                "Catalogue item id cannot be both updated and removed",
+                "INVALID_ITEM_ID",
             )
+
+    existing_by_id = {item.id: item for item in catalogue.items}
+    created = 0
+    updated = 0
+    removed = 0
+    for rid in remove_ids:
+        item = existing_by_id.get(rid)
+        if item is None:
+            raise CatalogueError(
+                "Catalogue item id does not belong to this catalogue",
+                "INVALID_ITEM_ID",
+            )
+        if item.is_active:
+            item.is_active = False
+            removed += 1
+
+    for idx, item_in in enumerate(items):
+        if item_in.id is not None:
+            item = existing_by_id.get(item_in.id)
+            if item is None:
+                raise CatalogueError(
+                    "Catalogue item id does not belong to this catalogue",
+                    "INVALID_ITEM_ID",
+                )
+            _set_item_fields(item, item_in, idx)
+            item.is_active = True
+            await _replace_item_rules(db, item.id, item_in.rules)
+            updated += 1
+        else:
+            new_item = VaccineCatalogueItem(
+                id=uuid4(),
+                catalogue_id=catalogue.id,
+                is_active=True,
+            )
+            _set_item_fields(new_item, item_in, idx)
+            db.add(new_item)
+            await db.flush()
+            _add_item_rules(db, new_item.id, item_in.rules)
+            created += 1
+    await db.flush()
+    return {"created": created, "updated": updated, "removed": removed}
 
 
 async def create_catalogue(db: AsyncSession, ctx: AuthContext, body: CatalogueCreateIn) -> VaccineCatalogue:
@@ -198,6 +365,7 @@ async def create_catalogue(db: AsyncSession, ctx: AuthContext, body: CatalogueCr
         version=1,
         status="active",
         is_example=False,
+        requires_veterinary_review=False,
         created_by_user_id=ctx.user.id,
     )
     db.add(cat)
@@ -243,6 +411,7 @@ async def clone_catalogue(
         version=1,
         status="active",
         is_example=False,
+        requires_veterinary_review=bool(getattr(source, "requires_veterinary_review", False)),
         cloned_from_catalogue_id=source.id,
         created_by_user_id=ctx.user.id,
     )
@@ -250,6 +419,8 @@ async def clone_catalogue(
     try:
         await db.flush()
         for item in sorted(source.items, key=lambda i: (i.sort_order, i.name)):
+            if not getattr(item, "is_active", True):
+                continue
             new_item = VaccineCatalogueItem(
                 id=uuid4(),
                 catalogue_id=clone.id,
@@ -262,6 +433,7 @@ async def clone_catalogue(
                 recommended_dose_text=item.recommended_dose_text,
                 route=item.route,
                 diluent_instructions=item.diluent_instructions,
+                is_active=True,
             )
             db.add(new_item)
             await db.flush()
@@ -306,63 +478,227 @@ async def update_catalogue(
     catalogue_id: UUID,
     body: CatalogueUpdateIn,
 ) -> tuple[VaccineCatalogue, int]:
-    """Update farm-owned catalogue only. Platform catalogues are immutable."""
+    """Update farm-owned catalogue only. Platform catalogues are immutable.
+
+    Item changes require confirm_change, expected_version, and assignment fingerprint.
+    Entire upsert + materialize runs in one transaction (commit at end / rollback on error).
+    """
     assert ctx.owner_account_id is not None
-    cat = await get_catalogue_for_owner(db, ctx, catalogue_id, allow_platform=False)
-    items_changed = body.items is not None
-    if items_changed and not body.confirm_change:
-        raise CatalogueError(
-            "Updating catalogue items requires confirm_change=true after reviewing D5 scope impact",
-            "CONFIRM_REQUIRED",
+    try:
+        cat = await get_catalogue_for_owner(db, ctx, catalogue_id, allow_platform=False)
+        items_changed = _item_impactful(body)
+        if items_changed and not body.confirm_change:
+            raise CatalogueError(
+                "Updating catalogue items requires confirm_change=true after reviewing impact preview",
+                "CONFIRM_REQUIRED",
+            )
+        if items_changed:
+            if body.expected_version is None or body.expected_override_flock_count is None:
+                raise CatalogueError(
+                    "Item updates require expected_version and expected_override_flock_count from preview",
+                    "STALE_PREVIEW",
+                )
+            fingerprint = await assignment_fingerprint(db, ctx, cat.id)
+            if int(body.expected_version) != int(cat.version or 1):
+                raise CatalogueError(
+                    "Catalogue changed since preview; request a fresh preview",
+                    "STALE_PREVIEW",
+                )
+            if body.expected_assignment_catalogue_id != fingerprint["expected_assignment_catalogue_id"]:
+                raise CatalogueError(
+                    "Farm catalogue assignment changed since preview; request a fresh preview",
+                    "STALE_PREVIEW",
+                )
+            if int(body.expected_override_flock_count) != int(
+                fingerprint["expected_override_flock_count"]
+            ):
+                raise CatalogueError(
+                    "Flock catalogue overrides changed since preview; request a fresh preview",
+                    "STALE_PREVIEW",
+                )
+
+        if body.name is not None:
+            cat.name = body.name.strip()
+        if body.description is not None:
+            cat.description = body.description
+        if body.status is not None:
+            if body.status not in {"active", "inactive", "archived"}:
+                raise CatalogueError("Invalid catalogue status", "INVALID_STATUS")
+            cat.status = body.status
+
+        regenerated = 0
+        item_upsert_stats: dict[str, int] = {"created": 0, "updated": 0, "removed": 0}
+        if items_changed:
+            if body.apply_scope not in {"new_flocks", "all_active"}:
+                raise CatalogueError("apply_scope must be new_flocks or all_active", "INVALID_SCOPE")
+            # Keep all_active flock application gated until preview UX unlock.
+            if body.apply_scope == "all_active":
+                raise CatalogueError(
+                    "Applying catalogue item edits to all active flocks is not enabled yet",
+                    "SCOPE_ALL_ACTIVE_GATED",
+                )
+            item_upsert_stats = await _upsert_catalogue_items(
+                db,
+                cat,
+                body.items or [],
+                remove_item_ids=body.remove_item_ids,
+            )
+            cat.version = int(cat.version or 1) + 1
+            catalogue_pk = cat.id
+            from app.models.owner import OwnerAccount
+
+            owner = await db.get(OwnerAccount, ctx.owner_account_id)
+            eff = body.effective_date or farm_local_today(owner.timezone if owner else None)
+            await db.flush()
+            for existing in list(cat.items):
+                db.expire(existing, ["rules"])
+            db.expire(cat, ["items"])
+            cat = await get_catalogue(db, catalogue_pk)
+            assert cat is not None
+            await _materialize_catalogue(db, ctx, cat, effective_date=eff)
+
+        catalogue_pk = cat.id
+        actor_user_id = ctx.user.id
+        db.add(
+            AuditLog(
+                owner_account_id=ctx.owner_account_id,
+                actor_user_id=actor_user_id,
+                action="catalogue.update",
+                entity_type="vaccine_catalogue",
+                entity_id=catalogue_pk,
+                after={
+                    "version": int(cat.version or 1),
+                    "items_changed": items_changed,
+                    "items_created": item_upsert_stats.get("created", 0),
+                    "items_updated": item_upsert_stats.get("updated", 0),
+                    "items_removed": item_upsert_stats.get("removed", 0),
+                    "apply_scope": body.apply_scope if items_changed else None,
+                    "regenerated_doses": regenerated,
+                },
+            )
         )
-    if body.name is not None:
-        cat.name = body.name.strip()
-    if body.description is not None:
-        cat.description = body.description
-    if body.status is not None:
-        if body.status not in {"active", "inactive", "archived"}:
-            raise CatalogueError("Invalid catalogue status", "INVALID_STATUS")
-        cat.status = body.status
-
-    regenerated = 0
-    if items_changed:
-        assert body.items is not None
-        if body.apply_scope not in {"new_flocks", "all_active"}:
-            raise CatalogueError("apply_scope must be new_flocks or all_active", "INVALID_SCOPE")
-        await db.execute(delete(VaccineCatalogueItem).where(VaccineCatalogueItem.catalogue_id == cat.id))
-        await db.flush()
-        _add_items(db, cat.id, body.items)
-        cat.version = int(cat.version or 1) + 1
-        from app.models.owner import OwnerAccount
-
-        owner = await db.get(OwnerAccount, ctx.owner_account_id)
-        eff = body.effective_date or farm_local_today(owner.timezone if owner else None)
-        # Reload items for materialization
-        await db.refresh(cat, attribute_names=["items"])
-        cat = await get_catalogue(db, cat.id)
-        assert cat is not None
-        def_ids = await _materialize_catalogue(db, ctx, cat, effective_date=eff)
-        if body.apply_scope == "all_active":
-            regenerated = await _regen_flocks_using_catalogue(db, ctx, cat.id, def_ids)
-
-    db.add(
-        AuditLog(
-            owner_account_id=ctx.owner_account_id,
-            actor_user_id=ctx.user.id,
-            action="catalogue.update",
-            entity_type="vaccine_catalogue",
-            entity_id=cat.id,
-            after={
-                "version": cat.version,
-                "items_changed": items_changed,
-                "regenerated_doses": regenerated,
-            },
-        )
-    )
-    await db.commit()
-    loaded = await get_catalogue(db, cat.id)
+        await db.commit()
+    except CatalogueError:
+        await db.rollback()
+        raise
+    loaded = await get_catalogue(db, catalogue_pk)
     assert loaded is not None
     return loaded, regenerated
+
+
+async def preview_update(
+    db: AsyncSession,
+    ctx: AuthContext,
+    catalogue_id: UUID,
+    body: CataloguePreviewUpdateIn,
+) -> dict:
+    """Read-only impact preview for farm-owned catalogue item edits."""
+    assert ctx.owner_account_id is not None
+    cat = await get_catalogue_for_owner(db, ctx, catalogue_id, allow_platform=False)
+    if body.apply_scope not in {"new_flocks", "all_active"}:
+        raise CatalogueError("apply_scope must be new_flocks or all_active", "INVALID_SCOPE")
+
+    fingerprint = await assignment_fingerprint(db, ctx, cat.id)
+    from app.models.owner import OwnerAccount
+
+    owner = await db.get(OwnerAccount, ctx.owner_account_id)
+    eff = body.effective_date or farm_local_today(owner.timezone if owner else None)
+
+    existing_by_id = {item.id: item for item in cat.items}
+    active_ids = {item.id for item in cat.items if item.is_active}
+    items_added: list[str] = []
+    items_updated: list[UUID] = []
+    rule_changes: list[UUID] = []
+    for item_in in body.items or []:
+        if item_in.id is None:
+            items_added.append(item_in.name.strip())
+            continue
+        current = existing_by_id.get(item_in.id)
+        if current is None:
+            raise CatalogueError(
+                "Catalogue item id does not belong to this catalogue",
+                "INVALID_ITEM_ID",
+            )
+        items_updated.append(item_in.id)
+        if _rules_signature(current.rules) != _rules_signature(item_in.rules):
+            rule_changes.append(item_in.id)
+
+    items_removed: list[UUID] = []
+    for rid in body.remove_item_ids or []:
+        if rid not in existing_by_id:
+            raise CatalogueError(
+                "Catalogue item id does not belong to this catalogue",
+                "INVALID_ITEM_ID",
+            )
+        if rid in active_ids:
+            items_removed.append(rid)
+
+    # Open doses linked to defs sourced from this catalogue's items (tenant-scoped).
+    item_ids = list(existing_by_id.keys())
+    open_doses = 0
+    if item_ids:
+        open_doses = int(
+            await db.scalar(
+                select(func.count())
+                .select_from(ScheduledDose)
+                .join(
+                    VaccineDefinition,
+                    VaccineDefinition.id == ScheduledDose.vaccine_definition_id,
+                )
+                .where(
+                    ScheduledDose.owner_account_id == ctx.owner_account_id,
+                    ScheduledDose.is_active.is_(True),
+                    ~ScheduledDose.status.like("completed%"),
+                    ScheduledDose.status.notin_(["skipped", "inactive", "not_applicable"]),
+                    VaccineDefinition.source_catalogue_item_id.in_(item_ids),
+                )
+            )
+            or 0
+        )
+    completed_events = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(VaccinationEvent)
+            .where(
+                VaccinationEvent.owner_account_id == ctx.owner_account_id,
+                VaccinationEvent.is_void.is_(False),
+            )
+        )
+        or 0
+    )
+
+    flocks_all_active = fingerprint["expected_override_flock_count"]
+    if fingerprint["is_farm_default"]:
+        flocks_all_active += fingerprint["inheriting_flock_count_if_default"]
+
+    warning = (
+        "Historical vaccination events are preserved. "
+        "Completed, skipped, and not_applicable doses are not retired. "
+        f"apply_scope={body.apply_scope}: new_flocks materializes definitions only; "
+        "all_active flock application remains gated until product unlock."
+    )
+    return {
+        "catalogue_id": cat.id,
+        "catalogue_name": cat.name,
+        "catalogue_version": int(cat.version or 1),
+        "requires_veterinary_review": bool(getattr(cat, "requires_veterinary_review", False)),
+        "apply_scope": body.apply_scope,
+        "effective_date": eff,
+        "is_farm_default": fingerprint["is_farm_default"],
+        "expected_assignment_catalogue_id": fingerprint["expected_assignment_catalogue_id"],
+        "expected_override_flock_count": fingerprint["expected_override_flock_count"],
+        "inheriting_flock_count_if_default": fingerprint["inheriting_flock_count_if_default"],
+        "items_added": items_added,
+        "items_updated": items_updated,
+        "items_removed": items_removed,
+        "rule_changes": rule_changes,
+        "open_doses_eligible_for_change": open_doses,
+        "completed_event_count": completed_events,
+        "flocks_affected_new_flocks": 0,
+        "flocks_affected_all_active": flocks_all_active,
+        "warning": warning,
+        "all_active_gated": True,
+    }
 
 
 async def preview_assign(
@@ -479,11 +815,31 @@ async def _materialize_catalogue(
     *,
     effective_date: date,
 ) -> list[UUID]:
-    """Idempotently create/update tenant vaccine_definitions from catalogue items."""
+    """Idempotently create/update tenant vaccine_definitions from catalogue items.
+
+    Active catalogue items materialize/reactivate definitions. Soft-removed items
+    deactivate linked definitions without clearing source_catalogue_item_id.
+    """
     assert ctx.owner_account_id is not None
     definition_ids: list[UUID] = []
-    items = sorted(catalogue.items, key=lambda i: (i.sort_order, i.name))
-    for item in items:
+    active_items = sorted(
+        (item for item in catalogue.items if getattr(item, "is_active", True)),
+        key=lambda i: (i.sort_order, i.name),
+    )
+    inactive_items = [item for item in catalogue.items if not getattr(item, "is_active", True)]
+
+    for item in inactive_items:
+        existing = await db.scalar(
+            select(VaccineDefinition).where(
+                VaccineDefinition.owner_account_id == ctx.owner_account_id,
+                VaccineDefinition.source_catalogue_item_id == item.id,
+            )
+        )
+        if existing and existing.is_active:
+            existing.is_active = False
+            # Keep source_catalogue_item_id for provenance / auditability.
+
+    for item in active_items:
         existing = await db.scalar(
             select(VaccineDefinition).where(
                 VaccineDefinition.owner_account_id == ctx.owner_account_id,
@@ -711,7 +1067,14 @@ async def _regen_flocks_using_catalogue(
 
 
 async def ensure_schedules_for_flock(db: AsyncSession, ctx: AuthContext, flock_id: UUID) -> int:
-    """Auto-generation after flock/bird onboarding using effective catalogue (A2′)."""
+    """Auto-generation after flock/bird onboarding using effective catalogue (A2′).
+
+    Schedule generation requires ``schedule.view``. Callers such as shed transfer may run as
+    farmers with ``lifecycle.record`` only — treat missing schedule permission as a soft skip
+    so membership mutations are not rolled back or reported as 403 after commit.
+    """
+    from fastapi import HTTPException
+
     flock = await db.get(Flock, flock_id)
     if not flock or flock.owner_account_id != ctx.owner_account_id:
         return 0
@@ -739,24 +1102,22 @@ async def ensure_schedules_for_flock(db: AsyncSession, ctx: AuthContext, flock_i
         return len(doses)
     except (vaccine_service.VaccineError, CatalogueError):
         return 0
+    except HTTPException as exc:
+        # Soft-skip authorization gaps during side-effect schedule sync (e.g. farmer transfer).
+        if exc.status_code == 403:
+            return 0
+        raise
 
 
 async def refresh_open_dose_eligibility(db: AsyncSession, flock_id: UUID) -> int:
-    """Align open flock-level dose eligible_count with current flock live count."""
-    flock = await db.get(Flock, flock_id)
-    if not flock:
-        return 0
-    result = await db.execute(
-        update(ScheduledDose)
-        .where(
-            ScheduledDose.flock_id == flock_id,
-            ScheduledDose.bird_id.is_(None),
-            ScheduledDose.is_active.is_(True),
-            ~ScheduledDose.status.like("completed%"),
-        )
-        .values(eligible_count=max(int(flock.current_count), 0))
-    )
-    return int(result.rowcount or 0)
+    """Align flock-level dose eligibility with live headcount (incl. reopen for growth).
+
+    Delegates to dose_reconciliation.refresh_flock_dose_eligibility so completed doses
+    reopen when uncovered birds join, while preserving completed_count for birds already covered.
+    """
+    from app.services.dose_reconciliation import refresh_flock_dose_eligibility
+
+    return await refresh_flock_dose_eligibility(db, flock_id)
 
 
 async def recalculate_open_doses_for_hatch(db: AsyncSession, ctx: AuthContext, flock_id: UUID) -> int:

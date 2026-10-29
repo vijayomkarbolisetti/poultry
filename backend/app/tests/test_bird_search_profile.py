@@ -236,7 +236,7 @@ async def test_bird_profile_individual_history_not_batch_events(client: AsyncCli
     doses = gen.json()
     assert len(doses) >= 1
 
-    # Batch-level coverage — must NOT appear in individual history
+    # Full cohort population coverage (covers the one banded bird present) — appears as cohort scope.
     batch_rec = await client.post(
         "/api/v1/vaccination-events",
         headers=a["headers"],
@@ -277,8 +277,10 @@ async def test_bird_profile_individual_history_not_batch_events(client: AsyncCli
     assert p["batch_code"] == "PR1"
     assert p["shed_code"] == "P1"
     assert p["organization_name"] == "Profile Farm"
-    assert len(p["individual_vaccinations"]) == 1
-    ev = p["individual_vaccinations"][0]
+    assert len(p["individual_vaccinations"]) == 2
+    by_scope = {row["coverage_scope"]: row for row in p["individual_vaccinations"]}
+    assert "individual" in by_scope and "cohort" in by_scope
+    ev = by_scope["individual"]
     assert ev["lot_number"] == "LOT-1"
     assert ev["vaccine_name"] == "ND Profile"
     assert ev["manufacturer_or_brand"] == "Acme"
@@ -287,14 +289,13 @@ async def test_bird_profile_individual_history_not_batch_events(client: AsyncCli
     assert ev["route"] == "Eye drop"
     assert ev["dose_amount"] == "1 drop"
     assert ev["notes"] == "Individual dose"
-    # Batch coverage must not appear as an individual vaccination
-    assert all(row.get("birds_covered", 1) == 1 for row in p["individual_vaccinations"])
+    assert by_scope["cohort"]["birds_covered"] == 5
     # Hatch-date schedule section labeled; may be empty if dose completed fully
     for d in p["batch_upcoming_doses"]:
         assert "Shed hatch-date schedule" in d["attribution_note"]
         assert "not confirmed as an individual" in d["attribution_note"]
 
-    # Empty individual history bird
+    # Bird added after population recording must not inherit prior cohort history.
     bird2 = await client.post(
         "/api/v1/birds",
         headers=a["headers"],
