@@ -1,11 +1,11 @@
-/** Shared mint/emerald tokens for Birds management (9-screen reference). */
+/** Shared mint/emerald tokens for Shed / Birds management (unified mockup). */
 
 export const birdUi = {
-  bg: "#F0F8F4",
+  bg: "#EFFFEB",
   white: "#FFFFFF",
   paleMint: "#E3F5EE",
   iconCircle: "#DDF4EA",
-  primary: "#07835D",
+  primary: "#176B45",
   deepGreen: "#15342C",
   teal: "#0F766E",
   text: "#15342C",
@@ -17,11 +17,12 @@ export const birdUi = {
   successText: "#087F50",
   blue: "#2563EB",
   bluePale: "#E5F0FA",
-  orange: "#F59E0B",
-  orangePale: "#FFF1E6",
+  /** Copper accent for banded / secondary highlights (mockup). */
+  orange: "#B96F3B",
+  orangePale: "#F8EEE6",
   error: "#DC2626",
   errorPale: "#FEE7E5",
-  warning: "#F59E0B",
+  warning: "#B96F3B",
   cardRadius: 16,
   buttonHeight: 52,
   horizontal: 20,

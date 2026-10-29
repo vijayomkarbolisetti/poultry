@@ -18,9 +18,15 @@ import { listSheds, type ShedListItem } from "../../../src/api/sheds";
 import { describeApiError } from "../../../src/api/client";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
+import {
+  IMMERSIVE_HERO_MIN_HEIGHT,
+  IMMERSIVE_HERO_SHEET_OVERLAP,
+  ImmersiveHeroHeader,
+} from "../../../src/components/ui/ImmersiveHeroHeader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
-import { media } from "../../../src/theme/media";
+import { sumLiveBirds } from "../../../src/features/sheds/sumLiveBirds";
+import { heroArt, media } from "../../../src/theme/media";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
@@ -190,7 +196,7 @@ function ShedCard({
               pressed && { opacity: 0.94 },
             ]}
             accessibilityRole="button"
-            accessibilityLabel={`Open bird management for ${item.name}`}
+            accessibilityLabel={`Open shed management for ${item.name}`}
           >
             <View style={[styles.illustration, { backgroundColor: tone.bg }]}>
               <Ionicons name="business" size={36} color={tone.icon} />
@@ -302,7 +308,7 @@ export default function ShedsScreen() {
   const [filterSheet, setFilterSheet] = useState(false);
   const [menuItem, setMenuItem] = useState<ShedListItem | null>(null);
 
-  // Load inactive sheds when the user can manage them so Total vs Active summary stays accurate.
+  // Load inactive sheds when the user can manage them so Total sheds stays accurate.
   const includeInactive = canUpdate;
   const sheds = useQuery({
     queryKey: ["sheds", ownerAccountId, includeInactive ? "with-inactive" : "active"],
@@ -364,86 +370,99 @@ export default function ShedsScreen() {
   }, [scoped, statusFilter]);
 
   const totalCount = scoped.length;
-  const activeCount = scoped.filter((s) => s.is_active).length;
+  /** Living birds across scoped sheds (same set as Total sheds). Server `total_live_birds`
+   * already excludes sold/dead/inactive; includes banded + unbanded. */
+  const totalBirds = useMemo(() => sumLiveBirds(scoped), [scoped]);
 
   const listHeader = (
-    <View style={styles.headerBlock}>
-      <Text style={styles.title}>Sheds</Text>
-      <Text style={styles.sub}>Search, filter, and open a shed overview</Text>
+    <View>
+      <ImmersiveHeroHeader
+        source={heroArt.sheds}
+        curveFill={ui.bg}
+        minHeight={IMMERSIVE_HERO_MIN_HEIGHT}
+        accessibilityLabel="Farm sheds illustration"
+      >
+        <View style={styles.heroCopy}>
+          <Text style={styles.title}>Sheds</Text>
+          <Text style={styles.sub}>Search, filter, and open a shed overview</Text>
+        </View>
+      </ImmersiveHeroHeader>
 
-      <View style={styles.searchRow}>
-        <View style={[styles.searchWrap, softShadow()]}>
-          <Ionicons name="search" size={20} color={ui.secondaryText} />
-          <TextInput
-            value={q}
-            onChangeText={setQ}
-            placeholder="Search by name or code..."
-            placeholderTextColor={ui.secondaryText}
-            style={styles.search}
-            returnKeyType="search"
-            accessibilityLabel="Search sheds by name or code"
-          />
-          {q ? (
-            <Pressable onPress={() => setQ("")} hitSlop={8} accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={18} color={ui.mutedText} />
+      <View style={styles.headerBody}>
+        <View style={styles.searchRow}>
+          <View style={[styles.searchWrap, softShadow()]}>
+            <Ionicons name="search" size={20} color={ui.secondaryText} />
+            <TextInput
+              value={q}
+              onChangeText={setQ}
+              placeholder="Search by name or code..."
+              placeholderTextColor={ui.secondaryText}
+              style={styles.search}
+              returnKeyType="search"
+              accessibilityLabel="Search sheds by name or code"
+            />
+            {q ? (
+              <Pressable onPress={() => setQ("")} hitSlop={8} accessibilityLabel="Clear search">
+                <Ionicons name="close-circle" size={18} color={ui.mutedText} />
+              </Pressable>
+            ) : null}
+          </View>
+          <Pressable
+            onPress={openFilterSheet}
+            style={[styles.filterBtn, softShadow(), filtersActive && styles.filterBtnActive]}
+            accessibilityRole="button"
+            accessibilityLabel={filtersActive ? "Open filters, filters active" : "Open filters"}
+          >
+            <Ionicons name="options-outline" size={22} color={ui.chipActive} />
+            {filtersActive ? <View style={styles.filterDot} /> : null}
+          </Pressable>
+          {canCreate ? (
+            <Pressable
+              onPress={() => router.push("/(app)/sheds/create")}
+              style={[styles.addBtn, softShadow()]}
+              accessibilityRole="button"
+              accessibilityLabel="Add shed"
+            >
+              <Ionicons name="add" size={26} color={ui.white} />
             </Pressable>
           ) : null}
         </View>
-        <Pressable
-          onPress={openFilterSheet}
-          style={[styles.filterBtn, softShadow(), filtersActive && styles.filterBtnActive]}
-          accessibilityRole="button"
-          accessibilityLabel={filtersActive ? "Open filters, filters active" : "Open filters"}
-        >
-          <Ionicons name="options-outline" size={22} color={ui.chipActive} />
-          {filtersActive ? <View style={styles.filterDot} /> : null}
-        </Pressable>
-        {canCreate ? (
-          <Pressable
-            onPress={() => router.push("/(app)/sheds/create")}
-            style={[styles.addBtn, softShadow()]}
-            accessibilityRole="button"
-            accessibilityLabel="Add shed"
-          >
-            <Ionicons name="add" size={26} color={ui.white} />
+
+        <View style={styles.summary}>
+          <View style={styles.summaryMetric}>
+            <View style={styles.summaryIcon}>
+              <Ionicons name="business-outline" size={16} color={ui.chipActive} />
+            </View>
+            <View>
+              <Text style={styles.summaryLabel}>Total sheds</Text>
+              <Text style={styles.summaryValue}>{sheds.isLoading ? "—" : totalCount}</Text>
+            </View>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryMetric}>
+            <View style={styles.summaryIcon}>
+              <MaterialCommunityIcons name="bird" size={16} color={ui.chipActive} />
+            </View>
+            <View>
+              <Text style={styles.summaryLabel}>Total Birds</Text>
+              <Text style={styles.summaryValue}>{sheds.isLoading ? "—" : totalBirds}</Text>
+            </View>
+          </View>
+        </View>
+
+        {sheds.isError ? (
+          <Pressable style={styles.errorBox} onPress={() => sheds.refetch()}>
+            <Ionicons name="cloud-offline-outline" size={18} color="#D92D20" />
+            <Text style={styles.errorText}>{describeApiError(sheds.error, "load sheds")}</Text>
+            <Text style={styles.retry}>Retry</Text>
           </Pressable>
         ) : null}
       </View>
-
-      <View style={styles.summary}>
-        <View style={styles.summaryMetric}>
-          <View style={styles.summaryIcon}>
-            <Ionicons name="business-outline" size={16} color={ui.chipActive} />
-          </View>
-          <View>
-            <Text style={styles.summaryLabel}>Total sheds</Text>
-            <Text style={styles.summaryValue}>{sheds.isLoading ? "—" : totalCount}</Text>
-          </View>
-        </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryMetric}>
-          <View style={styles.summaryIcon}>
-            <Ionicons name="stats-chart-outline" size={16} color={ui.chipActive} />
-          </View>
-          <View>
-            <Text style={styles.summaryLabel}>Active sheds</Text>
-            <Text style={styles.summaryValue}>{sheds.isLoading ? "—" : activeCount}</Text>
-          </View>
-        </View>
-      </View>
-
-      {sheds.isError ? (
-        <Pressable style={styles.errorBox} onPress={() => sheds.refetch()}>
-          <Ionicons name="cloud-offline-outline" size={18} color="#D92D20" />
-          <Text style={styles.errorText}>{describeApiError(sheds.error, "load sheds")}</Text>
-          <Text style={styles.retry}>Retry</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={["left", "right", "top"]}>
+    <SafeAreaView style={styles.safe} edges={["left", "right"]}>
       <FlatList
         style={styles.list}
         data={data}
@@ -460,38 +479,42 @@ export default function ShedsScreen() {
           />
         }
         ListEmptyComponent={
-          sheds.isLoading ? (
-            <HenLoader label="Loading sheds…" />
-          ) : (
-            <EmptyState
-              title={
-                q.trim() || modeFilter !== "all"
-                  ? "No matching sheds"
-                  : statusFilter === "inactive"
-                    ? "No inactive sheds"
-                    : statusFilter === "all"
-                      ? "No sheds found"
-                      : "No sheds yet"
-              }
-              body={
-                q.trim() || modeFilter !== "all"
-                  ? "Try adjusting search or filters."
-                  : statusFilter === "inactive"
-                    ? "Deactivated sheds will appear here."
-                    : "Create a shed to house birds and assign farmers."
-              }
-              imageUri={media.shedYard}
-              actionLabel={canCreate && statusFilter !== "inactive" && !q.trim() ? "Add first shed" : undefined}
-              onAction={
-                canCreate && statusFilter !== "inactive" && !q.trim()
-                  ? () => router.push("/(app)/sheds/create")
-                  : undefined
-              }
-            />
-          )
+          <View style={styles.paddedBlock}>
+            {sheds.isLoading ? (
+              <HenLoader label="Loading sheds…" />
+            ) : (
+              <EmptyState
+                title={
+                  q.trim() || modeFilter !== "all"
+                    ? "No matching sheds"
+                    : statusFilter === "inactive"
+                      ? "No inactive sheds"
+                      : statusFilter === "all"
+                        ? "No sheds found"
+                        : "No sheds yet"
+                }
+                body={
+                  q.trim() || modeFilter !== "all"
+                    ? "Try adjusting search or filters."
+                    : statusFilter === "inactive"
+                      ? "Deactivated sheds will appear here."
+                      : "Create a shed to house birds and assign farmers."
+                }
+                imageUri={media.shedYard}
+                actionLabel={canCreate && statusFilter !== "inactive" && !q.trim() ? "Add first shed" : undefined}
+                onAction={
+                  canCreate && statusFilter !== "inactive" && !q.trim()
+                    ? () => router.push("/(app)/sheds/create")
+                    : undefined
+                }
+              />
+            )}
+          </View>
         }
         renderItem={({ item }) => (
-          <ShedCard item={item} canUpdate={canUpdate} onMenu={setMenuItem} />
+          <View style={styles.paddedBlock}>
+            <ShedCard item={item} canUpdate={canUpdate} onMenu={setMenuItem} />
+          </View>
         )}
       />
 
@@ -541,7 +564,7 @@ export default function ShedsScreen() {
                 if (id) router.push({ pathname: "/(app)/sheds/[id]/birds", params: { id } });
               }}
             >
-              <Text style={styles.menuOptionText}>Manage birds</Text>
+              <Text style={styles.menuOptionText}>Open shed</Text>
             </Pressable>
             {canUpdate && menuItem ? (
               <Pressable
@@ -555,17 +578,6 @@ export default function ShedsScreen() {
                 <Text style={styles.menuOptionText}>Edit shed</Text>
               </Pressable>
             ) : null}
-            <Pressable
-              style={styles.menuOption}
-              onPress={() => {
-                const id = menuItem?.id;
-                setMenuItem(null);
-                // Compatibility: advanced shed admin (assign farmer / deactivate) remains on details.
-                if (id) router.push({ pathname: "/(app)/sheds/[id]", params: { id } });
-              }}
-            >
-              <Text style={styles.menuOptionText}>Shed details</Text>
-            </Pressable>
             <Pressable style={[styles.menuOption, { marginTop: 4 }]} onPress={() => setMenuItem(null)}>
               <Text style={[styles.menuOptionText, { color: ui.secondaryText }]}>Cancel</Text>
             </Pressable>
@@ -580,23 +592,33 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: ui.bg },
   list: { flex: 1, backgroundColor: ui.bg },
   listContent: {
-    paddingHorizontal: ui.horizontal,
     paddingBottom: 28,
     gap: 12,
     flexGrow: 1,
   },
-  headerBlock: { gap: 14, paddingTop: 4, marginBottom: 2 },
+  // Mirror Home farmRow / farmTitle / farmName placement over the hero.
+  heroCopy: {
+    marginTop: 18,
+    paddingBottom: 6,
+    gap: 4,
+  },
+  headerBody: {
+    gap: 14,
+    paddingHorizontal: ui.horizontal,
+    marginTop: IMMERSIVE_HERO_SHEET_OVERLAP,
+    marginBottom: 2,
+  },
+  paddedBlock: { paddingHorizontal: ui.horizontal },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: "800",
     color: ui.primaryText,
     letterSpacing: -0.5,
   },
   sub: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: ui.secondaryText,
-    marginTop: -8,
+    fontSize: 13,
+    fontWeight: "700",
+    color: ui.chipActive,
   },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   searchWrap: {

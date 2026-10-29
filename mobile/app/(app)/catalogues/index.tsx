@@ -5,7 +5,6 @@ import { useCallback, useMemo, useState } from "react";
 import {
   Alert,
   FlatList,
-  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -17,12 +16,15 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   assignCatalogue,
   cloneCatalogue,
+  farmCopiesOf,
   getCatalogue,
   getCatalogueAssignment,
   listCatalogues,
   type CatalogueSummary,
 } from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
+import { BrandLogo } from "../../../src/components/brand/BrandLogo";
+import { AppDialog } from "../../../src/components/ui/AppDialog";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -34,10 +36,10 @@ import {
 import { media } from "../../../src/theme/media";
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
+import { toast } from "../../../src/ui/toast/toastStore";
 
 type TabKey = "all" | "farm" | "platform";
-
-const brandLogo = require("../../../assets/brand-logo.png");
+type ConfirmKind = "default" | "clone";
 
 export default function CataloguesScreen() {
   const { user, ownerAccountId } = useAuth();
@@ -46,6 +48,7 @@ export default function CataloguesScreen() {
   const qc = useQueryClient();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
+  const [confirm, setConfirm] = useState<{ kind: ConfirmKind; cat: CatalogueSummary } | null>(null);
 
   const catalogues = useQuery({
     queryKey: ["catalogues", ownerAccountId],
@@ -100,50 +103,61 @@ export default function CataloguesScreen() {
 
   const onSetDefault = (cat: CatalogueSummary) => {
     if (!canManage) return;
-    Alert.alert(
-      "Set farm default?",
-      `New flocks will use “${cat.name}” unless a flock override is set. Existing completed vaccinations are kept.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Set default",
-          onPress: async () => {
-            setBusyId(cat.id);
-            try {
-              await assignCatalogue({ catalogue_id: cat.id, apply_scope: "all_active" });
-              await qc.invalidateQueries({ queryKey: ["catalogue-assignment", ownerAccountId] });
-              await qc.invalidateQueries({ queryKey: ["vaccination"] });
-            } catch (e) {
-              Alert.alert("Could not assign", describeApiError(e, "assign catalogue"));
-            } finally {
-              setBusyId(null);
-            }
-          },
-        },
-      ],
-    );
+    setConfirm({ kind: "default", cat });
   };
 
   const onClone = (cat: CatalogueSummary) => {
     if (!canManage) return;
-    Alert.alert("Clone catalogue?", `Create an editable farm copy of “${cat.name}”.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Clone",
-        onPress: async () => {
-          setBusyId(cat.id);
-          try {
-            const cloned = await cloneCatalogue(cat.id);
-            await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
-            router.push(`/(app)/catalogues/${cloned.id}`);
-          } catch (e) {
-            Alert.alert("Could not clone", describeApiError(e, "clone catalogue"));
-          } finally {
-            setBusyId(null);
-          }
+    const copies = farmCopiesOf(cat.id, list);
+    if (copies.length === 1) {
+      Alert.alert(cat.name, "A farm copy of this schedule already exists.", [
+        {
+          text: "Open existing copy",
+          onPress: () => router.push(`/(app)/catalogues/${copies[0].id}`),
         },
-      },
-    ]);
+        { text: "Clone another copy", onPress: () => setConfirm({ kind: "clone", cat }) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+      return;
+    }
+    if (copies.length > 1) {
+      Alert.alert(cat.name, "Multiple farm copies already exist.", [
+        {
+          text: "Open first copy",
+          onPress: () => router.push(`/(app)/catalogues/${copies[0].id}`),
+        },
+        { text: "Clone another copy", onPress: () => setConfirm({ kind: "clone", cat }) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+      return;
+    }
+    setConfirm({ kind: "clone", cat });
+  };
+
+  const runConfirm = async () => {
+    if (!confirm || busyId) return;
+    const { kind, cat } = confirm;
+    setBusyId(cat.id);
+    try {
+      if (kind === "default") {
+        await assignCatalogue({ catalogue_id: cat.id, apply_scope: "all_active" });
+        await qc.invalidateQueries({ queryKey: ["catalogue-assignment", ownerAccountId] });
+        await qc.invalidateQueries({ queryKey: ["vaccination"] });
+        setConfirm(null);
+        toast.success("Default schedule set");
+      } else {
+        const cloned = await cloneCatalogue(cat.id);
+        await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
+        setConfirm(null);
+        toast.success("Catalogue cloned");
+        router.push(`/(app)/catalogues/${cloned.id}`);
+      }
+    } catch (e) {
+      setConfirm(null);
+      toast.error(describeApiError(e, kind === "default" ? "assign catalogue" : "clone catalogue"));
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const onCardMenu = (cat: CatalogueSummary) => {
@@ -159,7 +173,7 @@ export default function CataloguesScreen() {
       buttons.push({ text: "Set as default", onPress: () => onSetDefault(cat) });
     }
     if (cat.is_platform) {
-      buttons.push({ text: "Clone to farm", onPress: () => onClone(cat) });
+      buttons.push({ text: "Clone to My Farm", onPress: () => onClone(cat) });
     }
     buttons.push({ text: "Cancel", style: "cancel" });
     Alert.alert(cat.name, undefined, buttons);
@@ -190,7 +204,7 @@ export default function CataloguesScreen() {
         accessibilityLabel={`${cat.name}. ${meta}${isDefault ? ". Default" : ""}`}
       >
         <View style={[styles.iconBox, { backgroundColor: softBg, borderColor }]}>
-          <Image source={brandLogo} style={styles.iconImg} resizeMode="contain" accessibilityIgnoresInvertColors />
+          <BrandLogo size={28} accessibilityLabel="PoultryTrack" />
         </View>
         <View style={styles.cardBody}>
           <Text style={styles.cardTitle} numberOfLines={2}>
@@ -278,6 +292,35 @@ export default function CataloguesScreen() {
           renderItem={({ item, index }) => renderCard(item, index)}
         />
       )}
+
+      <AppDialog
+        visible={Boolean(confirm)}
+        title={confirm?.kind === "clone" ? "Clone catalogue?" : "Set farm default?"}
+        description={
+          confirm?.kind === "clone"
+            ? `Create an editable farm copy of “${confirm.cat.name}”.`
+            : confirm
+              ? `New flocks will use “${confirm.cat.name}” unless a flock override is set. Existing completed vaccinations are kept.`
+              : undefined
+        }
+        tone="neutral"
+        dismissible={!busyId}
+        onDismiss={() => {
+          if (!busyId) setConfirm(null);
+        }}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          disabled: Boolean(busyId),
+          onPress: () => setConfirm(null),
+        }}
+        primary={{
+          label: confirm?.kind === "clone" ? "Clone" : "Set default",
+          variant: "primary",
+          loading: Boolean(busyId),
+          onPress: () => void runConfirm(),
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -356,7 +399,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  iconImg: { width: 28, height: 28 },
   cardBody: { flex: 1, gap: 3, minWidth: 0 },
   cardTitle: { fontSize: 15, fontWeight: "800", color: ui.ink, paddingRight: 4 },
   defaultBadge: {

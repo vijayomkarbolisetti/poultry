@@ -1,8 +1,12 @@
 /**
- * Helpers for Add/Edit vaccine against a farm catalogue (updateCatalogue items replace).
+ * Helpers for Add/Edit/Remove vaccine against a farm catalogue (stable-id upsert + soft-remove).
  */
 
-import type { CatalogueItem, CatalogueItemInput } from "../../api/catalogues";
+import type {
+  CatalogueItem,
+  CatalogueItemInput,
+  CataloguePreviewUpdate,
+} from "../../api/catalogues";
 
 export type VaccineDraft = {
   name: string;
@@ -31,8 +35,9 @@ export function validateVaccineDraft(draft: VaccineDraft): string | null {
   return null;
 }
 
-function mapExistingItem(row: CatalogueItem): CatalogueItemInput {
-  return {
+/** Map an existing catalogue row for upsert; preserves stable `id` when present. */
+export function mapExistingItem(row: CatalogueItem): CatalogueItemInput {
+  const base: CatalogueItemInput = {
     sort_order: row.sort_order,
     name: row.name,
     category: row.category,
@@ -54,6 +59,8 @@ function mapExistingItem(row: CatalogueItem): CatalogueItemInput {
       label: r.label,
     })),
   };
+  if (row.id) base.id = row.id;
+  return base;
 }
 
 export function vaccineDraftToItemInput(
@@ -77,7 +84,7 @@ export function vaccineDraftToItemInput(
   };
 }
 
-/** Replace one existing item by id with draft values. */
+/** Replace one existing item by id with draft values; all rows keep stable ids. */
 export function itemsAfterEdit(
   existing: CatalogueItem[],
   itemId: string,
@@ -98,6 +105,7 @@ export function itemsAfterEdit(
         : [{ dose_number: 1, target_age_days: age.value }];
     return {
       ...base,
+      id: row.id,
       name: draft.name.trim(),
       disease_label: draft.disease.trim() || null,
       recommended_dose_text: draft.dose.trim() || null,
@@ -109,7 +117,7 @@ export function itemsAfterEdit(
   });
 }
 
-/** Append a new vaccine item to the catalogue item list. */
+/** Append a new vaccine item (no id) while preserving existing item ids. */
 export function itemsAfterAdd(
   existing: CatalogueItem[],
   draft: VaccineDraft,
@@ -119,4 +127,33 @@ export function itemsAfterAdd(
   const item = vaccineDraftToItemInput(draft, nextOrder);
   if ("error" in item) return item;
   return [...existing.map(mapExistingItem), item];
+}
+
+export function formatCataloguePreviewImpact(preview: CataloguePreviewUpdate): string {
+  const lines: string[] = [];
+  if (preview.items_added.length) {
+    lines.push(`Add: ${preview.items_added.join(", ")}`);
+  }
+  if (preview.items_updated.length) {
+    lines.push(`Update ${preview.items_updated.length} vaccine${preview.items_updated.length === 1 ? "" : "s"}`);
+  }
+  if (preview.rule_changes.length) {
+    lines.push(`Rule changes: ${preview.rule_changes.length}`);
+  }
+  if (preview.items_removed.length) {
+    lines.push(`Remove ${preview.items_removed.length} vaccine${preview.items_removed.length === 1 ? "" : "s"}`);
+  }
+  lines.push(`Open doses linked to this programme: ${preview.open_doses_eligible_for_change}`);
+  lines.push(`Completed vaccination events kept: ${preview.completed_event_count}`);
+  lines.push(
+    preview.is_farm_default
+      ? `Farm default · ${preview.inheriting_flock_count_if_default} inheriting flock(s)`
+      : "Not the farm default",
+  );
+  if (preview.expected_override_flock_count > 0) {
+    lines.push(`Override flocks using this catalogue: ${preview.expected_override_flock_count}`);
+  }
+  lines.push("Scope: new flocks only (existing flock schedules are not regenerated).");
+  if (preview.warning?.trim()) lines.push(preview.warning.trim());
+  return lines.join("\n");
 }

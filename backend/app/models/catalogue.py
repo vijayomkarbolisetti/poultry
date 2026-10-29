@@ -27,6 +27,10 @@ class VaccineCatalogue(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("'active'"))
     is_example: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # Technical availability ≠ veterinary approval. True = show review warning; not auto-approved.
+    requires_veterinary_review: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
     cloned_from_catalogue_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("vaccine_catalogues.id", ondelete="SET NULL"),
@@ -59,6 +63,8 @@ class VaccineCatalogueItem(Base):
     recommended_dose_text: Mapped[str | None] = mapped_column(String(128), nullable=True)
     route: Mapped[str | None] = mapped_column(String(64), nullable=True)
     diluent_instructions: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Soft-removal: false keeps the row for provenance / materialize links (no hard delete).
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     catalogue: Mapped["VaccineCatalogue"] = relationship(back_populates="items")

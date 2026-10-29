@@ -1,3 +1,4 @@
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -23,6 +24,7 @@ from app.schemas.flock import (
     BirdSearchOut,
     BirdUpdate,
     RegisterBandedInShedIn,
+    SoldBirdListOut,
 )
 from app.services import flock_service
 
@@ -140,6 +142,32 @@ async def search_birds(
             limit=limit,
             offset=offset,
             include_inactive=include_inactive,
+        )
+    except flock_service.FlockError as exc:
+        code = 400 if exc.code == "INVALID" else 404
+        raise HTTPException(status_code=code, detail=exc.message) from exc
+
+
+@router.get("/sold", response_model=SoldBirdListOut)
+async def list_sold_birds(
+    q: str | None = Query(None, max_length=64, description="Band, breed, buyer name, or mobile"),
+    sold_from: date | None = Query(None),
+    sold_to: date | None = Query(None),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    ctx: AuthContext = Depends(require_permission("bird.view")),
+    db: AsyncSession = Depends(get_db),
+) -> SoldBirdListOut:
+    """List sold birds with sale details; tenant-scoped and searchable."""
+    try:
+        return await flock_service.list_sold_birds(
+            db,
+            ctx,
+            query=q,
+            sold_from=sold_from,
+            sold_to=sold_to,
+            limit=limit,
+            offset=offset,
         )
     except flock_service.FlockError as exc:
         code = 400 if exc.code == "INVALID" else 404

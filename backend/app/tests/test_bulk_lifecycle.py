@@ -149,6 +149,8 @@ async def test_single_and_bulk_lifecycle_preserve_history(client: AsyncClient) -
         headers=a["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "bird_ids": [b2["id"], b3["id"]],
             "idempotency_key": "bulk-sale-1",
@@ -209,6 +211,8 @@ async def test_bulk_all_or_nothing_mixed_eligibility_and_duplicates(client: Asyn
         headers=a["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "bird_ids": [live["id"], dead["id"]],
             "idempotency_key": "bulk-mixed-elig",
@@ -224,6 +228,8 @@ async def test_bulk_all_or_nothing_mixed_eligibility_and_duplicates(client: Asyn
         headers=a["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "bird_ids": [live["id"], live["id"]],
             "idempotency_key": "bulk-dup-ids",
@@ -244,6 +250,8 @@ async def test_bulk_lost_response_retry_no_duplicate_events(client: AsyncClient)
 
     payload = {
         "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
         "effective_date": date.today().isoformat(),
         "bird_ids": [b1["id"], b2["id"]],
         "idempotency_key": "lost-resp-sale-1",
@@ -332,6 +340,8 @@ async def test_bulk_idempotent_replay_and_foreign_ids(client: AsyncClient) -> No
         headers=a["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "bird_ids": [foreign["id"]],
             "idempotency_key": "bulk-cross-tenant",
@@ -349,6 +359,8 @@ async def test_bulk_idempotent_replay_and_foreign_ids(client: AsyncClient) -> No
         headers=a["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "bird_ids": [str(uuid4())],
             "idempotency_key": "bulk-missing",
@@ -386,6 +398,8 @@ async def test_bulk_changed_payload_conflicts(client: AsyncClient) -> None:
         headers=a["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "bird_ids": [b1["id"], b2["id"]],
             "idempotency_key": key,
@@ -474,6 +488,8 @@ async def test_batch_count_ops_unbanded_only(client: AsyncClient) -> None:
         headers=a["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "flock_id": indiv.json()["id"],
             "quantity": 1,
@@ -513,6 +529,8 @@ async def test_farmer_bulk_permissions(client: AsyncClient) -> None:
         headers=farmer["headers"],
         json={
             "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
             "effective_date": date.today().isoformat(),
             "bird_ids": [other_bird["id"]],
             "idempotency_key": "farmer-bulk-deny",

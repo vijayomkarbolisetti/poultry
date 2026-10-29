@@ -117,31 +117,46 @@ async def test_create_update_clone_round_trip_admin_fields(client: AsyncClient) 
     assert clone_items["Custom product B"]["route"] is None
     assert clone_items["Custom product B"]["diluent_instructions"] is None
 
-    # Update items on farm catalogue (confirm_change required)
+    # Update item A in place by stable id (Phase 1 upsert; B remains)
+    items_payload = [
+        {
+            "id": a["id"],
+            "name": "Custom product A",
+            "disease_label": "ND",
+            "instructions": "General note only",
+            "recommended_dose_text": "as per label",
+            "route": "drinking water",
+            "diluent_instructions": None,
+            "rules": [{"dose_number": 1, "target_age_days": 0}],
+        }
+    ]
+    preview = await client.post(
+        f"/api/v1/vaccine-catalogues/{body['id']}/preview-update",
+        headers=ctx["headers"],
+        json={"apply_scope": "new_flocks", "items": items_payload},
+    )
+    assert preview.status_code == 200, preview.text
+    pv = preview.json()
     updated = await client.patch(
         f"/api/v1/vaccine-catalogues/{body['id']}",
         headers=ctx["headers"],
         json={
             "confirm_change": True,
             "apply_scope": "new_flocks",
-            "items": [
-                {
-                    "name": "Custom product A",
-                    "disease_label": "ND",
-                    "instructions": "General note only",
-                    "recommended_dose_text": "as per label",
-                    "route": "drinking water",
-                    "diluent_instructions": None,
-                    "rules": [{"dose_number": 1, "target_age_days": 0}],
-                }
-            ],
+            "expected_version": pv["catalogue_version"],
+            "expected_assignment_catalogue_id": pv["expected_assignment_catalogue_id"],
+            "expected_override_flock_count": pv["expected_override_flock_count"],
+            "items": items_payload,
         },
     )
     assert updated.status_code == 200, updated.text
-    only = updated.json()["items"][0]
-    assert only["recommended_dose_text"] == "as per label"
-    assert only["route"] == "drinking water"
-    assert only["diluent_instructions"] is None
+    assert len(updated.json()["items"]) == 2
+    by_name_u = {i["name"]: i for i in updated.json()["items"]}
+    assert by_name_u["Custom product A"]["id"] == a["id"]
+    assert by_name_u["Custom product A"]["recommended_dose_text"] == "as per label"
+    assert by_name_u["Custom product A"]["route"] == "drinking water"
+    assert by_name_u["Custom product A"]["diluent_instructions"] is None
+    assert by_name_u["Custom product B"]["id"] == b["id"]
 
 
 @pytest.mark.asyncio

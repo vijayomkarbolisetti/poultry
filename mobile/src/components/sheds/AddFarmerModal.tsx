@@ -17,16 +17,11 @@ import { z } from "zod";
 
 import { createFarmer, type Farmer } from "../../api/farmers";
 import { describeApiError } from "../../api/client";
+import { DEFAULT_FARMER_PERMS } from "../../features/auth/permissions";
 import { Button } from "../ui/Button";
 import { TextField } from "../ui/TextField";
 import { colors, radius, space } from "../../theme/tokens";
-
-const DEFAULT_FARMER_PERMS = [
-  "shed.view",
-  "flock.view",
-  "bird.view",
-  "report.view",
-];
+import { toast } from "../../ui/toast/toastStore";
 
 const schema = z.object({
   full_name: z.string().min(1, "Required"),
@@ -100,6 +95,7 @@ export function AddFarmerModal({ visible, onClose, onCreated }: Props) {
         shed_ids: [],
       });
       reset();
+      toast.success("Farmer added");
       onCreated(farmer);
     } catch (e: unknown) {
       setError(describeApiError(e, "add the farmer"));

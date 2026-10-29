@@ -33,6 +33,7 @@ import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
 import { useAuth } from "../../src/features/auth/AuthContext";
+import { loginBackgroundArt } from "../../src/theme/media";
 import {
   colors,
   icons,
@@ -113,14 +114,20 @@ export default function LoginScreen() {
   return (
     <View style={styles.root} accessibilityLabel="PoultryTrack sign in">
       <ImageBackground
-        source={require("../../assets/loginbackround.png")}
+        source={loginBackgroundArt}
         style={styles.bg}
         resizeMode="cover"
         imageStyle={styles.bgImage}
+        accessibilityIgnoresInvertColors
       >
+        {/* Soft wash keeps mint scenery visible while protecting deep-green type + white card. */}
         <LinearGradient
-          colors={["rgba(52, 211, 153, 0.10)", "transparent", "rgba(2, 44, 34, 0.14)"]}
-          locations={[0, 0.35, 1]}
+          colors={[
+            "rgba(242, 248, 245, 0.42)",
+            "rgba(242, 248, 245, 0.12)",
+            "rgba(6, 78, 59, 0.18)",
+          ]}
+          locations={[0, 0.45, 1]}
           style={styles.scrim}
         >
           {/* Omit bottom safe-area: IME inset changes remount children and dismiss keyboard on Android. */}
@@ -183,7 +190,7 @@ function LoginForm({
     <>
       <View style={styles.header}>
         <View style={styles.logoGlow} collapsable={false}>
-          <BrandLogo size={76} />
+          <BrandLogo size={64} />
         </View>
         <Text style={styles.brand} accessibilityRole="header">
           PoultryTrack
@@ -191,17 +198,14 @@ function LoginForm({
         <Text style={styles.tagline}>Farm health, made simple.</Text>
       </View>
 
-      <View style={styles.intro}>
-        <Text style={styles.headline}>Smarter Farms. Healthier Birds.</Text>
-        <Text style={styles.introBody}>
-          Manage sheds, bird records, and farm health in one place — for every life
-          stage on your farm.
-        </Text>
-      </View>
-
-      <View style={styles.divider} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />
-
       <View style={[styles.card, shadows.card]} collapsable={false}>
+        <View style={styles.cardIntro}>
+          <Text style={styles.headline}>Welcome back</Text>
+          <Text style={styles.introBody}>
+            Sign in to manage sheds, birds, and vaccination tasks for your farm.
+          </Text>
+        </View>
+
         <TextField
           control={control}
           name="email"
@@ -261,7 +265,7 @@ function LoginForm({
         <Button label="Sign In" onPress={onSubmit} loading={loading} disabled={loading} />
       </View>
 
-      <View style={styles.footerBlock}>
+      <View style={[styles.footerBlock, shadows.soft]}>
         <Text style={styles.footer}>
           Don’t have an account?{" "}
           <Link href="/(auth)/register" style={styles.link}>
@@ -271,12 +275,15 @@ function LoginForm({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Contact Admin"
-          hitSlop={8}
+          hitSlop={10}
           onPress={() => {
             /* UI only — no support channel wired yet */
           }}
+          style={styles.contactPress}
         >
-          <Text style={styles.contact}>Need access? Contact Admin</Text>
+          <Text style={styles.contact}>
+            Need access? <Text style={styles.contactLink}>Contact Admin</Text>
+          </Text>
         </Pressable>
       </View>
     </>
@@ -286,69 +293,56 @@ function LoginForm({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.backgroundFallback },
   bg: { flex: 1 },
-  bgImage: { width: "100%", height: "100%" },
+  // Cover fill — avoid width/height percentage hacks that leave edge strips on Android.
+  bgImage: { resizeMode: "cover" },
   scrim: { flex: 1 },
   safe: { flex: 1 },
   flex: { flex: 1 },
   scroll: {
     flexGrow: 1,
-    justifyContent: "flex-start",
+    justifyContent: "center",
     paddingHorizontal: space.lg,
-    paddingTop: space.xl,
-    paddingBottom: space.xl,
+    paddingTop: space.lg,
+    paddingBottom: space.xxl,
     alignItems: "center",
   },
   column: { width: "100%", gap: space.md },
-  header: { alignItems: "center", gap: space.xs },
+  header: { alignItems: "center", gap: space.xs, marginBottom: space.xs },
   logoGlow: {
-    borderRadius: 40,
-    padding: 4,
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderRadius: 36,
+    padding: 6,
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.9)",
   },
   brand: {
     ...typography.display,
-    color: colors.textOnDark,
+    color: colors.brandDark,
     marginTop: space.xs,
-    textShadowColor: "rgba(2, 44, 34, 0.35)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
   tagline: {
     ...typography.caption,
-    color: colors.textOnDarkMuted,
-    fontWeight: "600",
+    color: colors.brand,
+    fontWeight: "700",
   },
-  intro: { alignItems: "center", gap: space.xs, marginBottom: space.xs },
+  card: {
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    borderRadius: radius.card,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    gap: space.md,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.95)",
+  },
+  cardIntro: { gap: 6, marginBottom: 2 },
   headline: {
-    ...typography.title,
-    color: colors.textOnDark,
-    textAlign: "center",
-    textShadowColor: "rgba(2, 44, 34, 0.3)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    ...typography.heading,
+    color: colors.ink,
   },
   introBody: {
     ...typography.caption,
-    color: colors.textOnDarkSecondary,
-    textAlign: "center",
-    lineHeight: 21,
-    paddingHorizontal: space.sm,
-  },
-  divider: {
-    alignSelf: "center",
-    width: 56,
-    height: 1,
-    backgroundColor: colors.dividerOnDark,
-    marginVertical: space.xs,
-  },
-  card: {
-    backgroundColor: colors.surfaceTranslucent,
-    borderRadius: radius.card,
-    paddingHorizontal: 24,
-    paddingVertical: 26,
-    gap: space.md,
-    borderWidth: 1,
-    borderColor: colors.borderCard,
+    color: colors.inkMuted,
+    lineHeight: 20,
   },
   row: {
     flexDirection: "row",
@@ -374,13 +368,41 @@ const styles = StyleSheet.create({
   rememberLabel: { color: colors.textFormLabel, fontSize: 14, fontWeight: "500" },
   forgot: { color: colors.textLink, fontWeight: "700", fontSize: 14 },
   error: { color: colors.error, fontSize: 14 },
-  footerBlock: { alignItems: "center", gap: space.sm, marginTop: space.xs },
-  footer: { color: colors.textOnDarkMuted, fontSize: 15, textAlign: "center" },
-  link: { color: colors.mintHighlight, fontWeight: "700" },
+  footerBlock: {
+    alignSelf: "stretch",
+    alignItems: "center",
+    gap: space.sm,
+    marginTop: space.xs,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    borderRadius: radius.lg,
+    backgroundColor: "rgba(255, 255, 255, 0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(215, 228, 222, 0.95)",
+  },
+  footer: {
+    color: colors.brandDark,
+    fontSize: 15,
+    textAlign: "center",
+    fontWeight: "700",
+    lineHeight: 22,
+  },
+  link: { color: colors.brand, fontWeight: "800" },
+  contactPress: {
+    minHeight: layout.touchTarget * 0.75,
+    justifyContent: "center",
+    paddingHorizontal: space.xs,
+  },
   contact: {
-    color: colors.textOnDarkSecondary,
+    color: "#4A5F56",
     fontSize: 13,
     textAlign: "center",
-    fontWeight: "500",
+    fontWeight: "600",
+    lineHeight: 18,
+  },
+  contactLink: {
+    color: colors.brandDark,
+    fontWeight: "800",
+    textDecorationLine: "underline",
   },
 });

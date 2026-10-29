@@ -25,6 +25,7 @@ import {
 } from "../../../src/features/catalogues/catalogueCreateHelpers";
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
+import { toast } from "../../../src/ui/toast/toastStore";
 
 const ROUTE_OPTIONS = ["Oral", "Injection", "Wing web", "Eye drop", "Spray", "Other"] as const;
 
@@ -131,9 +132,11 @@ export default function CreateCatalogueScreen() {
       const result = await createCatalogue(payload);
       qc.setQueryData(["catalogue", result.id], result);
       await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
+      toast.success("Catalogue created");
       router.replace(`/(app)/catalogues/${result.id}`);
     } catch (e) {
-      setError(describeApiError(e, "create catalogue"));
+      const msg = describeApiError(e, "create catalogue");
+      setError(msg);
       submitting.current = false;
       setLoading(false);
     }

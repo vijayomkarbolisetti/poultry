@@ -5,8 +5,10 @@ import { Platform } from "react-native";
 
 /**
  * Resolve API base URL for emulator vs physical device.
- * - Android emulator: 10.0.2.2 host loopback alias (default port 8001)
- * - EXPO_PUBLIC_API_URL overrides when set (localhost/127.0.0.1 rewritten to 10.0.2.2 on emulator)
+ * - Android emulator default: 10.0.2.2 host loopback alias (port 8001)
+ * - Explicit localhost / 127.0.0.1 is kept as-is on emulator so `adb reverse` works
+ *   when the emulator virtual NIC is down (10.0.2.2 unreachable).
+ * - EXPO_PUBLIC_API_URL overrides when set
  * - Physical device: EXPO_PUBLIC_API_URL (LAN IP) or EXPO_PUBLIC_LAN_API_URL
  */
 function resolveApiUrl(): string {
@@ -14,11 +16,18 @@ function resolveApiUrl(): string {
   const lanUrl = process.env.EXPO_PUBLIC_LAN_API_URL;
   const onEmulator = Platform.OS === "android" && Constants.isDevice === false;
 
+  const isLoopback = (url: string) =>
+    /:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
+
   const toEmulatorHost = (url: string) =>
     url.replace("://localhost", "://10.0.2.2").replace("://127.0.0.1", "://10.0.2.2");
 
   if (onEmulator) {
-    if (envUrl) return toEmulatorHost(envUrl);
+    if (envUrl) {
+      // Prefer adb reverse for loopback URLs — more reliable than 10.0.2.2 when eth0 is down.
+      if (isLoopback(envUrl)) return envUrl;
+      return toEmulatorHost(envUrl);
+    }
     return "http://10.0.2.2:8001";
   }
   if (lanUrl) return lanUrl;

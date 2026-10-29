@@ -122,12 +122,17 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="settings"
-        options={{ title: "More", tabBarLabel: "More", tabBarIcon: tabIcon("menu", "menu-outline") }}
+        options={{
+          title: "More",
+          tabBarLabel: "More",
+          headerShown: false,
+          tabBarIcon: tabIcon("menu", "menu-outline"),
+        }}
       />
 
-      <Tabs.Screen name="sheds/[id]/index" options={hidden("Shed overview")} />
+      <Tabs.Screen name="sheds/[id]/index" options={hidden("Shed")} />
       <Tabs.Screen name="sheds/[id]/groups" options={hidden("Groups")} />
-      <Tabs.Screen name="sheds/[id]/birds" options={hidden("Birds")} />
+      <Tabs.Screen name="sheds/[id]/birds" options={hidden("Shed management")} />
       <Tabs.Screen name="sheds/create" options={hidden("New shed")} />
       <Tabs.Screen name="sheds/edit/[id]" options={hidden("Edit shed")} />
       <Tabs.Screen name="flocks/[id]" options={hidden("Population")} />
@@ -143,6 +148,7 @@ export default function AppLayout() {
       <Tabs.Screen name="birds/group-created" options={hidden("Group created")} />
       <Tabs.Screen name="birds/bird-added" options={hidden("Bird added")} />
       <Tabs.Screen name="birds/edit/[id]" options={hidden("Change band number")} />
+      <Tabs.Screen name="birds/sold" options={hidden("Sold Birds")} />
       <Tabs.Screen name="lifecycle-bulk" options={hidden("Bulk lifecycle")} />
       <Tabs.Screen name="lifecycle-batch" options={hidden("Unbanded count action")} />
       <Tabs.Screen name="farmers/index" options={hidden("Farmers")} />

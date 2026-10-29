@@ -264,6 +264,8 @@ async def test_same_payload_replay_band_and_lifecycle(client: AsyncClient) -> No
     life_key = f"p5-life-replay-{uuid4().hex}"
     payload = {
         "event_type": "sale",
+            "buyer_name": "Test Buyer",
+            "buyer_mobile": "9876543210",
         "effective_date": date.today().isoformat(),
         "flock_id": flock["id"],
         "quantity": 1,

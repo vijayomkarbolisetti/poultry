@@ -13,7 +13,9 @@ function isQaNoiseDescription(text) {
     t.includes("illustrative") ||
     t.includes("not a veterinarian") ||
     t.includes("example only") ||
-    t.includes("template only")
+    t.includes("template only") ||
+    t.includes("requires veterinary review") ||
+    t.includes("not a veterinarian-approved")
   );
 }
 
@@ -48,14 +50,21 @@ function sortScheduleItems(items) {
 }
 
 function dayBadgeParts(item) {
-  const age = itemTargetAgeDays(item);
-  if (age != null) return { caption: "Day", value: String(age) };
   const label = primaryRule(item)?.display_day_label?.trim();
   if (label) {
-    const m = label.match(/(\d+)/);
+    const week = label.match(/^week\s+(.+)$/i);
+    if (week) return { caption: "Wk", value: week[1].trim() };
+    const day = label.match(/^day\s+(.+)$/i);
+    if (day) {
+      const rest = day[1].replace(/\(.*?\)/g, "").trim();
+      return { caption: "Day", value: rest || "—" };
+    }
+    const m = label.match(/(\d+[–\-]\d+|\d+)/);
     if (m) return { caption: "Day", value: m[1] };
     return { caption: "Day", value: "—" };
   }
+  const age = itemTargetAgeDays(item);
+  if (age != null) return { caption: "Day", value: String(age) };
   return { caption: "Day", value: "—" };
 }
 
@@ -100,9 +109,17 @@ assert.deepEqual(
   dayBadgeParts({ rules: [{ target_age_days: 20 }, { target_age_days: 0 }] }),
   { caption: "Day", value: "0" },
 );
-assert.deepEqual(dayBadgeParts({ rules: [{ display_day_label: "Day 1 (hatch)" }] }), {
+assert.deepEqual(dayBadgeParts({ rules: [{ display_day_label: "Day 1 (hatch)", target_age_days: 0 }] }), {
   caption: "Day",
   value: "1",
+});
+assert.deepEqual(dayBadgeParts({ rules: [{ display_day_label: "Day 8–9", target_age_days: 7 }] }), {
+  caption: "Day",
+  value: "8–9",
+});
+assert.deepEqual(dayBadgeParts({ rules: [{ display_day_label: "Week 5–6", target_age_days: 34 }] }), {
+  caption: "Wk",
+  value: "5–6",
 });
 assert.deepEqual(
   sortScheduleItems([
@@ -130,5 +147,9 @@ assert.equal(
   true,
 );
 assert.equal(catalogueHasQaNoise([{ description: "Live vaccine" }]), false);
+assert.equal(
+  catalogueHasQaNoise([], "Reference schedule — requires veterinary review before operational use."),
+  true,
+);
 
 console.log("catalogueDetailHelpers.node-test.mjs: ok");

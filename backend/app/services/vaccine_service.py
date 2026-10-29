@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import date, datetime, timezone
 from uuid import UUID
 
@@ -17,6 +18,8 @@ from app.schemas.vaccine import ScheduledDoseOut
 from app.services.schedule_engine import (
     STATUS_INACTIVE,
     STATUS_NEEDS_REVIEW,
+    STATUS_NOT_APPLICABLE,
+    STATUS_SKIPPED,
     compute_dose_status,
     farm_local_today,
     generate_due_dates,
@@ -164,6 +167,134 @@ async def create_new_version(db: AsyncSession, ctx: AuthContext, definition_id: 
     return version
 
 
+def _is_preserved_terminal_dose_status(status: str) -> bool:
+    """Statuses that retirement must never rewrite (history / explicit terminal)."""
+    value = str(status)
+    return (
+        value.startswith("completed")
+        or value == STATUS_SKIPPED
+        or value == STATUS_NOT_APPLICABLE
+    )
+
+
+async def retire_superseded_open_doses(
+    db: AsyncSession,
+    *,
+    owner_account_id: UUID,
+    flock_ids: Sequence[UUID],
+    definition_ids: Sequence[UUID],
+    today: date,
+) -> int:
+    """Retire obsolete open flock-level doses for an explicit regen set.
+
+    Scope (all required):
+    - owner_account_id tenant
+    - flock_id in flock_ids (tenant-verified)
+    - vaccine_definition_id in definition_ids (tenant-verified)
+
+    Retires active open doses when the definition is inactive / has no current version,
+    the dose's schedule_version_id is not current, or (dose_number, due_date) is not in
+    the current-rule due set for that flock.
+
+    Never mutates vaccination_events. Never retires completed_*, skipped, or not_applicable.
+    Idempotent: already-inactive rows are skipped.
+    """
+    flock_id_set = {fid for fid in flock_ids if fid is not None}
+    definition_id_set = {did for did in definition_ids if did is not None}
+    if not flock_id_set or not definition_id_set:
+        return 0
+
+    flocks = {
+        flock.id: flock
+        for flock in await db.scalars(
+            select(Flock).where(
+                Flock.owner_account_id == owner_account_id,
+                Flock.id.in_(flock_id_set),
+            )
+        )
+    }
+    definitions = list(
+        await db.scalars(
+            select(VaccineDefinition).where(
+                VaccineDefinition.owner_account_id == owner_account_id,
+                VaccineDefinition.id.in_(definition_id_set),
+            )
+        )
+    )
+    if not flocks or not definitions:
+        return 0
+
+    retired = 0
+    for definition in definitions:
+        current_version = await db.scalar(
+            select(VaccineScheduleVersion)
+            .where(
+                VaccineScheduleVersion.vaccine_definition_id == definition.id,
+                VaccineScheduleVersion.owner_account_id == owner_account_id,
+                VaccineScheduleVersion.is_current.is_(True),
+            )
+            .options(selectinload(VaccineScheduleVersion.rules))
+        )
+
+        for flock in flocks.values():
+            doses = list(
+                await db.scalars(
+                    select(ScheduledDose).where(
+                        ScheduledDose.owner_account_id == owner_account_id,
+                        ScheduledDose.flock_id == flock.id,
+                        ScheduledDose.vaccine_definition_id == definition.id,
+                        ScheduledDose.is_active.is_(True),
+                        ScheduledDose.bird_id.is_(None),
+                    )
+                )
+            )
+            if not doses:
+                continue
+
+            if not definition.is_active or current_version is None:
+                for dose in doses:
+                    if _is_preserved_terminal_dose_status(dose.status):
+                        continue
+                    dose.is_active = False
+                    dose.status = STATUS_INACTIVE
+                    retired += 1
+                continue
+
+            expected: set[tuple[int, date]] = set()
+            for rule in current_version.rules:
+                if rule.is_manual_only:
+                    continue
+                dues, needs_review = generate_due_dates(
+                    hatch_date=flock.hatch_date,
+                    target_age_days=rule.target_age_days,
+                    repeat_interval_days=rule.repeat_interval_days,
+                    max_repeats=rule.max_repeats,
+                    dob_confidence=flock.dob_confidence,
+                )
+                if needs_review and not dues:
+                    expected.add((rule.dose_number, today))
+                    continue
+                for n, due in enumerate(dues, start=rule.dose_number):
+                    expected.add((n, due))
+
+            for dose in doses:
+                if _is_preserved_terminal_dose_status(dose.status):
+                    continue
+                obsolete = dose.schedule_version_id != current_version.id or (
+                    dose.dose_number,
+                    dose.due_date,
+                ) not in expected
+                if not obsolete:
+                    continue
+                dose.is_active = False
+                dose.status = STATUS_INACTIVE
+                retired += 1
+
+    if retired:
+        await db.flush()
+    return retired
+
+
 async def generate_schedules_for_flock(
     db: AsyncSession,
     ctx: AuthContext,
@@ -195,6 +326,22 @@ async def generate_schedules_for_flock(
     if vaccine_definition_ids:
         defs_stmt = defs_stmt.where(VaccineDefinition.id.in_(vaccine_definition_ids))
     definitions = list(await db.scalars(defs_stmt))
+
+    # Retire obsolete open doses for the explicit regen set before creating replacements.
+    # Include inactive definitions when callers pass their ids (archive / deactivate path).
+    retire_ids = (
+        list(vaccine_definition_ids)
+        if vaccine_definition_ids is not None
+        else [definition.id for definition in definitions]
+    )
+    if retire_ids:
+        await retire_superseded_open_doses(
+            db,
+            owner_account_id=ctx.owner_account_id,
+            flock_ids=[flock.id],
+            definition_ids=retire_ids,
+            today=today,
+        )
 
     created: list[ScheduledDose] = []
     for definition in definitions:

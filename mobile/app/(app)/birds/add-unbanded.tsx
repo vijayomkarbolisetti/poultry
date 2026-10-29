@@ -18,6 +18,7 @@ import { validateBirdCount } from "../../../src/features/birds/groupOnboardingHe
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { toast } from "../../../src/ui/toast/toastStore";
 
 function newIdempotencyKey(): string {
   return `ub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -72,6 +73,7 @@ export default function AddUnbandedScreen() {
       void qc.invalidateQueries({ queryKey: ["shed-birds", shedId] });
       void qc.invalidateQueries({ queryKey: ["flocks"] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      toast.success("Birds added");
       router.replace(`/(app)/sheds/${shedId}/birds`);
     } catch (e: unknown) {
       setError(describeApiError(e, "add unbanded birds"));

@@ -10,6 +10,7 @@ from app.authorization.permissions import assert_shed_access, list_assigned_shed
 from app.models.audit import AuditLog
 from app.models.enums import (
     BirdLifecycleStatus,
+    BirdParentRole,
     DobConfidence,
     FlockStatus,
     LifecycleEventType,
@@ -25,14 +26,18 @@ from app.models.vaccine import ScheduledDose, VaccineDefinition
 from app.schemas.flock import (
     BirdListItemOut,
     BirdListOut,
+    BirdParentageOut,
     BirdParentRefOut,
     BirdProfileBatchDoseOut,
     BirdProfileLifecycleOut,
     BirdProfileOut,
     BirdProfileVaccinationEventOut,
+    BirdSaleDetailsOut,
     BirdSearchHitOut,
     BirdSearchOut,
     BirdUnbandedBatchOut,
+    SoldBirdHitOut,
+    SoldBirdListOut,
 )
 from app.schemas.search import BatchSearchHitOut, BatchSearchOut
 from app.services.schedule_engine import (
@@ -400,6 +405,8 @@ async def register_banded_in_shed(db: AsyncSession, ctx: AuthContext, data) -> B
         breed=data.breed,
         sex=data.sex,
         notes=data.notes,
+        sire=getattr(data, "sire", None),
+        dam=getattr(data, "dam", None),
     )
     return await create_bird(db, ctx, body)
 
@@ -453,11 +460,9 @@ async def add_unbanded_in_shed(db: AsyncSession, ctx: AuthContext, data) -> dict
                 await db.commit()
                 await db.refresh(flock)
 
-        from app.services import catalogue_service
+        from app.services.dose_reconciliation import sync_flock_vaccination_tasks
 
-        await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
-        await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
-        await db.commit()
+        await sync_flock_vaccination_tasks(db, ctx, flock.id, ensure_schedules=True, commit=True)
         return {
             "flock": FlockOut.model_validate(flock),
             "created_cohort": True,
@@ -513,11 +518,9 @@ async def add_unbanded_in_shed(db: AsyncSession, ctx: AuthContext, data) -> dict
         raise FlockError("Could not add unbanded birds", "CONFLICT") from exc
     await db.refresh(flock)
     from app.schemas.flock import FlockOut
-    from app.services import catalogue_service
+    from app.services.dose_reconciliation import sync_flock_vaccination_tasks
 
-    await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
-    await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
-    await db.commit()
+    await sync_flock_vaccination_tasks(db, ctx, flock.id, ensure_schedules=True, commit=True)
 
     return {
         "flock": FlockOut.model_validate(flock),
@@ -581,6 +584,15 @@ async def create_bird(db: AsyncSession, ctx: AuthContext, data) -> Bird:
     db.add(bird)
     await db.flush()
 
+    from app.services.parentage_helpers import ParentageError, upsert_parentage
+
+    try:
+        await upsert_parentage(db, ctx, child=bird, role=BirdParentRole.sire, data=getattr(data, "sire", None))
+        await upsert_parentage(db, ctx, child=bird, role=BirdParentRole.dam, data=getattr(data, "dam", None))
+    except ParentageError as exc:
+        await db.rollback()
+        raise FlockError(exc.message, exc.code) from exc
+
     # Direct registration adds a banded bird without converting unbanded headcount.
     # Conversion must use band_from_unbanded so population stays stable.
     await reconcile_flock_counts(db, flock)
@@ -608,11 +620,9 @@ async def create_bird(db: AsyncSession, ctx: AuthContext, data) -> Bird:
         await db.rollback()
         raise FlockError("Band ID conflict", "DUPLICATE_BAND") from exc
     await db.refresh(bird)
-    from app.services import catalogue_service
+    from app.services.dose_reconciliation import sync_flock_vaccination_tasks
 
-    await catalogue_service.ensure_schedules_for_flock(db, ctx, flock.id)
-    await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
-    await db.commit()
+    await sync_flock_vaccination_tasks(db, ctx, flock.id, ensure_schedules=True, commit=True)
     return bird
 
 
@@ -969,6 +979,21 @@ async def update_bird(db: AsyncSession, ctx: AuthContext, bird_id: UUID, data) -
     if "hatch_date" in payload:
         bird.hatch_date = payload["hatch_date"]
 
+    if "sire" in payload or "dam" in payload:
+        from app.services.parentage_helpers import ParentageError, upsert_parentage
+
+        try:
+            if "sire" in payload:
+                await upsert_parentage(
+                    db, ctx, child=bird, role=BirdParentRole.sire, data=getattr(data, "sire", None)
+                )
+            if "dam" in payload:
+                await upsert_parentage(
+                    db, ctx, child=bird, role=BirdParentRole.dam, data=getattr(data, "dam", None)
+                )
+        except ParentageError as exc:
+            raise FlockError(exc.message, exc.code) from exc
+
     if bird.dob_confidence == DobConfidence.exact and bird.hatch_date is None:
         raise FlockError("hatch_date required when dob_confidence is exact", "INVALID")
     if bird.dob_confidence == DobConfidence.estimated and bird.estimated_age_days is None:
@@ -1119,6 +1144,8 @@ async def record_lifecycle(db: AsyncSession, ctx: AuthContext, data) -> Lifecycl
         payload_hash,
     )
 
+    buyer_name = getattr(data, "buyer_name", None)
+    buyer_mobile = getattr(data, "buyer_mobile", None)
     req_hash = payload_hash(
         {
             "op": "lifecycle",
@@ -1128,6 +1155,8 @@ async def record_lifecycle(db: AsyncSession, ctx: AuthContext, data) -> Lifecycl
             "bird_id": data.bird_id,
             "quantity": data.quantity,
             "reason": data.reason,
+            "buyer_name": buyer_name,
+            "buyer_mobile": buyer_mobile,
         }
     )
     if data.idempotency_key:
@@ -1222,6 +1251,8 @@ async def record_lifecycle(db: AsyncSession, ctx: AuthContext, data) -> Lifecycl
         effective_date=data.effective_date,
         quantity=qty,
         reason=data.reason,
+        buyer_name=buyer_name if data.event_type == LifecycleEventType.sale else None,
+        buyer_mobile=buyer_mobile if data.event_type == LifecycleEventType.sale else None,
         recorded_by_user_id=ctx.user.id,
         idempotency_key=data.idempotency_key,
         idempotency_payload_hash=req_hash if data.idempotency_key else None,
@@ -1234,7 +1265,11 @@ async def record_lifecycle(db: AsyncSession, ctx: AuthContext, data) -> Lifecycl
             action="lifecycle.record",
             entity_type="lifecycle_event",
             entity_id=None,
-            after={"type": data.event_type.value, "quantity": qty},
+            after={
+                "type": data.event_type.value,
+                "quantity": qty,
+                "buyer_name": buyer_name if data.event_type == LifecycleEventType.sale else None,
+            },
         )
     )
     try:
@@ -1389,6 +1424,8 @@ async def record_lifecycle_bulk(db: AsyncSession, ctx: AuthContext, data) -> dic
         seen.add(bid)
         ordered_ids.append(bid)
 
+    buyer_name = getattr(data, "buyer_name", None)
+    buyer_mobile = getattr(data, "buyer_mobile", None)
     req_hash = payload_hash(
         {
             "op": "lifecycle_bulk",
@@ -1396,6 +1433,8 @@ async def record_lifecycle_bulk(db: AsyncSession, ctx: AuthContext, data) -> dic
             "effective_date": data.effective_date,
             "bird_ids": sorted(str(b) for b in ordered_ids),
             "reason": data.reason,
+            "buyer_name": buyer_name,
+            "buyer_mobile": buyer_mobile,
         }
     )
 
@@ -1492,6 +1531,8 @@ async def record_lifecycle_bulk(db: AsyncSession, ctx: AuthContext, data) -> dic
             effective_date=data.effective_date,
             quantity=1,
             reason=data.reason,
+            buyer_name=buyer_name if data.event_type == LifecycleEventType.sale else None,
+            buyer_mobile=buyer_mobile if data.event_type == LifecycleEventType.sale else None,
             recorded_by_user_id=ctx.user.id,
             idempotency_key=_bulk_bird_idempotency_key(data.idempotency_key, bird.id),
             idempotency_payload_hash=req_hash,
@@ -1520,6 +1561,8 @@ async def record_lifecycle_bulk(db: AsyncSession, ctx: AuthContext, data) -> dic
             effective_date=data.effective_date,
             quantity=len(items),
             reason=f"[bulk-lifecycle] {data.reason or data.event_type.value}",
+            buyer_name=buyer_name if data.event_type == LifecycleEventType.sale else None,
+            buyer_mobile=buyer_mobile if data.event_type == LifecycleEventType.sale else None,
             recorded_by_user_id=ctx.user.id,
             idempotency_key=data.idempotency_key,
             idempotency_payload_hash=req_hash,
@@ -1566,6 +1609,11 @@ async def record_lifecycle_bulk(db: AsyncSession, ctx: AuthContext, data) -> dic
                 parent=raced_parent,
             )
         raise FlockError("Bulk lifecycle conflict", "CONFLICT") from exc
+    from app.services import catalogue_service
+
+    for flock in flock_cache.values():
+        await catalogue_service.refresh_open_dose_eligibility(db, flock.id)
+    await db.commit()
     return {
         "applied": len(items),
         "event_type": data.event_type,
@@ -1672,6 +1720,7 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
     moved_ids: list[UUID] = []
     qty = 0
     source_flock: Flock | None = None
+    source_flock_ids: list[UUID] = []
 
     if data.bird_ids:
         seen: set[UUID] = set()
@@ -1739,6 +1788,7 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
                 idempotency_payload_hash=req_hash,
             )
         )
+        source_flock_ids = list(flock_cache.keys())
         for flock in flock_cache.values():
             await reconcile_flock_counts(db, flock)
         await reconcile_flock_counts(db, dest)
@@ -1770,6 +1820,7 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
         dest.current_count += qty
         await reconcile_flock_counts(db, source_flock)
         await reconcile_flock_counts(db, dest)
+        source_flock_ids = [source_flock.id]
         note = data.reason or f"Transferred {qty} unbanded to destination shed"
         db.add(
             LifecycleEvent(
@@ -1803,6 +1854,8 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
             },
         )
     )
+    dest_flock_id = dest.id
+    dest_shed_id = dest.shed_id
     try:
         await db.commit()
     except IntegrityError as exc:
@@ -1816,10 +1869,30 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
         if raced:
             return await _transfer_replay_response(db, ctx, raced, req_hash=req_hash)
         raise FlockError("Transfer conflict", "CONFLICT") from exc
+
+    import logging
+
+    from app.services.dose_reconciliation import reconcile_shed_transfer_vaccination
+
+    # Membership already committed — never fail the transfer response if schedule sync errors.
+    try:
+        await reconcile_shed_transfer_vaccination(
+            db,
+            ctx,
+            source_flock_ids=source_flock_ids,
+            destination_flock_id=dest_flock_id,
+            commit=True,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Vaccination reconcile after shed transfer failed dest=%s sources=%s",
+            dest_flock_id,
+            source_flock_ids,
+        )
     return {
         "moved": qty,
-        "destination_flock_id": dest.id,
-        "destination_shed_id": dest.shed_id,
+        "destination_flock_id": dest_flock_id,
+        "destination_shed_id": dest_shed_id,
         "bird_ids": moved_ids,
         "idempotent_replay": False,
     }
@@ -2002,54 +2075,63 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
     if flock is None or shed is None:
         raise FlockError("Bird placement not found", "NOT_FOUND")
 
-    sire_out: BirdParentRefOut | None = None
-    dam_out: BirdParentRefOut | None = None
-    if bird.sire_bird_id:
-        sire = await db.get(Bird, bird.sire_bird_id)
-        if sire and sire.owner_account_id == ctx.owner_account_id:
-            sire_out = BirdParentRefOut(id=sire.id, band_id=sire.band_id, display_code=sire.display_code)
-    if bird.dam_bird_id:
-        dam = await db.get(Bird, bird.dam_bird_id)
-        if dam and dam.owner_account_id == ctx.owner_account_id:
-            dam_out = BirdParentRefOut(id=dam.id, band_id=dam.band_id, display_code=dam.display_code)
+    from app.services.parentage_helpers import load_parent_descriptors
 
-    event_rows = list(
-        await db.execute(
-            select(VaccinationEvent, VaccineDefinition.name)
-            .outerjoin(
-                VaccineDefinition,
-                VaccineDefinition.id == VaccinationEvent.vaccine_definition_id,
-            )
-            .where(
-                VaccinationEvent.owner_account_id == ctx.owner_account_id,
-                VaccinationEvent.bird_id == bird.id,
-                VaccinationEvent.is_void.is_(False),
-            )
-            .order_by(VaccinationEvent.administration_date.desc(), VaccinationEvent.created_at.desc())
-            .limit(200)
+    descriptors = await load_parent_descriptors(db, ctx, bird.id)
+
+    async def _linked_parent(parent_id: UUID | None) -> tuple[BirdParentRefOut | None, Bird | None]:
+        if not parent_id:
+            return None, None
+        parent = await db.get(Bird, parent_id)
+        if parent is None or parent.owner_account_id != ctx.owner_account_id:
+            return None, None
+        return BirdParentRefOut(id=parent.id, band_id=parent.band_id, display_code=parent.display_code), parent
+
+    def _manual_parentage(role: BirdParentRole) -> BirdParentageOut:
+        desc = descriptors.get(role)
+        if desc is None:
+            return BirdParentageOut()
+        label_parts = [p for p in (desc.display_name, desc.band_number, desc.breed) if p]
+        return BirdParentageOut(
+            source="manual",
+            bird_id=None,
+            band_id=desc.band_number,
+            display_name=desc.display_name,
+            breed=desc.breed,
+            notes=desc.notes,
+            label=" · ".join(label_parts) if label_parts else "Recorded parent (no ID)",
         )
+
+    def _linked_parentage(ref: BirdParentRefOut | None, parent: Bird | None) -> BirdParentageOut:
+        if ref is None or parent is None:
+            return BirdParentageOut()
+        label = parent.band_id or parent.display_code or str(parent.id)[:8]
+        return BirdParentageOut(
+            source="linked",
+            bird_id=parent.id,
+            band_id=parent.band_id,
+            display_name=parent.display_code,
+            breed=parent.breed,
+            notes=None,
+            label=label,
+        )
+
+    sire_out, sire_bird = await _linked_parent(bird.sire_bird_id)
+    dam_out, dam_bird = await _linked_parent(bird.dam_bird_id)
+    sire_parentage = (
+        _linked_parentage(sire_out, sire_bird)
+        if sire_out
+        else _manual_parentage(BirdParentRole.sire)
     )
-    individual = [
-        BirdProfileVaccinationEventOut(
-            id=ev.id,
-            vaccine_definition_id=ev.vaccine_definition_id,
-            vaccine_name=name,
-            administration_date=ev.administration_date,
-            birds_covered=ev.birds_covered,
-            lot_number=ev.lot_number,
-            product_expiry=ev.product_expiry,
-            manufacturer_or_brand=ev.manufacturer_or_brand,
-            vaccine_type_or_strain=ev.vaccine_type_or_strain,
-            dose_amount=ev.dose_amount,
-            route=ev.route,
-            timing_status=ev.timing_status,
-            verification_status=ev.verification_status,
-            notes=ev.notes,
-            scheduled_dose_id=ev.scheduled_dose_id,
-            created_at=ev.created_at,
-        )
-        for ev, name in event_rows
-    ]
+    dam_parentage = (
+        _linked_parentage(dam_out, dam_bird) if dam_out else _manual_parentage(BirdParentRole.dam)
+    )
+
+    from app.services.bird_vaccination_history import load_bird_vaccination_history
+
+    individual = await load_bird_vaccination_history(
+        db, ctx, bird, limit=200, ascending=False
+    )
 
     dose_rows = list(
         await db.execute(
@@ -2102,10 +2184,38 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
             effective_date=e.effective_date,
             quantity=e.quantity,
             reason=e.reason,
+            buyer_name=e.buyer_name,
+            buyer_mobile=e.buyer_mobile,
             created_at=e.created_at,
         )
         for e in life_rows
     ]
+
+    sale_out: BirdSaleDetailsOut | None = None
+    if bird.lifecycle_status == BirdLifecycleStatus.sold:
+        sale_ev = next((e for e in life_rows if e.event_type == LifecycleEventType.sale), None)
+        if sale_ev is None:
+            sale_ev = await db.scalar(
+                select(LifecycleEvent)
+                .where(
+                    LifecycleEvent.owner_account_id == ctx.owner_account_id,
+                    LifecycleEvent.bird_id == bird.id,
+                    LifecycleEvent.event_type == LifecycleEventType.sale,
+                )
+                .order_by(LifecycleEvent.effective_date.desc(), LifecycleEvent.created_at.desc())
+                .limit(1)
+            )
+        if sale_ev is not None:
+            sale_out = BirdSaleDetailsOut(
+                event_id=sale_ev.id,
+                sold_on=sale_ev.effective_date,
+                buyer_name=sale_ev.buyer_name,
+                buyer_mobile=sale_ev.buyer_mobile,
+                recorded_at=sale_ev.created_at,
+            )
+
+    # Sold/dead/exit birds must not surface open flock vaccination tasks as actionable.
+    show_upcoming = bird.is_active and bird.lifecycle_status == BirdLifecycleStatus.active
 
     return BirdProfileOut(
         id=bird.id,
@@ -2134,10 +2244,138 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
         flock_count_mismatch=flock.count_mismatch,
         sire=sire_out,
         dam=dam_out,
+        sire_parentage=sire_parentage,
+        dam_parentage=dam_parentage,
+        sale=sale_out,
         individual_vaccinations=individual,
-        batch_upcoming_doses=batch_doses,
+        batch_upcoming_doses=batch_doses if show_upcoming else [],
         lifecycle_events=lifecycle,
     )
+
+
+async def list_sold_birds(
+    db: AsyncSession,
+    ctx: AuthContext,
+    *,
+    query: str | None = None,
+    sold_from: date | None = None,
+    sold_to: date | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> SoldBirdListOut:
+    """Tenant-scoped sold birds with latest sale details (searchable)."""
+    assert ctx.owner_account_id is not None and ctx.membership is not None
+    limit = max(1, min(limit, 50))
+    offset = max(0, offset)
+    q = (query or "").strip()
+    if len(q) > 64:
+        raise FlockError("Search query is too long", "INVALID")
+
+    # Latest sale event per bird via DISTINCT ON (PostgreSQL).
+    latest_sale_subq = (
+        select(
+            LifecycleEvent.bird_id.label("bird_id"),
+            LifecycleEvent.effective_date.label("sold_on"),
+            LifecycleEvent.buyer_name.label("buyer_name"),
+            LifecycleEvent.buyer_mobile.label("buyer_mobile"),
+        )
+        .where(
+            LifecycleEvent.owner_account_id == ctx.owner_account_id,
+            LifecycleEvent.event_type == LifecycleEventType.sale,
+            LifecycleEvent.bird_id.is_not(None),
+        )
+        .distinct(LifecycleEvent.bird_id)
+        .order_by(
+            LifecycleEvent.bird_id,
+            LifecycleEvent.effective_date.desc(),
+            LifecycleEvent.created_at.desc(),
+        )
+        .subquery()
+    )
+
+    filters = [
+        Bird.owner_account_id == ctx.owner_account_id,
+        Bird.lifecycle_status == BirdLifecycleStatus.sold,
+        Bird.is_active.is_(False),
+    ]
+    if ctx.membership.role == MembershipRole.farmer:
+        assigned = await list_assigned_shed_ids(db, ctx.membership.id)
+        if not assigned:
+            return SoldBirdListOut(total=0, limit=limit, offset=offset, items=[])
+        filters.append(Bird.shed_id.in_(assigned))
+    if sold_from is not None:
+        filters.append(latest_sale_subq.c.sold_on >= sold_from)
+    if sold_to is not None:
+        filters.append(latest_sale_subq.c.sold_on <= sold_to)
+    if q:
+        pattern = f"%{q}%"
+        filters.append(
+            or_(
+                Bird.band_id.ilike(pattern),
+                Bird.display_code.ilike(pattern),
+                Bird.breed.ilike(pattern),
+                Flock.breed.ilike(pattern),
+                Flock.batch_code.ilike(pattern),
+                latest_sale_subq.c.buyer_name.ilike(pattern),
+                latest_sale_subq.c.buyer_mobile.ilike(pattern),
+            )
+        )
+
+    total = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(Bird)
+            .join(Shed, Shed.id == Bird.shed_id)
+            .join(Flock, Flock.id == Bird.flock_id)
+            .outerjoin(latest_sale_subq, latest_sale_subq.c.bird_id == Bird.id)
+            .where(*filters)
+        )
+        or 0
+    )
+
+    rows = list(
+        await db.execute(
+            select(
+                Bird,
+                Shed,
+                Flock,
+                latest_sale_subq.c.sold_on,
+                latest_sale_subq.c.buyer_name,
+                latest_sale_subq.c.buyer_mobile,
+            )
+            .join(Shed, Shed.id == Bird.shed_id)
+            .join(Flock, Flock.id == Bird.flock_id)
+            .outerjoin(latest_sale_subq, latest_sale_subq.c.bird_id == Bird.id)
+            .where(*filters)
+            .order_by(
+                latest_sale_subq.c.sold_on.desc().nullslast(),
+                Bird.band_id.asc().nullslast(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+    )
+
+    items: list[SoldBirdHitOut] = []
+    for bird, shed, flock, sold_on, buyer_name, buyer_mobile in rows:
+        items.append(
+            SoldBirdHitOut(
+                id=bird.id,
+                band_id=bird.band_id,
+                display_code=bird.display_code,
+                breed=bird.breed or flock.breed,
+                batch_code=flock.batch_code,
+                shed_id=shed.id,
+                shed_name=shed.name,
+                shed_code=shed.code,
+                sold_on=sold_on or date.today(),
+                buyer_name=buyer_name,
+                buyer_mobile=buyer_mobile,
+                lifecycle_status=bird.lifecycle_status,
+                is_active=bird.is_active,
+            )
+        )
+    return SoldBirdListOut(total=total, limit=limit, offset=offset, items=items)
 
 
 async def band_from_unbanded_by_cohort(db: AsyncSession, ctx: AuthContext, data) -> dict:
@@ -2190,6 +2428,8 @@ async def record_unbanded_lifecycle_by_cohort(db: AsyncSession, ctx: AuthContext
         bird_id=None,
         quantity=data.quantity,
         reason=data.reason,
+        buyer_name=getattr(data, "buyer_name", None),
+        buyer_mobile=getattr(data, "buyer_mobile", None),
         idempotency_key=data.idempotency_key,
     )
     return await record_lifecycle(db, ctx, legacy)
