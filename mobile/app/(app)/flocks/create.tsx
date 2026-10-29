@@ -22,6 +22,7 @@ import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { colors } from "../../../src/theme/tokens";
 import { vaccineUi } from "../../../src/theme/vaccineUi";
+import { toast } from "../../../src/ui/toast/toastStore";
 
 const schema = z
   .object({
@@ -169,6 +170,7 @@ export default function CreateFlockScreen() {
       void qc.invalidateQueries({ queryKey: ["flocks", ownerAccountId] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
       void qc.invalidateQueries({ queryKey: ["vaccination"] });
+      toast.success("Flock created");
       if (lockedShedId) {
         void qc.invalidateQueries({ queryKey: ["shed-overview", lockedShedId] });
         router.replace(`/(app)/sheds/${lockedShedId}/birds`);
@@ -176,7 +178,8 @@ export default function CreateFlockScreen() {
         router.replace(`/(app)/flocks/${flock.id}`);
       }
     } catch (e: unknown) {
-      setError(describeApiError(e, "add birds"));
+      const msg = describeApiError(e, "add birds");
+      setError(msg);
     } finally {
       setLoading(false);
     }

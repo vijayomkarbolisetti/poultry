@@ -26,6 +26,7 @@ import {
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { toast } from "../../../src/ui/toast/toastStore";
 
 export default function TransferBirdsScreen() {
   const params = useLocalSearchParams<{ shedId?: string | string[]; birdIds?: string | string[] }>();
@@ -160,6 +161,7 @@ export default function TransferBirdsScreen() {
       void qc.invalidateQueries({ queryKey: ["shed-birds"] });
       void qc.invalidateQueries({ queryKey: ["flocks"] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      toast.success("Birds transferred");
       safeBack(shedId ? `/(app)/sheds/${shedId}/birds` : "/(app)/sheds");
     } catch (e: unknown) {
       const apiMsg = describeApiError(e, "transfer birds");

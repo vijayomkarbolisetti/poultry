@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,20 +14,35 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { getCatalogue, updateCatalogue } from "../../../src/api/catalogues";
+import {
+  getCatalogue,
+  guardsFromPreview,
+  isStalePreviewError,
+  previewCatalogueUpdate,
+  updateCatalogue,
+  type CatalogueItemInput,
+  type CataloguePreviewUpdate,
+} from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
+import { AppDialog } from "../../../src/components/ui/AppDialog";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import {
+  formatCataloguePreviewImpact,
   itemsAfterAdd,
   itemsAfterEdit,
   type VaccineDraft,
 } from "../../../src/features/catalogues/catalogueItemEditHelpers";
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
+import { toast } from "../../../src/ui/toast/toastStore";
 
 const ROUTE_OPTIONS = ["Oral", "Injection", "Wing web", "Eye drop", "Spray", "Other"] as const;
+
+type PendingSave =
+  | { kind: "upsert"; items: CatalogueItemInput[]; preview: CataloguePreviewUpdate }
+  | { kind: "remove"; removeItemIds: string[]; preview: CataloguePreviewUpdate };
 
 function Field({
   label,
@@ -94,11 +108,13 @@ export default function CatalogueItemEditScreen() {
   const [diluent, setDiluent] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [pending, setPending] = useState<PendingSave | null>(null);
+  const [infoDialog, setInfoDialog] = useState<{ title: string; description: string } | null>(null);
 
-  // Expo Router may reuse this screen instance across add/edit navigations.
   useEffect(() => {
     setSaving(false);
     submitting.current = false;
+    setPending(null);
   }, [catalogueId, itemId, isAdd]);
 
   useEffect(() => {
@@ -143,14 +159,97 @@ export default function CatalogueItemEditScreen() {
     router.replace(`/(app)/catalogues/${catalogueId}`);
   };
 
+  const invalidate = async () => {
+    await qc.invalidateQueries({ queryKey: ["catalogue", catalogueId] });
+    await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
+  };
+
+  const applyPending = async (next: PendingSave): Promise<boolean> => {
+    const guards = guardsFromPreview(next.preview);
+    try {
+      if (next.kind === "upsert") {
+        await updateCatalogue(catalogueId, {
+          items: next.items,
+          apply_scope: "new_flocks",
+          confirm_change: true,
+          ...guards,
+        });
+      } else {
+        await updateCatalogue(catalogueId, {
+          remove_item_ids: next.removeItemIds,
+          apply_scope: "new_flocks",
+          confirm_change: true,
+          ...guards,
+        });
+      }
+      return true;
+    } catch (e) {
+      if (isStalePreviewError(e)) {
+        const refreshed = await previewCatalogueUpdate(catalogueId, {
+          apply_scope: "new_flocks",
+          items: next.kind === "upsert" ? next.items : null,
+          remove_item_ids: next.kind === "remove" ? next.removeItemIds : undefined,
+        });
+        setPending({
+          ...next,
+          preview: refreshed,
+        });
+        setInfoDialog({
+          title: "Schedule changed",
+          description:
+            "The catalogue or farm assignment changed since the last preview. Review the updated impact and confirm again.",
+        });
+        return false;
+      }
+      throw e;
+    }
+  };
+
+  const onConfirmPending = async () => {
+    if (!pending || submitting.current) return;
+    const action = pending;
+    submitting.current = true;
+    setSaving(true);
+    try {
+      const ok = await applyPending(action);
+      if (!ok) {
+        submitting.current = false;
+        setSaving(false);
+        return;
+      }
+      setPending(null);
+      await invalidate();
+      setSaving(false);
+      toast.success(
+        action.kind === "remove" ? "Vaccine removed" : isAdd ? "Vaccine added" : "Vaccine updated",
+      );
+      goToCatalogue();
+    } catch (e) {
+      toast.error(
+        describeApiError(
+          e,
+          action.kind === "remove" ? "remove vaccine" : isAdd ? "add vaccine" : "update vaccine",
+        ),
+      );
+      submitting.current = false;
+      setSaving(false);
+    }
+  };
+
   const onSave = async () => {
-    if (!cat || submitting.current || saving) return;
+    if (!cat || submitting.current || saving || pending) return;
     if (platformLocked) {
-      Alert.alert("Read-only", "Platform catalogues cannot be edited. Clone to your farm first.");
+      setInfoDialog({
+        title: "Read-only",
+        description: "Platform catalogues cannot be edited. Clone to your farm first.",
+      });
       return;
     }
     if (!isAdd && !item) {
-      Alert.alert("Not found", "Vaccine not found in this catalogue.");
+      setInfoDialog({
+        title: "Not found",
+        description: "Vaccine not found in this catalogue.",
+      });
       return;
     }
 
@@ -158,25 +257,42 @@ export default function CatalogueItemEditScreen() {
       ? itemsAfterAdd(cat.items, draft())
       : itemsAfterEdit(cat.items, item!.id!, draft());
     if ("error" in built) {
-      Alert.alert("Check form", built.error);
+      setInfoDialog({ title: "Check form", description: built.error });
       return;
     }
 
     submitting.current = true;
     setSaving(true);
     try {
-      await updateCatalogue(catalogueId, {
-        items: built,
+      const preview = await previewCatalogueUpdate(catalogueId, {
         apply_scope: "new_flocks",
-        confirm_change: true,
+        items: built,
       });
-      await qc.invalidateQueries({ queryKey: ["catalogue", catalogueId] });
-      await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
+      setPending({ kind: "upsert", items: built, preview });
+      submitting.current = false;
       setSaving(false);
-      goToCatalogue();
-      // Keep submitting=true until unmount so rapid re-entry cannot double-save.
     } catch (e) {
-      Alert.alert("Could not save", describeApiError(e, isAdd ? "add vaccine" : "update vaccine"));
+      toast.error(describeApiError(e, "preview changes"));
+      submitting.current = false;
+      setSaving(false);
+    }
+  };
+
+  const onRemove = async () => {
+    if (!cat || !item?.id || isAdd || submitting.current || saving || pending) return;
+    if (platformLocked) return;
+    submitting.current = true;
+    setSaving(true);
+    try {
+      const preview = await previewCatalogueUpdate(catalogueId, {
+        apply_scope: "new_flocks",
+        remove_item_ids: [item.id],
+      });
+      setPending({ kind: "remove", removeItemIds: [item.id], preview });
+      submitting.current = false;
+      setSaving(false);
+    } catch (e) {
+      toast.error(describeApiError(e, "preview removal"));
       submitting.current = false;
       setSaving(false);
     }
@@ -184,24 +300,31 @@ export default function CatalogueItemEditScreen() {
 
   const routeKnown = ROUTE_OPTIONS.includes(route as (typeof ROUTE_OPTIONS)[number]);
   const formReady = Boolean(cat) && (isAdd || Boolean(item));
+  const busy = saving || Boolean(pending && submitting.current);
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.header}>
-        <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Back">
+        <Pressable
+          onPress={() => {
+            if (!busy) safeBack();
+          }}
+          hitSlop={12}
+          accessibilityLabel="Back"
+        >
           <Ionicons name="arrow-back" size={22} color={ui.brand} />
         </Pressable>
         <Text style={styles.title} numberOfLines={1}>
           {isAdd ? "Add Vaccine" : "Edit vaccine"}
         </Text>
         <Pressable
-          style={[styles.saveBtn, (saving || !formReady || platformLocked) && { opacity: 0.55 }]}
+          style={[styles.saveBtn, (saving || !formReady || platformLocked || Boolean(pending)) && { opacity: 0.55 }]}
           onPress={() => void onSave()}
-          disabled={saving || !formReady || platformLocked}
-          accessibilityLabel="Save vaccine"
-          accessibilityState={{ disabled: saving || !formReady || platformLocked }}
+          disabled={saving || !formReady || platformLocked || Boolean(pending)}
+          accessibilityLabel="Review and save vaccine"
+          accessibilityState={{ disabled: saving || !formReady || platformLocked || Boolean(pending) }}
         >
-          <Text style={styles.saveBtnText}>{saving ? "Saving…" : "Save"}</Text>
+          <Text style={styles.saveBtnText}>{saving && !pending ? "Checking…" : "Save"}</Text>
         </Pressable>
       </View>
 
@@ -231,7 +354,7 @@ export default function CatalogueItemEditScreen() {
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <Text style={styles.note}>
               Leave optional fields blank when product guidance is unknown. Blank values stay
-              unspecified — nothing is invented.
+              unspecified — nothing is invented. Changes apply to new flocks only.
             </Text>
             <View style={styles.card}>
               <Field label="Vaccine Name" value={name} onChange={setName} placeholder="Required" required />
@@ -277,9 +400,57 @@ export default function CatalogueItemEditScreen() {
               <Field label="Diluent / Reconstitution" value={diluent} onChange={setDiluent} multiline />
               <Field label="Notes" value={notes} onChange={setNotes} multiline />
             </View>
+
+            {!isAdd && item?.id ? (
+              <Pressable
+                style={styles.removeBtn}
+                onPress={() => void onRemove()}
+                disabled={saving || Boolean(pending)}
+                accessibilityRole="button"
+                accessibilityLabel="Remove vaccine"
+              >
+                <Text style={styles.removeBtnText}>Remove vaccine</Text>
+              </Pressable>
+            ) : null}
           </ScrollView>
         </KeyboardAvoidingView>
       )}
+
+      <AppDialog
+        visible={Boolean(pending)}
+        title={pending?.kind === "remove" ? "Confirm removal" : "Confirm schedule change"}
+        description={pending ? formatCataloguePreviewImpact(pending.preview) : undefined}
+        tone="warning"
+        dismissible={!saving}
+        onDismiss={() => {
+          if (!saving) setPending(null);
+        }}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          disabled: saving,
+          onPress: () => setPending(null),
+        }}
+        primary={{
+          label: pending?.kind === "remove" ? "Remove" : "Apply to new flocks",
+          variant: pending?.kind === "remove" ? "destructive" : "primary",
+          loading: saving,
+          onPress: () => void onConfirmPending(),
+        }}
+      />
+
+      <AppDialog
+        visible={Boolean(infoDialog)}
+        title={infoDialog?.title ?? ""}
+        description={infoDialog?.description}
+        tone="warning"
+        onDismiss={() => setInfoDialog(null)}
+        primary={{
+          label: "OK",
+          variant: "primary",
+          onPress: () => setInfoDialog(null),
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -346,6 +517,12 @@ const styles = StyleSheet.create({
   routeChipOn: { backgroundColor: ui.brandSoft, borderColor: ui.brand },
   routeText: { fontSize: 13, fontWeight: "700", color: ui.ink },
   routeTextOn: { color: ui.brand },
+  removeBtn: {
+    alignSelf: "flex-start",
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+  },
+  removeBtnText: { color: "#B91C1C", fontWeight: "800", fontSize: 14 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerPad: { padding: 20 },
   muted: { color: ui.muted, fontWeight: "600", lineHeight: 20 },

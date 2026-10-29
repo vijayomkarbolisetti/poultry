@@ -6,16 +6,27 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { describeApiError } from "../../../src/api/client";
 import { registerBandedInShed } from "../../../src/api/birds";
+import {
+  EMPTY_PARENT,
+  ParentageFields,
+  parentDraftToInput,
+  type ParentDraft,
+} from "../../../src/components/birds/ParentageFields";
 import { Button } from "../../../src/components/ui/Button";
 import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { Screen } from "../../../src/components/ui/Screen";
+import { SelectField } from "../../../src/components/ui/SelectField";
 import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
+import { BIRD_SEX_OPTIONS } from "../../../src/features/birds/birdListHelpers";
 import { validateBandNumber } from "../../../src/features/birds/groupOnboardingHelpers";
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { toast } from "../../../src/ui/toast/toastStore";
+
+const SEX_OPTIONS = BIRD_SEX_OPTIONS.map((o) => ({ value: o.value, label: o.label }));
 
 export default function RegisterBandedBirdScreen() {
   const params = useLocalSearchParams<{ shedId?: string | string[] }>();
@@ -28,10 +39,13 @@ export default function RegisterBandedBirdScreen() {
 
   const [bandId, setBandId] = useState("");
   const [hatchDate, setHatchDate] = useState<string | null>(null);
+  const [sex, setSex] = useState<string | null>(null);
   const [breed, setBreed] = useState("");
-  const [sex, setSex] = useState("");
   const [notes, setNotes] = useState("");
   const [moreOpen, setMoreOpen] = useState(false);
+  const [parentageOpen, setParentageOpen] = useState(false);
+  const [sire, setSire] = useState<ParentDraft>(EMPTY_PARENT);
+  const [dam, setDam] = useState<ParentDraft>(EMPTY_PARENT);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -63,6 +77,10 @@ export default function RegisterBandedBirdScreen() {
       setMsg("Hatch date cannot be in the future");
       return;
     }
+    if (!sex) {
+      setMsg("Select sex");
+      return;
+    }
 
     submitting.current = true;
     setBusy(true);
@@ -74,23 +92,26 @@ export default function RegisterBandedBirdScreen() {
         band_id: savedBand,
         hatch_date: hatchDate,
         breed: breed.trim() || null,
-        sex: sex.trim() || null,
+        sex,
         notes: notes.trim() || null,
+        sire: parentDraftToInput(sire),
+        dam: parentDraftToInput(dam),
       });
       invalidate();
 
       if (andAnother) {
         setBandId("");
         setBreed("");
-        setSex("");
         setNotes("");
-        // Keep hatch date for rapid entry of siblings; do not auto-fill a blank DOB default.
-        setMsg(`Saved ${savedBand}. Enter the next band number.`);
+        // Keep hatch, sex, and parentage for rapid sibling entry.
+        toast.success(`Saved ${savedBand}. Enter the next band number.`);
         requestAnimationFrame(() => bandRef.current?.focus());
       } else {
+        toast.success("Bird added");
         router.replace(`/(app)/sheds/${shedId}/birds`);
       }
     } catch (e: unknown) {
+      // Form stays open — inline error only (no duplicate toast).
       setMsg(describeApiError(e, "save the bird"));
     } finally {
       setBusy(false);
@@ -130,7 +151,7 @@ export default function RegisterBandedBirdScreen() {
         </Pressable>
         <View style={{ flex: 1 }}>
           <Text style={styles.title}>Register banded bird</Text>
-          <Text style={styles.subtitle}>Band number and exact hatch date are required</Text>
+          <Text style={styles.subtitle}>Band number, hatch date, and sex are required</Text>
         </View>
       </View>
 
@@ -165,6 +186,19 @@ export default function RegisterBandedBirdScreen() {
       />
       <Text style={styles.hint}>Pick the exact hatch date. Approximate age shortcuts are not used.</Text>
 
+      <SelectField
+        label="Sex"
+        required
+        placeholder="Select"
+        value={sex}
+        options={SEX_OPTIONS}
+        onChange={(v) => {
+          setSex(v);
+          setMsg(null);
+        }}
+        clearable={false}
+      />
+
       <Pressable
         onPress={() => setMoreOpen((v) => !v)}
         style={styles.moreToggle}
@@ -185,14 +219,6 @@ export default function RegisterBandedBirdScreen() {
             placeholder="Breed"
             placeholderTextColor={birdUi.muted}
           />
-          <Text style={styles.label}>Sex</Text>
-          <TextInput
-            style={styles.input}
-            value={sex}
-            onChangeText={setSex}
-            placeholder="F / M / —"
-            placeholderTextColor={birdUi.muted}
-          />
           <Text style={styles.label}>Notes</Text>
           <TextInput
             style={[styles.input, { minHeight: 72 }]}
@@ -205,19 +231,43 @@ export default function RegisterBandedBirdScreen() {
         </View>
       ) : null}
 
+      <Pressable
+        onPress={() => setParentageOpen((v) => !v)}
+        style={styles.moreToggle}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: parentageOpen }}
+      >
+        <Text style={styles.moreLabel}>Parentage (Optional)</Text>
+        <Ionicons
+          name={parentageOpen ? "chevron-up" : "chevron-down"}
+          size={18}
+          color={birdUi.muted}
+        />
+      </Pressable>
+
+      {parentageOpen ? (
+        <View style={styles.moreBlock}>
+          <Text style={styles.hint}>
+            Name and wing band number are optional. You can leave both parents blank.
+          </Text>
+          <ParentageFields role="sire" value={sire} onChange={setSire} />
+          <ParentageFields role="dam" value={dam} onChange={setDam} />
+        </View>
+      ) : null}
+
       {msg ? <Text style={styles.error}>{msg}</Text> : null}
 
       <Button
         label="Save & add another"
         onPress={() => void persistBird(true)}
         loading={busy}
-        disabled={!bandId.trim() || !hatchDate || busy}
+        disabled={!bandId.trim() || !hatchDate || !sex || busy}
       />
       <Button
         label="Save"
         variant="secondary"
         onPress={() => void persistBird(false)}
-        disabled={!bandId.trim() || !hatchDate || busy}
+        disabled={!bandId.trim() || !hatchDate || !sex || busy}
       />
     </Screen>
   );

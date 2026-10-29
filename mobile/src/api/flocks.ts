@@ -82,6 +82,8 @@ export type LifecycleEventInput = {
   flock_id?: string;
   quantity?: number;
   reason?: string | null;
+  buyer_name?: string | null;
+  buyer_mobile?: string | null;
   idempotency_key?: string | null;
 };
 
@@ -93,6 +95,8 @@ export type LifecycleEventOut = {
   bird_id: string | null;
   quantity: number;
   reason: string | null;
+  buyer_name?: string | null;
+  buyer_mobile?: string | null;
   created_at: string;
 };
 
@@ -106,6 +110,8 @@ export type LifecycleBulkInput = {
   effective_date: string;
   bird_ids: string[];
   reason?: string | null;
+  buyer_name?: string | null;
+  buyer_mobile?: string | null;
   idempotency_key: string;
 };
 
@@ -172,6 +178,8 @@ export type UnbandedLifecycleByCohortInput = CohortAgeFields & {
   effective_date: string;
   quantity: number;
   reason?: string | null;
+  buyer_name?: string | null;
+  buyer_mobile?: string | null;
   idempotency_key: string;
 };
 

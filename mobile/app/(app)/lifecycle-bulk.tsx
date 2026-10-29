@@ -46,7 +46,10 @@ export default function BulkLifecycleScreen() {
   );
 
   const action = BIRD_LIFECYCLE_ACTIONS.find((a) => a.value === params.eventType);
+  const isSale = params.eventType === "sale";
   const [reason, setReason] = useState("");
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerMobile, setBuyerMobile] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -57,6 +60,8 @@ export default function BulkLifecycleScreen() {
   // Expo Router may reuse this screen across deep-links; reset confirm state for a new selection.
   useEffect(() => {
     setReason("");
+    setBuyerName("");
+    setBuyerMobile("");
     setBusy(false);
     setMsg(null);
     setDone(false);
@@ -75,6 +80,18 @@ export default function BulkLifecycleScreen() {
 
   const onConfirm = async () => {
     if (!canLifecycle || !action || lock.current || done || birdIds.length === 0) return;
+    if (isSale) {
+      const name = buyerName.trim();
+      const mobile = buyerMobile.replace(/[\s\-().]/g, "").trim();
+      if (!name) {
+        setMsg("Person name is required for sale");
+        return;
+      }
+      if (!/^\+?\d{10,15}$/.test(mobile)) {
+        setMsg("Enter a valid mobile number (10–15 digits)");
+        return;
+      }
+    }
     lock.current = true;
     setBusy(true);
     setMsg(null);
@@ -84,6 +101,8 @@ export default function BulkLifecycleScreen() {
         effective_date: todayIsoDate(),
         bird_ids: birdIds,
         reason: reason.trim() || `Bulk ${action.value} from shed overview`,
+        buyer_name: isSale ? buyerName.trim() : undefined,
+        buyer_mobile: isSale ? buyerMobile.replace(/[\s\-().]/g, "").trim() : undefined,
         idempotency_key: idemKey.current,
       });
       invalidate();
@@ -135,6 +154,29 @@ export default function BulkLifecycleScreen() {
         ))}
         {birdIds.length > 40 ? <Text style={styles.meta}>…and {birdIds.length - 40} more</Text> : null}
       </View>
+
+      {isSale ? (
+        <>
+          <Text style={styles.label}>Person name *</Text>
+          <TextInput
+            style={styles.input}
+            value={buyerName}
+            onChangeText={setBuyerName}
+            placeholder="Buyer / person name"
+            editable={!done}
+            autoCapitalize="words"
+          />
+          <Text style={styles.label}>Person mobile *</Text>
+          <TextInput
+            style={styles.input}
+            value={buyerMobile}
+            onChangeText={setBuyerMobile}
+            placeholder="+91 98765 43210"
+            editable={!done}
+            keyboardType="phone-pad"
+          />
+        </>
+      ) : null}
 
       <Text style={styles.label}>Reason (optional)</Text>
       <TextInput

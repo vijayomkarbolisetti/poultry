@@ -32,7 +32,9 @@ export function isQaNoiseDescription(text: string | null | undefined): boolean {
     t.includes("illustrative") ||
     t.includes("not a veterinarian") ||
     t.includes("example only") ||
-    t.includes("template only")
+    t.includes("template only") ||
+    t.includes("requires veterinary review") ||
+    t.includes("not a veterinarian-approved")
   );
 }
 
@@ -67,16 +69,26 @@ export function sortScheduleItems<T extends ScheduleItemLike>(items: T[]): T[] {
   });
 }
 
-/** Stacked day badge: caption "Day" + number from target_age_days when present. */
+/**
+ * Stacked day badge from display_day_label when present (preserves Day/Week ranges),
+ * else elapsed-day offset from target_age_days.
+ */
 export function dayBadgeParts(item: ScheduleItemLike): { caption: string; value: string } {
-  const age = itemTargetAgeDays(item);
-  if (age != null) return { caption: "Day", value: String(age) };
   const label = primaryRule(item)?.display_day_label?.trim();
   if (label) {
-    const m = label.match(/(\d+)/);
+    const week = label.match(/^week\s+(.+)$/i);
+    if (week) return { caption: "Wk", value: week[1].trim() };
+    const day = label.match(/^day\s+(.+)$/i);
+    if (day) {
+      const rest = day[1].replace(/\(.*?\)/g, "").trim();
+      return { caption: "Day", value: rest || "—" };
+    }
+    const m = label.match(/(\d+[–\-]\d+|\d+)/);
     if (m) return { caption: "Day", value: m[1] };
     return { caption: "Day", value: "—" };
   }
+  const age = itemTargetAgeDays(item);
+  if (age != null) return { caption: "Day", value: String(age) };
   return { caption: "Day", value: "—" };
 }
 

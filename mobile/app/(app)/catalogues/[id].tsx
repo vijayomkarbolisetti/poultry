@@ -1,26 +1,49 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { getCatalogue, getCatalogueAssignment, type CatalogueItem } from "../../../src/api/catalogues";
+import {
+  cloneCatalogue,
+  farmCopiesOf,
+  getCatalogue,
+  getCatalogueAssignment,
+  guardsFromPreview,
+  isStalePreviewError,
+  listCatalogues,
+  previewCatalogueUpdate,
+  updateCatalogue,
+  type CatalogueItem,
+  type CataloguePreviewUpdate,
+  type CatalogueSummary,
+} from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
+import { AppDialog } from "../../../src/components/ui/AppDialog";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import {
-  catalogueHasQaNoise,
   dayBadgeParts,
   scheduleDiseaseLine,
   scheduleDoseRouteLine,
   scheduleTypeLine,
   sortScheduleItems,
 } from "../../../src/features/catalogues/catalogueDetailHelpers";
+import { formatCataloguePreviewImpact } from "../../../src/features/catalogues/catalogueItemEditHelpers";
 import { catalogueAgeRangeLabel } from "../../../src/features/catalogues/catalogueListHelpers";
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
+import { toast } from "../../../src/ui/toast/toastStore";
 
 type TabKey = "schedule" | "details";
 
@@ -34,7 +57,20 @@ export default function CatalogueDetailScreen() {
   const { user, ownerAccountId } = useAuth();
   const canView = hasPermission(user, ownerAccountId, "schedule.view");
   const canManage = hasPermission(user, ownerAccountId, "schedule.manage");
+  const qc = useQueryClient();
+  const busy = useRef(false);
   const [tab, setTab] = useState<TabKey>("schedule");
+  const [cloneBusy, setCloneBusy] = useState(false);
+  const [showCloneConfirm, setShowCloneConfirm] = useState(false);
+  const [detailsEdit, setDetailsEdit] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [detailsSaving, setDetailsSaving] = useState(false);
+  const [removePending, setRemovePending] = useState<{
+    item: CatalogueItem;
+    preview: CataloguePreviewUpdate;
+  } | null>(null);
+  const [removeSaving, setRemoveSaving] = useState(false);
 
   const query = useQuery({
     queryKey: ["catalogue", id],
@@ -46,10 +82,19 @@ export default function CatalogueDetailScreen() {
     queryFn: () => getCatalogueAssignment(),
     enabled: canView,
   });
+  const catalogues = useQuery({
+    queryKey: ["catalogues", ownerAccountId],
+    queryFn: () => listCatalogues(),
+    enabled: Boolean(ownerAccountId) && canView,
+  });
 
   const cat = query.data;
   const editable = Boolean(cat && !cat.is_platform && canManage);
   const isDefault = Boolean(cat && assignment.data?.catalogue_id === cat.id);
+  const farmCopies: CatalogueSummary[] = useMemo(() => {
+    if (!cat?.is_platform || !catalogues.data) return [];
+    return farmCopiesOf(cat.id, catalogues.data);
+  }, [cat, catalogues.data]);
 
   const dayRange = useMemo(
     () => (cat?.items ? catalogueAgeRangeLabel(cat.items) : null),
@@ -58,11 +103,6 @@ export default function CatalogueDetailScreen() {
 
   const scheduleItems = useMemo(
     () => (cat?.items ? sortScheduleItems(cat.items) : []),
-    [cat],
-  );
-
-  const showQaNote = useMemo(
-    () => (cat ? catalogueHasQaNoise(cat.items, cat.description) : false),
     [cat],
   );
 
@@ -76,32 +116,172 @@ export default function CatalogueDetailScreen() {
     });
   };
 
-  const onMenu = () => {
-    if (!cat || !editable) return;
-    const buttons: { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[] = [
-      { text: "Add vaccine", onPress: openAddVaccine },
-    ];
-    const first = scheduleItems[0];
-    if (first?.id) {
-      buttons.push({
-        text: "Edit first vaccine",
-        onPress: () =>
-          router.push({
-            pathname: "/(app)/catalogues/item-edit",
-            params: { catalogueId: cat.id, itemId: first.id },
-          }),
-      });
-    }
-    buttons.push({ text: "Cancel", style: "cancel" });
-    Alert.alert(cat.name, "Manage vaccines in this catalogue.", buttons);
-  };
-
   const openItem = (item: CatalogueItem) => {
     if (!editable || !cat || !item.id) return;
     router.push({
       pathname: "/(app)/catalogues/item-edit",
       params: { catalogueId: cat.id, itemId: item.id },
     });
+  };
+
+  const openExistingCopy = (copy: CatalogueSummary) => {
+    router.replace(`/(app)/catalogues/${copy.id}`);
+  };
+
+  const runClone = async () => {
+    if (!cat || !canManage || busy.current) return;
+    busy.current = true;
+    setCloneBusy(true);
+    try {
+      const cloned = await cloneCatalogue(cat.id);
+      await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
+      setShowCloneConfirm(false);
+      toast.success("Catalogue cloned");
+      router.replace(`/(app)/catalogues/${cloned.id}`);
+    } catch (e) {
+      toast.error(describeApiError(e, "clone catalogue"));
+    } finally {
+      busy.current = false;
+      setCloneBusy(false);
+    }
+  };
+
+  const onPlatformAction = () => {
+    if (!cat?.is_platform || !canManage) return;
+    if (farmCopies.length === 1) {
+      Alert.alert(cat.name, "A farm copy of this schedule already exists.", [
+        { text: "Open existing copy", onPress: () => openExistingCopy(farmCopies[0]) },
+        { text: "Clone another copy", onPress: () => setShowCloneConfirm(true) },
+        { text: "Cancel", style: "cancel" },
+      ]);
+      return;
+    }
+    if (farmCopies.length > 1) {
+      Alert.alert(
+        cat.name,
+        "Multiple farm copies exist. Open one from My Catalogues, or clone another copy.",
+        [
+          {
+            text: "Open first copy",
+            onPress: () => openExistingCopy(farmCopies[0]),
+          },
+          { text: "Clone another copy", onPress: () => setShowCloneConfirm(true) },
+          { text: "Cancel", style: "cancel" },
+        ],
+      );
+      return;
+    }
+    setShowCloneConfirm(true);
+  };
+
+  const startDetailsEdit = () => {
+    if (!cat || !editable) return;
+    setEditName(cat.name);
+    setEditDescription(cat.description ?? "");
+    setDetailsEdit(true);
+  };
+
+  const saveDetails = async () => {
+    if (!cat || !editable || detailsSaving || busy.current) return;
+    const name = editName.trim();
+    if (!name) {
+      toast.error("Enter a schedule name.");
+      return;
+    }
+    busy.current = true;
+    setDetailsSaving(true);
+    try {
+      await updateCatalogue(cat.id, {
+        name,
+        description: editDescription.trim() || null,
+      });
+      await qc.invalidateQueries({ queryKey: ["catalogue", cat.id] });
+      await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
+      setDetailsEdit(false);
+      toast.success("Schedule details updated");
+    } catch (e) {
+      toast.error(describeApiError(e, "update schedule details"));
+    } finally {
+      busy.current = false;
+      setDetailsSaving(false);
+    }
+  };
+
+  const startRemoveItem = async (item: CatalogueItem) => {
+    if (!cat || !editable || !item.id || busy.current) return;
+    busy.current = true;
+    try {
+      const preview = await previewCatalogueUpdate(cat.id, {
+        apply_scope: "new_flocks",
+        remove_item_ids: [item.id],
+      });
+      setRemovePending({ item, preview });
+    } catch (e) {
+      toast.error(describeApiError(e, "preview removal"));
+    } finally {
+      busy.current = false;
+    }
+  };
+
+  const confirmRemoveItem = async () => {
+    if (!cat || !removePending || removeSaving || busy.current) return;
+    busy.current = true;
+    setRemoveSaving(true);
+    try {
+      const apply = async (preview: CataloguePreviewUpdate) => {
+        await updateCatalogue(cat.id, {
+          remove_item_ids: [removePending.item.id!],
+          apply_scope: "new_flocks",
+          confirm_change: true,
+          ...guardsFromPreview(preview),
+        });
+      };
+      try {
+        await apply(removePending.preview);
+      } catch (e) {
+        if (!isStalePreviewError(e)) throw e;
+        const refreshed = await previewCatalogueUpdate(cat.id, {
+          apply_scope: "new_flocks",
+          remove_item_ids: [removePending.item.id!],
+        });
+        setRemovePending({ ...removePending, preview: refreshed });
+        toast.error("Schedule changed — review the updated impact and confirm again.");
+        busy.current = false;
+        setRemoveSaving(false);
+        return;
+      }
+      setRemovePending(null);
+      await qc.invalidateQueries({ queryKey: ["catalogue", cat.id] });
+      await qc.invalidateQueries({ queryKey: ["catalogues", ownerAccountId] });
+      toast.success("Vaccine removed");
+    } catch (e) {
+      toast.error(describeApiError(e, "remove vaccine"));
+    } finally {
+      busy.current = false;
+      setRemoveSaving(false);
+    }
+  };
+
+  const onMenu = () => {
+    if (!cat || !editable) return;
+    const buttons: { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[] = [
+      { text: "Add vaccine", onPress: openAddVaccine },
+      { text: "Edit name & description", onPress: startDetailsEdit },
+    ];
+    const first = scheduleItems[0];
+    if (first?.id) {
+      buttons.push({
+        text: "Edit first vaccine",
+        onPress: () => openItem(first),
+      });
+      buttons.push({
+        text: "Remove first vaccine",
+        style: "destructive",
+        onPress: () => void startRemoveItem(first),
+      });
+    }
+    buttons.push({ text: "Cancel", style: "cancel" });
+    Alert.alert(cat.name, "Manage this farm catalogue.", buttons);
   };
 
   return (
@@ -116,6 +296,15 @@ export default function CatalogueDetailScreen() {
         {editable ? (
           <Pressable onPress={onMenu} hitSlop={12} accessibilityLabel="Catalogue menu" style={styles.menuBtn}>
             <Ionicons name="ellipsis-vertical" size={18} color={ui.ink} />
+          </Pressable>
+        ) : cat?.is_platform && canManage ? (
+          <Pressable
+            onPress={onPlatformAction}
+            hitSlop={12}
+            accessibilityLabel="Clone or open farm copy"
+            style={styles.menuBtn}
+          >
+            <Ionicons name="copy-outline" size={18} color={ui.brand} />
           </Pressable>
         ) : (
           <View style={styles.menuSpacer} />
@@ -138,10 +327,29 @@ export default function CatalogueDetailScreen() {
                 <Text style={styles.defaultBadgeText}>Default</Text>
               </View>
             ) : null}
+            {cat.is_platform ? (
+              <View style={styles.platformBadge}>
+                <Text style={styles.platformBadgeText}>Platform · read-only</Text>
+              </View>
+            ) : null}
             <Text style={styles.meta}>
               {cat.items.length} vaccine{cat.items.length === 1 ? "" : "s"}
               {dayRange ? ` • ${dayRange}` : ""}
             </Text>
+            {cat.is_platform && canManage ? (
+              <Pressable
+                style={styles.cloneCta}
+                onPress={onPlatformAction}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  farmCopies.length ? "Open existing copy or clone" : "Clone to my farm"
+                }
+              >
+                <Text style={styles.cloneCtaText}>
+                  {farmCopies.length ? "Open existing / Clone" : "Clone to My Farm"}
+                </Text>
+              </Pressable>
+            ) : null}
             <View style={styles.tabs}>
               {(
                 [
@@ -196,6 +404,20 @@ export default function CatalogueDetailScreen() {
                         style={styles.scheduleRow}
                         disabled={!editable}
                         onPress={() => openItem(item)}
+                        onLongPress={
+                          editable && item.id
+                            ? () =>
+                                Alert.alert(item.name, undefined, [
+                                  { text: "Edit", onPress: () => openItem(item) },
+                                  {
+                                    text: "Remove",
+                                    style: "destructive",
+                                    onPress: () => void startRemoveItem(item),
+                                  },
+                                  { text: "Cancel", style: "cancel" },
+                                ])
+                            : undefined
+                        }
                         accessibilityRole={editable ? "button" : undefined}
                         accessibilityLabel={item.name}
                       >
@@ -233,16 +455,11 @@ export default function CatalogueDetailScreen() {
                       </Pressable>
                     );
                   })}
-                  {showQaNote ? (
-                    <Text style={styles.qaNote}>
-                      Some entries are illustrative templates — not veterinarian-approved guidance.
-                    </Text>
-                  ) : null}
                 </View>
               )
             ) : (
               <View style={styles.detailsCard}>
-                <DetailRow label="Type" value={cat.is_platform ? "Platform (read-only)" : "Farm catalogue"} />
+                <DetailRow label="Type" value={cat.is_platform ? "Platform" : "Farm catalogue"} />
                 <DetailRow label="Version" value={`v${cat.version}`} />
                 <DetailRow label="Status" value={cat.status} />
                 <DetailRow
@@ -251,20 +468,112 @@ export default function CatalogueDetailScreen() {
                     dayRange ? ` • ${dayRange}` : ""
                   }`}
                 />
-                <DetailRow
-                  label="Description"
-                  value={cat.description?.trim() || "Not specified"}
-                />
-                {cat.is_platform && canManage ? (
-                  <Text style={styles.hint}>
-                    Clone this catalogue from the list to edit product details on a farm copy.
-                  </Text>
+                {cat.description?.trim() ? (
+                  <DetailRow label="Description" value={cat.description.trim()} />
+                ) : null}
+                {editable ? (
+                  <Pressable style={styles.editDetailsBtn} onPress={startDetailsEdit}>
+                    <Text style={styles.editDetailsBtnText}>Edit name & description</Text>
+                  </Pressable>
                 ) : null}
               </View>
             )}
           </ScrollView>
         </>
       ) : null}
+
+      <AppDialog
+        visible={showCloneConfirm}
+        title="Clone to My Farm?"
+        description={`Create an editable farm copy of “${cat?.name ?? "this schedule"}”. The platform schedule stays read-only.`}
+        tone="neutral"
+        dismissible={!cloneBusy}
+        onDismiss={() => {
+          if (!cloneBusy) setShowCloneConfirm(false);
+        }}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          disabled: cloneBusy,
+          onPress: () => setShowCloneConfirm(false),
+        }}
+        primary={{
+          label: "Clone",
+          variant: "primary",
+          loading: cloneBusy,
+          onPress: () => void runClone(),
+        }}
+      />
+
+      <AppDialog
+        visible={detailsEdit}
+        title="Edit schedule details"
+        description="Name and description only. Vaccine entries are unchanged."
+        tone="neutral"
+        dismissible={!detailsSaving}
+        onDismiss={() => {
+          if (!detailsSaving) setDetailsEdit(false);
+        }}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          disabled: detailsSaving,
+          onPress: () => setDetailsEdit(false),
+        }}
+        primary={{
+          label: "Save",
+          variant: "primary",
+          loading: detailsSaving,
+          onPress: () => void saveDetails(),
+        }}
+      >
+        <View style={styles.dialogFields}>
+          <Text style={styles.dialogLabel}>Name</Text>
+          <TextInput
+            style={styles.dialogInput}
+            value={editName}
+            onChangeText={setEditName}
+            placeholder="Schedule name"
+            placeholderTextColor="#9AABA4"
+          />
+          <Text style={styles.dialogLabel}>Description</Text>
+          <TextInput
+            style={[styles.dialogInput, styles.dialogInputMulti]}
+            value={editDescription}
+            onChangeText={setEditDescription}
+            placeholder="Optional"
+            placeholderTextColor="#9AABA4"
+            multiline
+          />
+        </View>
+      </AppDialog>
+
+      <AppDialog
+        visible={Boolean(removePending)}
+        title="Remove vaccine?"
+        description={
+          removePending
+            ? `${removePending.item.name}\n\n${formatCataloguePreviewImpact(removePending.preview)}`
+            : undefined
+        }
+        tone="warning"
+        dismissible={!removeSaving}
+        onDismiss={() => {
+          if (!removeSaving) setRemovePending(null);
+        }}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          disabled: removeSaving,
+          onPress: () => setRemovePending(null),
+        }}
+        primary={{
+          label: "Remove",
+          variant: "destructive",
+          loading: removeSaving,
+          onPress: () => void confirmRemoveItem(),
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -312,7 +621,24 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   defaultBadgeText: { fontSize: 10, fontWeight: "800", color: ui.brand },
+  platformBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#EEF2F0",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  platformBadgeText: { fontSize: 10, fontWeight: "800", color: ui.muted },
   meta: { fontSize: 12, fontWeight: "600", color: ui.muted },
+  cloneCta: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    backgroundColor: ui.brand,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  cloneCtaText: { color: ui.white, fontWeight: "800", fontSize: 13 },
   tabs: { flexDirection: "row", gap: 18, marginTop: 2 },
   tabBtn: { paddingBottom: 2 },
   tabText: { fontSize: 14, fontWeight: "700", color: ui.muted },
@@ -354,13 +680,6 @@ const styles = StyleSheet.create({
   scheduleMeta: { fontSize: 12, fontWeight: "600", color: ui.muted },
   scheduleType: { fontSize: 11, fontWeight: "500", color: ui.mutedSoft },
   notSpecified: { fontWeight: "500", color: ui.mutedSoft, fontStyle: "italic" },
-  qaNote: {
-    marginTop: 4,
-    fontSize: 11,
-    fontWeight: "500",
-    color: ui.mutedSoft,
-    lineHeight: 15,
-  },
   detailsCard: {
     backgroundColor: ui.white,
     borderRadius: 12,
@@ -389,13 +708,12 @@ const styles = StyleSheet.create({
     color: ui.ink,
     lineHeight: 19,
   },
-  hint: {
-    marginTop: 2,
-    fontSize: 11,
-    color: ui.muted,
-    fontWeight: "500",
-    lineHeight: 15,
+  editDetailsBtn: {
+    alignSelf: "flex-start",
+    marginTop: 4,
+    paddingVertical: 6,
   },
+  editDetailsBtnText: { color: ui.brand, fontWeight: "800", fontSize: 13 },
   muted: { color: ui.muted, fontWeight: "600" },
   emptyBox: { gap: 12, paddingTop: 8 },
   addVaccineBtn: {
@@ -409,4 +727,18 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerPad: { padding: 20 },
   error: { color: ui.muted, fontSize: 14 },
+  dialogFields: { gap: 8, marginTop: 8 },
+  dialogLabel: { fontSize: 12, fontWeight: "700", color: ui.muted },
+  dialogInput: {
+    backgroundColor: "#F8FAF9",
+    borderWidth: 1,
+    borderColor: ui.cardBorder,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: ui.ink,
+    fontWeight: "600",
+  },
+  dialogInputMulti: { minHeight: 72, textAlignVertical: "top" },
 });

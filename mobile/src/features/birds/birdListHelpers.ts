@@ -1,5 +1,10 @@
 /** Display helpers for shed bird lists (no business rules). */
 
+export const BIRD_SEX_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+] as const;
+
 export function formatLifecycleLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -10,6 +15,15 @@ export function formatSexLabel(sex: string | null | undefined): string {
   if (s === "m" || s === "male") return "Male";
   if (s === "f" || s === "female") return "Female";
   return sex.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Normalize stored sex values (M/F/male/female) to SelectField option values. */
+export function normalizeSexSelectValue(sex: string | null | undefined): string | null {
+  if (!sex) return null;
+  const s = sex.trim().toLowerCase();
+  if (s === "m" || s === "male") return "male";
+  if (s === "f" || s === "female") return "female";
+  return null;
 }
 
 /** Human-readable relative age for list cards (e.g. "3 months"). */
@@ -54,11 +68,6 @@ export function formatUnbandedCohortLabel(opts: {
 }): string {
   const age = formatBirdAge(opts);
   return `${age} · ${opts.unbanded_count} unbanded`;
-}
-
-export function formatVaccSummary(count: number): string {
-  if (count <= 0) return "No individual vaccinations";
-  return `${count} individual vaccination${count === 1 ? "" : "s"}`;
 }
 
 export const LIFECYCLE_FILTER_OPTIONS = [
