@@ -21,6 +21,7 @@ function resolveApiUrl(): string {
     platform: Platform.OS,
     isDevice: Constants.isDevice !== false,
     isDev: typeof __DEV__ === "boolean" ? __DEV__ : false,
+    allowPrivateApi: (process.env.EXPO_PUBLIC_ALLOW_PRIVATE_API ?? "").trim() === "1",
   });
 }
 

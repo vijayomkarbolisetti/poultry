@@ -8,18 +8,25 @@ export type OwnerAccount = {
 };
 
 export type OwnerAccountListItem = OwnerAccount & {
+  owner_user_id: string | null;
   owner_email: string | null;
   owner_full_name: string | null;
+  owner_password: string | null;
+  owner_must_change_password: boolean;
+};
+
+export type OwnerUserSummary = {
+  id: string;
+  email: string;
+  full_name: string;
+  is_active: boolean;
+  must_change_password: boolean;
+  password: string | null;
 };
 
 export type CreatedOwnerAccount = {
   owner: OwnerAccount;
-  owner_user: {
-    id: string;
-    email: string;
-    full_name: string;
-    is_active: boolean;
-  };
+  owner_user: OwnerUserSummary;
 };
 
 export async function listOwnerAccounts(): Promise<OwnerAccountListItem[]> {
@@ -34,5 +41,13 @@ export async function createOwnerAccount(input: {
   organization_name: string;
 }): Promise<CreatedOwnerAccount> {
   const { data } = await api.post<CreatedOwnerAccount>("/owners", input);
+  return data;
+}
+
+export async function updateFarmOwnerUser(
+  ownerId: string,
+  input: { full_name?: string; password?: string },
+): Promise<OwnerUserSummary> {
+  const { data } = await api.patch<OwnerUserSummary>(`/owners/${ownerId}/owner-user`, input);
   return data;
 }

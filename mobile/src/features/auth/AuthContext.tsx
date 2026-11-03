@@ -104,7 +104,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (ownerId: string) => {
       setOwnerAccountId(ownerId);
       await tokenStore.setOwnerId(ownerId);
-      queryClient.clear();
+      // Drop farm-scoped caches only. Clearing auth/me leaves the app stuck on
+      // "Opening your farm…" while /me refetches (especially for super admins).
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== "auth",
+      });
     },
     [queryClient],
   );

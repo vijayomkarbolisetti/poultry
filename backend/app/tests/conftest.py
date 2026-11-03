@@ -316,8 +316,8 @@ async def engine():
             )
         # Hard-check that migration chain is applied (fail loud if create_all sneaks back).
         ver = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        if ver != "0017_shed_auto_vax_manual_name":
-            raise RuntimeError(f"Expected alembic 0017_shed_auto_vax_manual_name, got {ver!r}")
+        if ver != "0018_user_password_policy":
+            raise RuntimeError(f"Expected alembic 0018_user_password_policy, got {ver!r}")
         idx = await conn.scalar(
             text(
                 """

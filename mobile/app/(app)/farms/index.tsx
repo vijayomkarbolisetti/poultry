@@ -1,9 +1,10 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   FlatList,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +13,13 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { listOwnerAccounts, type OwnerAccountListItem } from "../../../src/api/owners";
+import {
+  listOwnerAccounts,
+  updateFarmOwnerUser,
+  type OwnerAccountListItem,
+} from "../../../src/api/owners";
+import { describeApiError } from "../../../src/api/client";
+import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -27,8 +34,14 @@ const ui = {
 
 export default function FarmsScreen() {
   const { user, ownerAccountId, setActiveOwner } = useAuth();
+  const qc = useQueryClient();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
+  const [editFarm, setEditFarm] = useState<OwnerAccountListItem | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const isSuper = Boolean(user?.is_platform_super_admin);
 
   const farms = useQuery({
@@ -55,6 +68,38 @@ export default function FarmsScreen() {
     await setActiveOwner(farm.id);
     toast.success(`Opened ${farm.name}`);
     router.replace("/(app)/home");
+  };
+
+  const openEdit = (farm: OwnerAccountListItem) => {
+    setEditFarm(farm);
+    setEditName(farm.owner_full_name ?? "");
+    setEditPassword("");
+    setEditError(null);
+  };
+
+  const saveEdit = async () => {
+    if (!editFarm) return;
+    const name = editName.trim();
+    const password = editPassword.trim();
+    if (!name && !password) {
+      setEditError("Enter a new owner name and/or password.");
+      return;
+    }
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      await updateFarmOwnerUser(editFarm.id, {
+        full_name: name || undefined,
+        password: password || undefined,
+      });
+      await qc.invalidateQueries({ queryKey: ["owners", "all"] });
+      toast.success("Owner updated");
+      setEditFarm(null);
+    } catch (e: unknown) {
+      setEditError(describeApiError(e, "update owner"));
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const goCreate = () => router.push("/(app)/farms/create");
@@ -107,6 +152,13 @@ export default function FarmsScreen() {
 
       {farms.isLoading ? (
         <HenLoader label="Loading farms…" />
+      ) : farms.isError ? (
+        <EmptyState
+          title="Could not load farms"
+          body="Check that the API is reachable, then try again."
+          actionLabel="Retry"
+          onAction={() => void farms.refetch()}
+        />
       ) : !hasFarms ? (
         <EmptyState
           title="No farms yet"
@@ -125,39 +177,75 @@ export default function FarmsScreen() {
           renderItem={({ item }) => {
             const active = item.id === ownerAccountId;
             return (
-              <Pressable
-                onPress={() => void openFarm(item)}
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${item.name}`}
-                style={({ pressed }) => [
-                  styles.card,
-                  shadow.card,
-                  active && styles.cardActive,
-                  pressed && { opacity: 0.92 },
-                ]}
-              >
-                <View style={styles.cardIcon}>
-                  <Ionicons name="business-outline" size={20} color={ui.deep} />
-                </View>
-                <View style={styles.cardCopy}>
-                  <Text style={styles.cardTitle} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.cardMeta} numberOfLines={1}>
-                    {item.owner_full_name || item.owner_email || "No owner on file"}
-                    {item.owner_email && item.owner_full_name ? ` · ${item.owner_email}` : ""}
-                  </Text>
-                </View>
-                {active ? (
-                  <Text style={styles.activeBadge}>Active</Text>
-                ) : (
-                  <Text style={styles.openHint}>Open</Text>
-                )}
-              </Pressable>
+              <View style={[styles.card, shadow.card, active && styles.cardActive]}>
+                <Pressable
+                  onPress={() => void openFarm(item)}
+                  style={styles.cardMain}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${item.name}`}
+                >
+                  <View style={styles.cardIcon}>
+                    <Ionicons name="business-outline" size={20} color={ui.deep} />
+                  </View>
+                  <View style={styles.cardCopy}>
+                    <Text style={styles.cardTitle} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.cardMeta} numberOfLines={1}>
+                      {item.owner_full_name || item.owner_email || "No owner on file"}
+                      {item.owner_email && item.owner_full_name ? ` · ${item.owner_email}` : ""}
+                    </Text>
+                    <Text style={styles.passwordLine} numberOfLines={1}>
+                      Password: {item.owner_password || "—"}
+                      {item.owner_must_change_password ? " · must change" : ""}
+                    </Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  onPress={() => openEdit(item)}
+                  style={styles.editBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit owner for ${item.name}`}
+                  hitSlop={8}
+                >
+                  <Ionicons name="create-outline" size={18} color={ui.deep} />
+                </Pressable>
+              </View>
             );
           }}
         />
       )}
+
+      <Modal visible={Boolean(editFarm)} transparent animationType="fade" onRequestClose={() => setEditFarm(null)}>
+        <Pressable style={styles.modalScrim} onPress={() => setEditFarm(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Edit farm owner</Text>
+            <Text style={styles.modalSub}>{editFarm?.name}</Text>
+            <Text style={styles.label}>Owner name</Text>
+            <TextInput
+              style={styles.input}
+              value={editName}
+              onChangeText={setEditName}
+              autoCapitalize="words"
+              placeholder="Owner full name"
+              placeholderTextColor={colors.inkMuted}
+            />
+            <Text style={styles.label}>New password (optional)</Text>
+            <TextInput
+              style={styles.input}
+              value={editPassword}
+              onChangeText={setEditPassword}
+              autoCapitalize="none"
+              secureTextEntry
+              placeholder="Leave blank to keep current"
+              placeholderTextColor={colors.inkMuted}
+            />
+            {editError ? <Text style={styles.error}>{editError}</Text> : null}
+            <Button label="Save" onPress={() => void saveEdit()} loading={editLoading} />
+            <Button label="Cancel" variant="ghost" onPress={() => setEditFarm(null)} />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -202,14 +290,15 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
     backgroundColor: colors.bgElevated,
     borderRadius: radius.md,
-    padding: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    gap: 4,
   },
   cardActive: { borderColor: ui.deep, backgroundColor: ui.mint },
+  cardMain: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   cardIcon: {
     width: 40,
     height: 40,
@@ -221,12 +310,45 @@ const styles = StyleSheet.create({
   cardCopy: { flex: 1, gap: 2 },
   cardTitle: { fontSize: typography.bodyStrong.fontSize, fontWeight: "800", color: colors.ink },
   cardMeta: { fontSize: typography.caption.fontSize, color: colors.inkMuted, fontWeight: "600" },
-  activeBadge: { color: ui.deep, fontWeight: "800", fontSize: typography.caption.fontSize },
-  openHint: { color: ui.deep, fontWeight: "700", fontSize: typography.caption.fontSize },
+  passwordLine: { fontSize: typography.caption.fontSize, color: ui.deep, fontWeight: "700" },
+  editBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: ui.mint,
+  },
   emptySearch: {
     textAlign: "center",
     color: colors.inkMuted,
     marginTop: 24,
     fontWeight: "600",
   },
+  modalScrim: {
+    flex: 1,
+    backgroundColor: "rgba(2,44,34,0.45)",
+    justifyContent: "center",
+    padding: space.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.bgElevated,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    gap: space.sm,
+  },
+  modalTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: colors.ink },
+  modalSub: { color: colors.inkMuted, fontWeight: "600", marginBottom: 4 },
+  label: { fontWeight: "700", color: colors.ink, fontSize: typography.label.fontSize },
+  input: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: space.md,
+    fontWeight: "600",
+    color: colors.ink,
+    backgroundColor: colors.bg,
+  },
+  error: { color: colors.danger, fontWeight: "600" },
 });

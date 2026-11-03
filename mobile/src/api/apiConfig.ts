@@ -39,21 +39,29 @@ export function resolveApiBaseUrl(input: {
   isDevice: boolean;
   /** Expo/Metro `__DEV__` — false in release APKs. */
   isDev: boolean;
+  /**
+   * When true, allow baking a private LAN/cleartext URL into a non-Metro debug APK
+   * (local device testing). Never set for store/production builds.
+   */
+  allowPrivateApi?: boolean;
 }): string {
   const envUrl = (input.envUrl ?? "").trim();
   const lanUrl = (input.lanUrl ?? "").trim();
   const extraUrl = (input.extraUrl ?? "").trim();
   const configured = envUrl || extraUrl;
   const onEmulator = input.platform === "android" && input.isDevice === false;
+  const allowPrivate = Boolean(input.allowPrivateApi);
 
   const toEmulatorHost = (url: string) =>
     url.replace("://localhost", "://10.0.2.2").replace("://127.0.0.1", "://10.0.2.2");
 
-  // Production / release APK: public HTTPS only — never 10.0.2.2 or RFC1918 LAN from .env.
+  // Production / release APK: public HTTPS only — never 10.0.2.2 or RFC1918 LAN from .env
+  // unless explicitly opted in for local device APK testing.
   if (!input.isDev) {
-    if (configured && !isPrivateLanUrl(configured)) {
+    if (configured && (!isPrivateLanUrl(configured) || allowPrivate)) {
       return stripTrailingSlash(configured);
     }
+    if (lanUrl && allowPrivate) return stripTrailingSlash(lanUrl);
     return PRODUCTION_API_URL;
   }
 

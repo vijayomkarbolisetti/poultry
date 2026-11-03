@@ -77,13 +77,15 @@ export default function LoginScreen() {
     setError(null);
     try {
       const session = await login(values);
-      if (session.user) {
-        await acceptSession(session.user);
+      const user =
+        session.user ??
+        (await (await import("../../src/api/auth")).fetchMe());
+      await acceptSession(user);
+      if (user.must_change_password) {
+        router.replace("/(auth)/change-password");
       } else {
-        const { fetchMe } = await import("../../src/api/auth");
-        await acceptSession(await fetchMe());
+        router.replace("/(app)/home");
       }
-      router.replace("/(app)/home");
     } catch (e: unknown) {
       setError(describeApiError(e, "sign in"));
     } finally {
@@ -257,25 +259,6 @@ function LoginForm({
 
         <Button label="Sign In" onPress={onSubmit} loading={loading} disabled={loading} />
       </View>
-
-      <View style={[styles.footerBlock, shadows.soft]}>
-        <Text style={styles.footer}>
-          Farm accounts are created by a platform admin.
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Contact Admin"
-          hitSlop={10}
-          onPress={() => {
-            /* UI only — no support channel wired yet */
-          }}
-          style={styles.contactPress}
-        >
-          <Text style={styles.contact}>
-            Need access? <Text style={styles.contactLink}>Contact Admin</Text>
-          </Text>
-        </Pressable>
-      </View>
     </>
   );
 }
@@ -358,41 +341,4 @@ const styles = StyleSheet.create({
   rememberLabel: { color: colors.textFormLabel, fontSize: typography.label.fontSize, fontWeight: "500" },
   forgot: { color: colors.textLink, fontWeight: "700", fontSize: typography.label.fontSize },
   error: { color: colors.error, fontSize: typography.label.fontSize },
-  footerBlock: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    gap: space.sm,
-    marginTop: space.xs,
-    paddingHorizontal: space.md,
-    paddingVertical: space.md,
-    borderRadius: radius.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
-    borderWidth: 1,
-    borderColor: "rgba(215, 228, 222, 0.95)",
-  },
-  footer: {
-    color: colors.brandDark,
-    fontSize: typography.body.fontSize,
-    textAlign: "center",
-    fontWeight: "700",
-    lineHeight: 22,
-  },
-  link: { color: colors.brand, fontWeight: "800" },
-  contactPress: {
-    minHeight: layout.touchTarget * 0.75,
-    justifyContent: "center",
-    paddingHorizontal: space.xs,
-  },
-  contact: {
-    color: "#4A5F56",
-    fontSize: typography.secondary.fontSize,
-    textAlign: "center",
-    fontWeight: "600",
-    lineHeight: 18,
-  },
-  contactLink: {
-    color: colors.brandDark,
-    fontWeight: "800",
-    textDecorationLine: "underline",
-  },
 });

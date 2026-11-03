@@ -41,6 +41,7 @@ export default function RootLayout() {
                 name="(auth)/register"
                 options={{ headerShown: true, title: "Create farm", headerTintColor: colors.primary }}
               />
+              <Stack.Screen name="(auth)/change-password" options={{ headerShown: false }} />
               <Stack.Screen name="(app)" />
             </Stack>
             <ToastHost />

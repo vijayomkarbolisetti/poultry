@@ -159,6 +159,22 @@ export default function SettingsScreen() {
       show: isSuperAdmin,
     },
     {
+      key: "profile",
+      label: "Change name",
+      description: "Update the name on your farm account",
+      icon: "person-outline",
+      href: "/(app)/account/edit-profile",
+      show: !isSuperAdmin || Boolean(membership),
+    },
+    {
+      key: "password",
+      label: "Change password",
+      description: "Update your login password",
+      icon: "lock-closed-outline",
+      href: "/(auth)/change-password",
+      show: true,
+    },
+    {
       key: "farmers",
       label: "Farmers",
       description: "Manage farm workers and access",

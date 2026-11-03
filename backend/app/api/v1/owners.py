@@ -18,6 +18,7 @@ from app.schemas.auth import (
     OwnerAccountListItem,
     OwnerAccountOut,
     OwnerUserSummary,
+    UpdateOwnerUserRequest,
 )
 from app.services import auth_service
 
@@ -37,8 +38,11 @@ async def list_owners(
             name=owner.name,
             is_active=owner.is_active,
             created_at=owner.created_at,
+            owner_user_id=user.id if user else None,
             owner_email=user.email if user else None,
             owner_full_name=user.full_name if user else None,
+            owner_password=user.admin_visible_password if user else None,
+            owner_must_change_password=bool(user.must_change_password) if user else False,
         )
         for owner, user in rows
     ]
@@ -70,7 +74,37 @@ async def create_owner_account(
             email=user.email,
             full_name=user.full_name,
             is_active=user.is_active,
+            must_change_password=user.must_change_password,
+            password=user.admin_visible_password,
         ),
+    )
+
+
+@router.patch("/{owner_id}/owner-user", response_model=OwnerUserSummary)
+async def update_owner_user(
+    owner_id: UUID,
+    body: UpdateOwnerUserRequest,
+    ctx: AuthContext = Depends(require_platform_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> OwnerUserSummary:
+    """Update farm owner display name and/or reset password (super admin)."""
+    try:
+        user = await auth_service.update_farm_owner_as_super_admin(
+            db,
+            owner_account_id=owner_id,
+            full_name=body.full_name,
+            password=body.password,
+        )
+    except auth_service.AuthError as exc:
+        code = status.HTTP_404_NOT_FOUND if exc.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=code, detail=exc.message) from exc
+    return OwnerUserSummary(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        must_change_password=user.must_change_password,
+        password=user.admin_visible_password,
     )
 
 

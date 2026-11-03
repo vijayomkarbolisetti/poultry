@@ -115,6 +115,8 @@ async def test_super_admin_creates_lists_and_opens_farm(client: AsyncClient, db_
     owner_id = body["owner"]["id"]
     assert body["owner"]["name"] == "Green Acres"
     assert body["owner_user"]["email"] == farm_email
+    assert body["owner_user"]["must_change_password"] is True
+    assert body["owner_user"]["password"] == "password123"
 
     listed = await client.get("/api/v1/owners", headers=headers)
     assert listed.status_code == 200, listed.text
@@ -122,6 +124,8 @@ async def test_super_admin_creates_lists_and_opens_farm(client: AsyncClient, db_
     assert any(f["id"] == owner_id for f in farms)
     match = next(f for f in farms if f["id"] == owner_id)
     assert match["owner_email"] == farm_email
+    assert match["owner_password"] == "password123"
+    assert match["owner_must_change_password"] is True
 
     detail = await client.get(f"/api/v1/owners/{owner_id}", headers=headers)
     assert detail.status_code == 200
@@ -135,10 +139,52 @@ async def test_super_admin_creates_lists_and_opens_farm(client: AsyncClient, db_
     assert sheds.status_code == 200, sheds.text
     assert sheds.json() == []
 
-    # New farm owner can log in.
+    # New farm owner can log in and must change password.
     owner_login = await client.post(
         "/api/v1/auth/login",
         json={"email": farm_email, "password": "password123"},
     )
     assert owner_login.status_code == 200
-    assert owner_login.json()["user"]["is_platform_super_admin"] is False
+    owner_user = owner_login.json()["user"]
+    assert owner_user["is_platform_super_admin"] is False
+    assert owner_user["must_change_password"] is True
+
+    owner_token = owner_login.json()["access_token"]
+    changed = await client.post(
+        "/api/v1/auth/change-password",
+        headers={"Authorization": f"Bearer {owner_token}"},
+        json={"current_password": "password123", "new_password": "newpass456"},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["must_change_password"] is False
+
+    # Latest password stays visible to super admin.
+    listed_after = await client.get("/api/v1/owners", headers=headers)
+    match_after = next(f for f in listed_after.json() if f["id"] == owner_id)
+    assert match_after["owner_password"] == "newpass456"
+    assert match_after["owner_must_change_password"] is False
+
+    # Super admin can rename owner and reset password.
+    patched = await client.patch(
+        f"/api/v1/owners/{owner_id}/owner-user",
+        headers=headers,
+        json={"full_name": "Renamed Owner", "password": "resetpass789"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["full_name"] == "Renamed Owner"
+    assert patched.json()["password"] == "resetpass789"
+    assert patched.json()["must_change_password"] is True
+
+    # Owner can update their own display name.
+    relogin = await client.post(
+        "/api/v1/auth/login",
+        json={"email": farm_email, "password": "resetpass789"},
+    )
+    assert relogin.status_code == 200
+    profile = await client.patch(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {relogin.json()['access_token']}"},
+        json={"full_name": "Self Renamed"},
+    )
+    assert profile.status_code == 200
+    assert profile.json()["full_name"] == "Self Renamed"

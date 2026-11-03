@@ -65,7 +65,12 @@ export default function CreateFarmScreen() {
       });
       await qc.invalidateQueries({ queryKey: ["owners", "all"] });
       await setActiveOwner(created.owner.id);
-      toast.success(`Created ${created.owner.name}`);
+      const pwd = created.owner_user.password;
+      toast.success(
+        pwd
+          ? `Created ${created.owner.name}. Owner password: ${pwd}`
+          : `Created ${created.owner.name}`,
+      );
       router.replace("/(app)/home");
     } catch (e: unknown) {
       setError(describeApiError(e, "create farm"));

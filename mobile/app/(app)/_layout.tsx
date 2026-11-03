@@ -110,6 +110,7 @@ export default function AppLayout() {
     );
   }
   if (!user) return <Redirect href="/(auth)/login" />;
+  if (user.must_change_password) return <Redirect href="/(auth)/change-password" />;
 
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
   const canVaccination = hasPermission(user, ownerAccountId, "vaccination.view");
@@ -251,6 +252,7 @@ export default function AppLayout() {
       <Tabs.Screen name="farmers/[id]" options={hidden("Farmer")} />
       <Tabs.Screen name="farms/index" options={hidden("All farms")} />
       <Tabs.Screen name="farms/create" options={hidden("Create farm")} />
+      <Tabs.Screen name="account/edit-profile" options={hidden("Owner name")} />
       <Tabs.Screen name="catalogues/index" options={hidden("Catalogues")} />
       <Tabs.Screen name="catalogues/create" options={hidden("Create catalogue")} />
       <Tabs.Screen name="catalogues/[id]" options={hidden("Catalogue")} />
