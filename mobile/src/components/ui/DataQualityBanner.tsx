@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { StyleSheet, Text, View } from "react-native";
 
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 
 type Props = {
   message: string;
@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
   text: {
     flex: 1,
     flexShrink: 1,
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "600",
     color: colors.ink,
     lineHeight: 18,

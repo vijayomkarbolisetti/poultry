@@ -32,6 +32,8 @@ import {
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { typography } from "../../../src/theme/tokens";
+
 
 export default function NewGroupWizardScreen() {
   const params = useLocalSearchParams<{ shedId?: string | string[] }>();
@@ -203,7 +205,7 @@ export default function NewGroupWizardScreen() {
       </View>
 
       <Text style={styles.shedHint}>
-        Adding to <Text style={styles.shedHintStrong}>{shed.data.name}</Text> ({shed.data.code})
+        Adding to <Text style={styles.shedHintStrong}>{shed.data.name}</Text>
       </Text>
 
       {step === 1 ? (
@@ -317,13 +319,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 22, fontWeight: "800", color: birdUi.text, letterSpacing: -0.3 },
-  progress: { fontSize: 13, fontWeight: "600", color: birdUi.primary, marginTop: 2 },
-  shedHint: { fontSize: 14, color: birdUi.muted },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text, letterSpacing: -0.3 },
+  progress: { fontSize: typography.secondary.fontSize, fontWeight: "600", color: birdUi.primary, marginTop: 2 },
+  shedHint: { fontSize: typography.secondary.fontSize, color: birdUi.muted },
   shedHintStrong: { fontWeight: "700", color: birdUi.text },
   block: { gap: 10 },
-  question: { fontSize: 18, fontWeight: "800", color: birdUi.text },
-  help: { fontSize: 14, color: birdUi.muted, lineHeight: 20, marginTop: -4 },
+  question: { fontSize: typography.overline.fontSize, fontWeight: "800", color: birdUi.text },
+  help: { fontSize: typography.label.fontSize, color: birdUi.muted, lineHeight: 20, marginTop: -4 },
   countRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -336,12 +338,12 @@ const styles = StyleSheet.create({
   },
   countInput: {
     flex: 1,
-    fontSize: 22,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "700",
     color: birdUi.text,
     paddingVertical: 12,
   },
-  countSuffix: { fontSize: 15, fontWeight: "600", color: birdUi.muted },
+  countSuffix: { fontSize: typography.body.fontSize, fontWeight: "600", color: birdUi.muted },
   chipGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     flexDirection: "row",
@@ -358,7 +360,7 @@ const styles = StyleSheet.create({
     backgroundColor: birdUi.primary,
     borderColor: birdUi.primary,
   },
-  chipLabel: { fontSize: 14, fontWeight: "700", color: birdUi.text },
+  chipLabel: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.text },
   chipLabelSelected: { color: birdUi.white },
   nameInput: {
     borderWidth: 1,
@@ -367,7 +369,7 @@ const styles = StyleSheet.create({
     backgroundColor: birdUi.white,
     paddingHorizontal: 14,
     paddingVertical: 14,
-    fontSize: 17,
+    fontSize: typography.button.fontSize,
     fontWeight: "700",
     color: birdUi.text,
     minHeight: 56,
@@ -388,6 +390,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  infoText: { flex: 1, fontSize: 14, color: birdUi.textSecondary, lineHeight: 20 },
-  error: { color: birdUi.error, fontSize: 14, fontWeight: "600" },
+  infoText: { flex: 1, fontSize: typography.label.fontSize, color: birdUi.textSecondary, lineHeight: 20 },
+  error: { color: birdUi.error, fontSize: typography.label.fontSize, fontWeight: "600" },
 });

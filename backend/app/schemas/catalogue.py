@@ -58,10 +58,14 @@ class CatalogueItemOut(BaseModel):
     recommended_dose_text: str | None = None
     route: str | None = None
     diluent_instructions: str | None = None
+    is_active: bool = True
     rules: list[CatalogueRuleOut] = Field(default_factory=list)
 
 
 class CatalogueItemIn(BaseModel):
+    # When set on update, upserts that catalogue item in place (stable PK / materialize link).
+    # Omit on create or to append a new item. Never used for name/age matching.
+    id: UUID | None = None
     sort_order: int = 0
     name: str = Field(min_length=1, max_length=255)
     category: str = "vaccine"
@@ -97,6 +101,7 @@ class CatalogueSummaryOut(BaseModel):
     version: int
     status: str
     is_example: bool
+    requires_veterinary_review: bool = False
     owner_account_id: UUID | None = None
     cloned_from_catalogue_id: UUID | None = None
     is_platform: bool = True
@@ -119,10 +124,51 @@ class CatalogueUpdateIn(BaseModel):
     description: str | None = None
     status: str | None = None
     items: list[CatalogueItemIn] | None = None
+    # Soft-remove these item ids (must belong to the catalogue). Keeps provenance.
+    remove_item_ids: list[UUID] = Field(default_factory=list)
     # D5 when items change and schedules should refresh for inheriting flocks.
     apply_scope: str = Field(default="new_flocks", description="new_flocks | all_active")
     effective_date: date | None = None
     confirm_change: bool = False
+    # Stale-preview guards (required when items or remove_item_ids change).
+    expected_version: int | None = None
+    # Farm-default catalogue id at preview time; null means no current assignment.
+    expected_assignment_catalogue_id: UUID | None = None
+    expected_override_flock_count: int | None = None
+
+
+class CataloguePreviewUpdateIn(BaseModel):
+    """Proposed catalogue item edit for impact preview (read-only)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    items: list[CatalogueItemIn] | None = None
+    remove_item_ids: list[UUID] = Field(default_factory=list)
+    apply_scope: str = Field(default="new_flocks", description="new_flocks | all_active")
+    effective_date: date | None = None
+
+
+class CataloguePreviewUpdateOut(BaseModel):
+    catalogue_id: UUID
+    catalogue_name: str
+    catalogue_version: int
+    requires_veterinary_review: bool
+    apply_scope: str
+    effective_date: date
+    is_farm_default: bool
+    expected_assignment_catalogue_id: UUID | None
+    expected_override_flock_count: int
+    inheriting_flock_count_if_default: int
+    items_added: list[str] = Field(default_factory=list)
+    items_updated: list[UUID] = Field(default_factory=list)
+    items_removed: list[UUID] = Field(default_factory=list)
+    rule_changes: list[UUID] = Field(default_factory=list)
+    open_doses_eligible_for_change: int
+    completed_event_count: int
+    flocks_affected_new_flocks: int = 0
+    flocks_affected_all_active: int = 0
+    warning: str
+    all_active_gated: bool = True
 
 
 class CatalogueCloneIn(BaseModel):

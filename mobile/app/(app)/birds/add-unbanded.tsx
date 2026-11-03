@@ -18,6 +18,9 @@ import { validateBirdCount } from "../../../src/features/birds/groupOnboardingHe
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 function newIdempotencyKey(): string {
   return `ub-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -72,6 +75,7 @@ export default function AddUnbandedScreen() {
       void qc.invalidateQueries({ queryKey: ["shed-birds", shedId] });
       void qc.invalidateQueries({ queryKey: ["flocks"] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      toast.success("Birds added");
       router.replace(`/(app)/sheds/${shedId}/birds`);
     } catch (e: unknown) {
       setError(describeApiError(e, "add unbanded birds"));
@@ -160,9 +164,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 22, fontWeight: "800", color: birdUi.text, letterSpacing: -0.3 },
-  sub: { fontSize: 13, color: birdUi.muted, marginTop: 2 },
-  q: { fontSize: 15, fontWeight: "700", color: birdUi.text, marginTop: 8 },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text, letterSpacing: -0.3 },
+  sub: { fontSize: typography.secondary.fontSize, color: birdUi.muted, marginTop: 2 },
+  q: { fontSize: typography.body.fontSize, fontWeight: "700", color: birdUi.text, marginTop: 8 },
   countRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   countInput: {
     flex: 1,
@@ -173,11 +177,11 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     backgroundColor: birdUi.white,
     color: birdUi.text,
-    fontSize: 22,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "800",
     minHeight: 56,
   },
-  suffix: { fontSize: 16, fontWeight: "700", color: birdUi.muted },
-  hint: { fontSize: 13, color: birdUi.muted, lineHeight: 18 },
+  suffix: { fontSize: typography.body.fontSize, fontWeight: "700", color: birdUi.muted },
+  hint: { fontSize: typography.secondary.fontSize, color: birdUi.muted, lineHeight: 18 },
   error: { color: birdUi.error, fontWeight: "600" },
 });

@@ -1,23 +1,45 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useRef, useState, type ReactNode } from "react";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { getBirdProfile } from "../../../src/api/birds";
+import {
+  getBirdProfile,
+  type BirdParentage,
+  type BirdProfileLifecycle,
+  type BirdProfileVaccinationEvent,
+} from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
 import { recordLifecycle } from "../../../src/api/flocks";
+import {
+  SaleActionSheet,
+  type SaleBandedPayload,
+} from "../../../src/components/birds/SaleActionSheet";
+import { AppDialog } from "../../../src/components/ui/AppDialog";
 import { Button } from "../../../src/components/ui/Button";
 import { DataQualityBanner } from "../../../src/components/ui/DataQualityBanner";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
-import { todayIsoDate } from "../../../src/components/ui/selectUtils";
+import { formatDisplayDate, todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
-import { formatLifecycleLabel } from "../../../src/features/birds/birdListHelpers";
+import {
+  formatLifecycleLabel,
+  formatRelativeAgeLabel,
+  formatSexLabel,
+} from "../../../src/features/birds/birdListHelpers";
+import {
+  downloadBirdReportPdf,
+  shareBirdReport,
+} from "../../../src/features/birds/birdReportDownload";
 import { newLifecycleIdempotencyKey } from "../../../src/features/birds/birdSelectionHelpers";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { birdIcons, shedHeaderArt } from "../../../src/theme/media";
+import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 export default function BirdProfileScreen() {
   const { id, fromShedId } = useLocalSearchParams<{ id: string; fromShedId?: string }>();
@@ -28,7 +50,17 @@ export default function BirdProfileScreen() {
   const canLifecycle = hasPermission(user, ownerAccountId, "lifecycle.record");
   const [lifeBusy, setLifeBusy] = useState(false);
   const [lifeMsg, setLifeMsg] = useState<string | null>(null);
+  const [mortalityOpen, setMortalityOpen] = useState(false);
+  const [salePayload, setSalePayload] = useState<SaleBandedPayload | null>(null);
+  const [vaxExpanded, setVaxExpanded] = useState(false);
+  const [lifeExpanded, setLifeExpanded] = useState(false);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportDialog, setReportDialog] = useState<{
+    uri: string;
+    filename: string;
+  } | null>(null);
   const lifeLock = useRef(false);
+  const reportLock = useRef(false);
   const lifeIdemKey = useRef<string | null>(null);
 
   const profile = useQuery({
@@ -54,50 +86,81 @@ export default function BirdProfileScreen() {
     void qc.invalidateQueries({ queryKey: ["flock", flockId] });
     void qc.invalidateQueries({ queryKey: ["flocks"] });
     void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+    void qc.invalidateQueries({ queryKey: ["sold-birds"] });
   };
 
   const onMortality = () => {
     if (!id || !profile.data || lifeLock.current || !profile.data.is_active) return;
-    const band = profile.data.band_id ?? profile.data.display_code ?? id.slice(0, 8);
-    Alert.alert(
-      "Record mortality?",
-      `Bird ${band}\n\nThis marks the bird as dead and removes it from the live population. History is preserved.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Record mortality",
-          style: "destructive",
-          onPress: async () => {
-            if (lifeLock.current) return;
-            lifeLock.current = true;
-            setLifeBusy(true);
-            setLifeMsg(null);
-            if (!lifeIdemKey.current) {
-              lifeIdemKey.current = newLifecycleIdempotencyKey(`mortality-${id}`);
-            }
-            try {
-              await recordLifecycle({
-                event_type: "mortality",
-                effective_date: todayIsoDate(),
-                bird_id: id,
-                quantity: 1,
-                reason: "Recorded from bird profile (mortality)",
-                idempotency_key: lifeIdemKey.current,
-              });
-              invalidateRelated(profile.data.shed_id, profile.data.flock_id);
-              setLifeMsg("Mortality recorded.");
-              lifeIdemKey.current = null;
-              await profile.refetch();
-            } catch (e: unknown) {
-              setLifeMsg(describeApiError(e, "record mortality"));
-            } finally {
-              setLifeBusy(false);
-              lifeLock.current = false;
-            }
-          },
-        },
-      ],
-    );
+    setMortalityOpen(true);
+  };
+
+  const confirmMortality = async () => {
+    if (!id || !profile.data || lifeLock.current) return;
+    lifeLock.current = true;
+    setLifeBusy(true);
+    setLifeMsg(null);
+    if (!lifeIdemKey.current) {
+      lifeIdemKey.current = newLifecycleIdempotencyKey(`mortality-${id}`);
+    }
+    try {
+      await recordLifecycle({
+        event_type: "mortality",
+        effective_date: todayIsoDate(),
+        bird_id: id,
+        quantity: 1,
+        reason: "Recorded from bird profile (mortality)",
+        idempotency_key: lifeIdemKey.current,
+      });
+      invalidateRelated(profile.data.shed_id, profile.data.flock_id);
+      setMortalityOpen(false);
+      lifeIdemKey.current = null;
+      toast.success("Mortality recorded");
+      await profile.refetch();
+    } catch (e: unknown) {
+      setMortalityOpen(false);
+      setLifeMsg(describeApiError(e, "record mortality"));
+    } finally {
+      setLifeBusy(false);
+      lifeLock.current = false;
+    }
+  };
+
+  const onSell = () => {
+    if (!id || !profile.data || !profile.data.is_active) return;
+    const label = profile.data.band_id ?? profile.data.display_code ?? id.slice(0, 8);
+    setSalePayload({ mode: "banded", birdIds: [id], labels: [label] });
+  };
+
+  const openEdit = (section: "details" | "parentage" | "band") => {
+    if (!profile.data) return;
+    router.push({
+      pathname: "/(app)/birds/edit/[id]",
+      params: {
+        id: profile.data.id,
+        fromShedId: fromShedId ?? profile.data.shed_id,
+        section,
+      },
+    });
+  };
+
+  const onDownloadReport = async () => {
+    if (!id || !profile.data || reportLock.current) return;
+    reportLock.current = true;
+    setReportBusy(true);
+    try {
+      const result = await downloadBirdReportPdf({
+        birdId: id,
+        bandOrCode: profile.data.band_id ?? profile.data.display_code,
+      });
+      setReportDialog({ uri: result.uri, filename: result.filename });
+      toast.success("Report downloaded");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : describeApiError(e, "download bird report");
+      toast.error(msg);
+    } finally {
+      setReportBusy(false);
+      reportLock.current = false;
+    }
   };
 
   if (!canView) {
@@ -128,81 +191,176 @@ export default function BirdProfileScreen() {
 
   const p = profile.data;
   const title = p.band_id ?? p.display_code ?? p.id.slice(0, 8);
-  const ageLabel =
+  const hatchShort =
     p.hatch_date != null
-      ? `Hatch ${p.hatch_date}`
+      ? formatDisplayDate(p.hatch_date)
+      : p.estimated_age_days != null
+        ? "Estimated"
+        : p.dob_confidence === "unknown"
+          ? "Unknown"
+          : formatLifecycleLabel(p.dob_confidence);
+  const ageShort =
+    p.hatch_date != null || p.estimated_age_days != null
+      ? formatRelativeAgeLabel({
+          hatch_date: p.hatch_date,
+          estimated_age_days: p.estimated_age_days,
+        })
+      : null;
+  const hatchAgeDetail =
+    p.hatch_date != null
+      ? `${formatDisplayDate(p.hatch_date)} · ${formatRelativeAgeLabel({
+          hatch_date: p.hatch_date,
+          estimated_age_days: p.estimated_age_days,
+        })}`
       : p.estimated_age_days != null
         ? `~ ${p.estimated_age_days} days`
         : p.dob_confidence === "unknown"
           ? "Unknown"
-          : p.dob_confidence;
-  const addedOn = p.created_at ? new Date(p.created_at).toLocaleDateString() : "—";
-  const parentLabel = (ref: { band_id: string | null; display_code: string | null; id: string } | null) =>
-    ref ? ref.band_id ?? ref.display_code ?? ref.id.slice(0, 8) : "—";
+          : formatLifecycleLabel(p.dob_confidence);
+  const addedOn = p.created_at ? formatDisplayDate(p.created_at.slice(0, 10)) : "—";
+  const shedName = p.shed_name?.trim() || "—";
+  const notes = p.notes?.trim() || "";
+  const sexLabel = formatSexLabel(p.sex);
+  const breedLabel = p.breed?.trim() || "—";
+
+  const vaccinations = [...(p.individual_vaccinations ?? [])].sort((a, b) =>
+    a.administration_date < b.administration_date ? 1 : -1,
+  );
+  const lifecycle = [...(p.lifecycle_events ?? [])].sort((a, b) =>
+    a.effective_date < b.effective_date ? 1 : -1,
+  );
+  const visibleVax = vaxExpanded ? vaccinations : vaccinations.slice(0, 1);
+  const visibleLife = lifeExpanded ? lifecycle : lifecycle.slice(0, 1);
+
+  const statusKey = (p.lifecycle_status || "").toLowerCase();
+  const statusTone =
+    statusKey === "active" ? "active" : statusKey === "dead" ? "dead" : "inactive";
+
+  const hasParentage =
+    hasParentInfo(p.sire_parentage, p.sire) || hasParentInfo(p.dam_parentage, p.dam);
 
   return (
-    <Screen scroll edges={["left", "right", "bottom"]}>
-      <Pressable onPress={() => safeBack(backTarget)} style={styles.backBtn} accessibilityLabel="Back">
-        <Ionicons name="arrow-back" size={22} color={birdUi.text} />
-      </Pressable>
-
-      <View style={styles.hero}>
-        <View style={styles.heroIcon}>
-          <Ionicons name="egg-outline" size={28} color={birdUi.primary} />
+    <Screen
+      scroll
+      edges={["left", "right", "bottom"]}
+      style={{ backgroundColor: birdUi.bg, gap: 12, paddingBottom: 28 }}
+    >
+      <View style={styles.topBar}>
+        <Pressable onPress={() => safeBack(backTarget)} style={styles.backBtn} accessibilityLabel="Back">
+          <Ionicons name="arrow-back" size={22} color={birdUi.text} />
+        </Pressable>
+        <View style={styles.topTitleBlock}>
+          <Text style={styles.screenTitle}>Bird Profile</Text>
+          <Text style={styles.screenSub}>Details, actions, and history</Text>
         </View>
-        <Text style={styles.band}>{title}</Text>
-        <View style={styles.statusBadge}>
-          <Text style={styles.statusText}>{formatLifecycleLabel(p.lifecycle_status)}</Text>
+        <Pressable
+          onPress={() => void onDownloadReport()}
+          disabled={reportBusy}
+          style={[styles.downloadIconBtn, reportBusy && { opacity: 0.6 }]}
+          accessibilityRole="button"
+          accessibilityLabel="Download report"
+        >
+          <Ionicons name="download-outline" size={20} color={birdUi.primary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.summaryCard}>
+        <Image source={shedHeaderArt} style={styles.summaryArt} resizeMode="cover" />
+        <View style={styles.summaryBody}>
+          <View style={styles.summaryTop}>
+            <View style={styles.summaryPhoto}>
+              <Image source={birdIcons.bird} style={styles.summaryPhotoImg} resizeMode="cover" />
+            </View>
+            <View style={styles.summaryIdentity}>
+              <Text style={styles.summaryBand} selectable>
+                {title}
+              </Text>
+              <View
+                style={[
+                  styles.statusBadge,
+                  statusTone === "active" && styles.statusActive,
+                  statusTone === "dead" && styles.statusDead,
+                  statusTone === "inactive" && styles.statusInactive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusText,
+                    statusTone === "active" && { color: birdUi.successText },
+                    statusTone === "dead" && { color: birdUi.error },
+                    statusTone === "inactive" && { color: birdUi.orange },
+                  ]}
+                >
+                  {formatLifecycleLabel(p.lifecycle_status)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.summaryMetaRow}>
+            <SummaryMeta
+              icon="calendar-outline"
+              label="Hatched"
+              value={hatchShort}
+              sub={ageShort ? `${ageShort} old` : undefined}
+            />
+            <SummaryMeta
+              icon={sexLabel === "Female" ? "female" : "male"}
+              iconImage={sexLabel === "Female" ? birdIcons.female : birdIcons.male}
+              label="Sex"
+              value={sexLabel}
+              sub={breedLabel !== "—" ? breedLabel : undefined}
+            />
+            <SummaryMeta icon="home-outline" label="Shed" value={shedName} />
+          </View>
         </View>
       </View>
 
       {!p.is_active ? (
-        <DataQualityBanner message={`This bird is not active (${formatLifecycleLabel(p.lifecycle_status)}).`} />
+        <DataQualityBanner
+          message={
+            statusKey === "sold"
+              ? "This bird is not active (Sold). Historical vaccinations are preserved; new vaccinations cannot be recorded."
+              : `This bird is not active (${formatLifecycleLabel(p.lifecycle_status)}).`
+          }
+        />
       ) : null}
 
-      <View style={styles.card}>
-        <Row label="Shed" value={`${p.shed_name ?? "—"} (${p.shed_code ?? "—"})`} />
-        <Row label="Hatch / age" value={ageLabel} />
-        <Row label="Breed" value={p.breed?.trim() || "—"} />
-        <Row label="Sex" value={p.sex?.trim() || "—"} />
-        <Row label="Added on" value={addedOn} />
-        <Row label="Notes" value={p.notes?.trim() || "—"} last />
-      </View>
-
-      <Text style={styles.section}>Parents</Text>
-      <View style={styles.card}>
-        <Row label="Sire" value={parentLabel(p.sire)} />
-        <Row label="Dam" value={parentLabel(p.dam)} last />
-      </View>
-
       {p.is_active ? (
-        <View style={styles.actionsCard}>
+        <View style={styles.actionsGrid}>
           {canUpdate ? (
-            <ActionRow
+            <ActionTile
               icon="pricetag-outline"
               color={birdUi.primary}
+              bg={birdUi.paleMint}
               label="Change band number"
-              onPress={() =>
-                router.push({
-                  pathname: "/(app)/birds/edit/[id]",
-                  params: { id: p.id, fromShedId: fromShedId ?? p.shed_id },
-                })
-              }
+              onPress={() => openEdit("band")}
             />
           ) : null}
           {canLifecycle ? (
-            <ActionRow
+            <ActionTile
+              icon="pricetag"
+              color={birdUi.orange}
+              bg={birdUi.orangePale}
+              label="Sell bird"
+              onPress={onSell}
+            />
+          ) : null}
+          {canLifecycle ? (
+            <ActionTile
               icon="heart-dislike-outline"
               color={birdUi.error}
+              bg={birdUi.errorPale}
               label="Record mortality"
               onPress={onMortality}
               disabled={lifeBusy}
             />
           ) : null}
           {canLifecycle ? (
-            <ActionRow
+            <ActionTile
               icon="swap-horizontal-outline"
               color={birdUi.blue}
+              bg={birdUi.bluePale}
               label="Transfer to another shed"
               onPress={() =>
                 router.push({
@@ -210,33 +368,334 @@ export default function BirdProfileScreen() {
                   params: { shedId: p.shed_id, birdIds: p.id },
                 })
               }
-              last
             />
           ) : null}
         </View>
       ) : null}
 
-      {(p.lifecycle_events ?? []).length > 0 ? (
-        <>
-          <Text style={styles.section}>Lifecycle history</Text>
-          {(p.lifecycle_events ?? []).map((ev) => (
-            <View key={ev.id} style={styles.lifeCard}>
-              <Text style={styles.lifeTitle}>{formatLifecycleLabel(ev.event_type)}</Text>
-              <Text style={styles.meta}>
-                {ev.effective_date}
-                {ev.reason ? ` · ${ev.reason}` : ""}
+      <SectionCard
+        icon="paw-outline"
+        title="Bird details"
+        action={
+          canUpdate ? (
+            <HeaderAction label="Edit" onPress={() => openEdit("details")} />
+          ) : undefined
+        }
+      >
+        <DetailRow label="Band number" value={p.band_id?.trim() || "—"} />
+        <DetailRow label="Bird name / code" value={p.display_code?.trim() || "—"} />
+        <DetailRow label="Shed" value={shedName} />
+        <DetailRow label="Hatch date / age" value={hatchAgeDetail} />
+        <DetailRow label="Breed" value={breedLabel} />
+        <DetailRow label="Sex" value={sexLabel} />
+        <DetailRow label="Added on" value={addedOn} last={!notes} />
+        {notes ? <DetailRow label="Notes" value={notes} last /> : null}
+      </SectionCard>
+
+      <SectionCard
+        icon="people-outline"
+        title="Parentage"
+        action={
+          canUpdate ? (
+            <HeaderAction
+              label={hasParentage ? "Edit" : "Add"}
+              onPress={() => openEdit("parentage")}
+            />
+          ) : undefined
+        }
+      >
+        {hasParentage ? (
+          <View style={styles.parentRow}>
+            <ParentCard
+              role="Sire (Father)"
+              genderIcon="male"
+              parentage={p.sire_parentage}
+              legacy={p.sire}
+              onOpenLinked={(pid) =>
+                router.push({
+                  pathname: "/(app)/birds/[id]",
+                  params: { id: pid, fromShedId: p.shed_id },
+                })
+              }
+            />
+            <ParentCard
+              role="Dam (Mother)"
+              genderIcon="female"
+              parentage={p.dam_parentage}
+              legacy={p.dam}
+              onOpenLinked={(pid) =>
+                router.push({
+                  pathname: "/(app)/birds/[id]",
+                  params: { id: pid, fromShedId: p.shed_id },
+                })
+              }
+            />
+          </View>
+        ) : (
+          <Pressable
+            style={styles.parentEmpty}
+            onPress={canUpdate ? () => openEdit("parentage") : undefined}
+            disabled={!canUpdate}
+            accessibilityRole="button"
+            accessibilityLabel="Add parentage"
+          >
+            <Ionicons name="git-branch-outline" size={22} color={birdUi.primary} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.parentEmptyTitle}>No parentage recorded</Text>
+              <Text style={styles.parentEmptySub}>
+                {canUpdate ? "Add sire and dam details" : "Parent details are not available"}
               </Text>
             </View>
-          ))}
-        </>
+            {canUpdate ? <Ionicons name="add-circle-outline" size={22} color={birdUi.primary} /> : null}
+          </Pressable>
+        )}
+      </SectionCard>
+
+      <SectionCard
+        icon="medical-outline"
+        title="Vaccination history"
+        action={
+          vaccinations.length > 1 ? (
+            <HeaderAction
+              label={vaxExpanded ? "Show less" : "View all"}
+              onPress={() => setVaxExpanded((v) => !v)}
+            />
+          ) : undefined
+        }
+      >
+        {vaccinations.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Ionicons name="document-text-outline" size={24} color={birdUi.primary} />
+            <Text style={styles.emptyTitle}>No vaccination records</Text>
+            <Text style={styles.emptySub}>Recorded vaccines will appear here.</Text>
+          </View>
+        ) : (
+          visibleVax.map((ev, idx) => (
+            <VaccinationCard
+              key={ev.id}
+              event={ev}
+              last={idx === visibleVax.length - 1}
+            />
+          ))
+        )}
+      </SectionCard>
+
+      <SectionCard
+        icon="time-outline"
+        title="Lifecycle history"
+        action={
+          lifecycle.length > 1 ? (
+            <HeaderAction
+              label={lifeExpanded ? "Show less" : "View all"}
+              onPress={() => setLifeExpanded((v) => !v)}
+            />
+          ) : undefined
+        }
+      >
+        {lifecycle.length === 0 ? (
+          <Text style={styles.emptySub}>No lifecycle events recorded.</Text>
+        ) : (
+          visibleLife.map((ev, idx) => (
+            <LifecycleCard key={ev.id} event={ev} last={idx === visibleLife.length - 1} />
+          ))
+        )}
+      </SectionCard>
+
+      {p.lifecycle_status === "sold" && p.sale ? (
+        <SectionCard
+          icon="pricetag-outline"
+          iconColor={birdUi.orange}
+          iconBg={birdUi.orangePale}
+          title="Sale details"
+        >
+          <View style={styles.saleGrid}>
+            <SaleCell
+              icon="calendar-outline"
+              label="Sold on"
+              value={formatDisplayDate(p.sale.sold_on)}
+            />
+            <SaleCell
+              icon="person-outline"
+              label="Buyer"
+              value={p.sale.buyer_name?.trim() || "—"}
+            />
+            <SaleCell
+              icon="call-outline"
+              label="Mobile"
+              value={p.sale.buyer_mobile?.trim() || "—"}
+            />
+          </View>
+        </SectionCard>
       ) : null}
 
-      {lifeMsg ? <Text style={styles.meta}>{lifeMsg}</Text> : null}
+      {lifeMsg ? <Text style={styles.error}>{lifeMsg}</Text> : null}
+
+      <SaleActionSheet
+        visible={!!salePayload}
+        payload={salePayload}
+        onClose={() => setSalePayload(null)}
+        onSuccess={() => {
+          setSalePayload(null);
+          invalidateRelated(p.shed_id, p.flock_id);
+          void profile.refetch();
+        }}
+      />
+
+      <AppDialog
+        visible={mortalityOpen}
+        title="Record mortality?"
+        description={
+          profile.data
+            ? `Bird ${profile.data.band_id ?? profile.data.display_code ?? id?.slice(0, 8)}\n\nThis marks the bird as dead and removes it from the live population. History is preserved.`
+            : undefined
+        }
+        tone="danger"
+        dismissible={!lifeBusy}
+        onDismiss={() => {
+          if (!lifeBusy) setMortalityOpen(false);
+        }}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          disabled: lifeBusy,
+          onPress: () => setMortalityOpen(false),
+        }}
+        primary={{
+          label: "Record mortality",
+          variant: "destructive",
+          loading: lifeBusy,
+          onPress: () => void confirmMortality(),
+        }}
+      />
+
+      <AppDialog
+        visible={!!reportDialog}
+        title="Report ready"
+        description={
+          reportDialog
+            ? `${reportDialog.filename}\n\nThe PDF was saved on this device. You can open or share it now.`
+            : undefined
+        }
+        tone="success"
+        icon="document-text-outline"
+        dismissible
+        onDismiss={() => setReportDialog(null)}
+        secondary={{
+          label: "Close",
+          variant: "secondary",
+          onPress: () => setReportDialog(null),
+        }}
+        primary={{
+          label: "Share / Open",
+          variant: "primary",
+          onPress: () => {
+            if (!reportDialog) return;
+            void shareBirdReport(reportDialog.uri, reportDialog.filename)
+              .then(() => setReportDialog(null))
+              .catch((e: unknown) => {
+                toast.error(e instanceof Error ? e.message : "Could not share the report.");
+              });
+          },
+        }}
+      />
     </Screen>
   );
 }
 
-function Row({ label, value, last }: { label: string; value: string; last?: boolean }) {
+function hasParentInfo(
+  parentage: BirdParentage | undefined,
+  legacy: { id: string; band_id: string | null; display_code: string | null } | null,
+): boolean {
+  if (legacy) return true;
+  if (!parentage) return false;
+  if (parentage.source === "unknown") return false;
+  return !!(
+    parentage.bird_id ||
+    parentage.display_name?.trim() ||
+    parentage.band_id?.trim() ||
+    (parentage.label && parentage.label.toLowerCase() !== "unknown")
+  );
+}
+
+function SectionCard({
+  icon,
+  title,
+  children,
+  action,
+  iconColor = birdUi.primary,
+  iconBg = birdUi.iconCircle,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  children: ReactNode;
+  action?: ReactNode;
+  iconColor?: string;
+  iconBg?: string;
+}) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={[styles.cardIcon, { backgroundColor: iconBg }]}>
+          <Ionicons name={icon} size={16} color={iconColor} />
+        </View>
+        <Text style={styles.cardTitle}>{title}</Text>
+        {action}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+function HeaderAction({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={styles.headerAction}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <Text style={styles.headerActionText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function SummaryMeta({
+  icon,
+  iconImage,
+  label,
+  value,
+  sub,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconImage?: number;
+  label: string;
+  value: string;
+  sub?: string;
+}) {
+  return (
+    <View style={styles.summaryMeta}>
+      <View style={styles.summaryMetaIcon}>
+        {iconImage != null ? (
+          <Image source={iconImage} style={styles.summaryMetaIconImg} resizeMode="cover" />
+        ) : (
+          <Ionicons name={icon} size={14} color={birdUi.primary} />
+        )}
+      </View>
+      <Text style={styles.summaryMetaLabel}>{label}</Text>
+      <Text style={styles.summaryMetaValue} numberOfLines={1}>
+        {value}
+      </Text>
+      {sub ? (
+        <Text style={styles.summaryMetaSub} numberOfLines={1}>
+          {sub}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+function DetailRow({ label, value, last }: { label: string; value: string; last?: boolean }) {
   return (
     <View style={[styles.row, !last && styles.rowBorder]}>
       <Text style={styles.rowLabel}>{label}</Text>
@@ -247,38 +706,213 @@ function Row({ label, value, last }: { label: string; value: string; last?: bool
   );
 }
 
-function ActionRow({
+function SaleCell({
+  icon,
+  label,
+  value,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.saleCell}>
+      <Ionicons name={icon} size={14} color={birdUi.orange} />
+      <Text style={styles.saleLabel}>{label}</Text>
+      <Text style={styles.saleValue} selectable>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function ParentCard({
+  role,
+  genderIcon,
+  parentage,
+  legacy,
+  onOpenLinked,
+}: {
+  role: string;
+  genderIcon: "male" | "female";
+  parentage?: BirdParentage;
+  legacy: { id: string; band_id: string | null; display_code: string | null } | null;
+  onOpenLinked: (id: string) => void;
+}) {
+  const source = parentage?.source ?? (legacy ? "linked" : "unknown");
+  const linkedId = parentage?.bird_id ?? legacy?.id ?? null;
+  const name = parentage?.display_name?.trim() || null;
+  const wingBand =
+    parentage?.band_id?.trim() ||
+    legacy?.band_id?.trim() ||
+    legacy?.display_code?.trim() ||
+    null;
+  const title =
+    name ||
+    wingBand ||
+    parentage?.label ||
+    (legacy ? legacy.band_id ?? legacy.display_code ?? legacy.id.slice(0, 8) : "Unknown");
+  const accent = genderIcon === "male" ? birdUi.blue : "#DB2777";
+
+  const body = (
+    <>
+      <View style={styles.parentCardTop}>
+        <View style={[styles.parentAvatar, { borderColor: `${accent}44` }]}>
+          <Image
+            source={genderIcon === "male" ? birdIcons.male : birdIcons.female}
+            style={styles.parentAvatarImg}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <View style={styles.parentRoleRow}>
+            <Image
+              source={genderIcon === "male" ? birdIcons.male : birdIcons.female}
+              style={styles.parentRoleIcon}
+              resizeMode="cover"
+            />
+            <Text style={styles.parentRole}>{role}</Text>
+          </View>
+          <Text
+            style={[styles.parentValue, source === "linked" && linkedId ? { color: birdUi.primary } : null]}
+            numberOfLines={2}
+            selectable={source !== "linked"}
+          >
+            {title}
+          </Text>
+          {name && wingBand ? (
+            <Text style={styles.parentDetails}>Wing band {wingBand}</Text>
+          ) : null}
+        </View>
+      </View>
+    </>
+  );
+
+  if (source === "linked" && linkedId) {
+    return (
+      <Pressable
+        style={styles.parentCard}
+        onPress={() => onOpenLinked(linkedId)}
+        accessibilityRole="link"
+      >
+        {body}
+      </Pressable>
+    );
+  }
+
+  return <View style={styles.parentCard}>{body}</View>;
+}
+
+function VaccinationCard({
+  event,
+  last,
+}: {
+  event: BirdProfileVaccinationEvent;
+  last?: boolean;
+}) {
+  const meta = [
+    event.manufacturer_or_brand ? `Brand ${event.manufacturer_or_brand}` : null,
+    event.lot_number ? `Lot ${event.lot_number}` : null,
+    event.product_expiry ? `Exp ${formatDisplayDate(event.product_expiry)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const isCohort = event.coverage_scope === "cohort";
+
+  return (
+    <View style={[styles.vaxCard, !last && styles.rowBorder]}>
+      <View style={styles.vaxTitleRow}>
+        <Text style={styles.vaxName}>{event.vaccine_name?.trim() || "Vaccine"}</Text>
+        <Text style={styles.vaxDate}>{formatDisplayDate(event.administration_date)}</Text>
+      </View>
+      {isCohort ? (
+        <Text style={styles.vaxCohortBadge}>
+          Hatch-cohort coverage · {event.birds_covered} bird{event.birds_covered === 1 ? "" : "s"}
+        </Text>
+      ) : null}
+      {meta ? <Text style={styles.vaxMeta}>{meta}</Text> : null}
+    </View>
+  );
+}
+
+function LifecycleCard({
+  event,
+  last,
+}: {
+  event: BirdProfileLifecycle;
+  last?: boolean;
+}) {
+  const isSale = event.event_type === "sale";
+  const detail =
+    event.reason?.trim() ||
+    (isSale
+      ? [
+          event.buyer_name ? `Buyer ${event.buyer_name}` : null,
+          event.buyer_mobile ? `Mobile ${event.buyer_mobile}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "Bird was sold"
+      : "—");
+
+  return (
+    <View style={[styles.lifeRow, !last && styles.rowBorder, isSale && styles.lifeSale]}>
+      <View style={[styles.lifeDot, isSale && { backgroundColor: birdUi.orangePale }]}>
+        <Ionicons
+          name={isSale ? "pricetag-outline" : "ellipse"}
+          size={isSale ? 14 : 8}
+          color={isSale ? birdUi.orange : birdUi.primary}
+        />
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.lifeTitle}>{formatLifecycleLabel(event.event_type)}</Text>
+        <Text style={styles.lifeDetail}>{detail}</Text>
+      </View>
+      <Text style={styles.lifeDate}>{formatDisplayDate(event.effective_date)}</Text>
+    </View>
+  );
+}
+
+function ActionTile({
   icon,
   color,
+  bg,
   label,
   onPress,
   disabled,
-  last,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
+  bg: string;
   label: string;
   onPress: () => void;
   disabled?: boolean;
-  last?: boolean;
 }) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={[styles.actionRow, !last && styles.rowBorder, disabled && { opacity: 0.5 }]}
+      style={[styles.actionTile, disabled && { opacity: 0.5 }]}
       accessibilityRole="button"
+      accessibilityLabel={label}
     >
-      <View style={[styles.actionIcon, { backgroundColor: `${color}18` }]}>
+      <View style={[styles.actionTileIcon, { backgroundColor: bg }]}>
         <Ionicons name={icon} size={20} color={color} />
       </View>
-      <Text style={styles.actionLabel}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={birdUi.muted} />
+      <Text style={styles.actionTileLabel} numberOfLines={2}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 2,
+  },
   backBtn: {
     width: 40,
     height: 40,
@@ -286,79 +920,287 @@ const styles = StyleSheet.create({
     backgroundColor: birdUi.paleMint,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 8,
   },
-  hero: { alignItems: "center", gap: 8, marginBottom: 16 },
-  heroIcon: {
+  topTitleBlock: { flex: 1, gap: 1 },
+  screenTitle: {
+    fontSize: typography.screenTitle.fontSize,
+    fontWeight: "800",
+    color: birdUi.deepGreen,
+  },
+  screenSub: {
+    fontSize: typography.caption.fontSize,
+    color: birdUi.muted,
+    fontWeight: "500",
+  },
+  downloadIconBtn: {
+    minWidth: 48,
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: birdUi.primary,
+    backgroundColor: birdUi.white,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  summaryCard: {
+    borderRadius: birdUi.cardRadius,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: birdUi.border,
+    backgroundColor: birdUi.white,
+  },
+  summaryArt: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.22,
+  },
+  summaryBody: {
+    padding: 14,
+    gap: 14,
+  },
+  summaryTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  summaryPhoto: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: birdUi.iconCircle,
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: birdUi.white,
+    borderWidth: 2,
+    borderColor: birdUi.white,
+    overflow: "hidden",
   },
-  band: { fontSize: 24, fontWeight: "800", color: birdUi.text },
+  summaryPhotoImg: { width: "100%", height: "100%" },
+  summaryIdentity: { flex: 1, gap: 8 },
+  summaryBand: { fontSize: typography.bandInput.fontSize, fontWeight: "800", color: birdUi.text },
   statusBadge: {
-    backgroundColor: birdUi.successBg,
+    alignSelf: "flex-start",
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  statusText: { fontSize: 13, fontWeight: "700", color: birdUi.successText },
+  statusActive: { backgroundColor: birdUi.successBg },
+  statusDead: { backgroundColor: birdUi.errorPale },
+  statusInactive: { backgroundColor: birdUi.orangePale },
+  statusText: { fontSize: typography.overline.fontSize, fontWeight: "700" },
+  summaryMetaRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  summaryMeta: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.88)",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    gap: 2,
+    borderWidth: 1,
+    borderColor: birdUi.border,
+  },
+  summaryMetaIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: birdUi.iconCircle,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 2,
+    overflow: "hidden",
+  },
+  summaryMetaIconImg: { width: "100%", height: "100%" },
+  summaryMetaLabel: { fontSize: typography.overline.fontSize, color: birdUi.muted, fontWeight: "600" },
+  summaryMetaValue: { fontSize: typography.secondary.fontSize, fontWeight: "800", color: birdUi.text },
+  summaryMetaSub: { fontSize: typography.overline.fontSize, color: birdUi.muted, fontWeight: "600" },
+  actionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  actionTile: {
+    width: "48.5%",
+    flexGrow: 1,
+    minWidth: "46%",
+    minHeight: 72,
+    backgroundColor: birdUi.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: birdUi.border,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  actionTileIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  actionTileLabel: {
+    flex: 1,
+    fontSize: typography.label.fontSize,
+    fontWeight: "700",
+    color: birdUi.text,
+    lineHeight: 18,
+  },
   card: {
     backgroundColor: birdUi.white,
     borderRadius: birdUi.cardRadius,
     borderWidth: 1,
     borderColor: birdUi.border,
     paddingHorizontal: 14,
-    marginBottom: 12,
+    paddingBottom: 8,
+    paddingTop: 12,
   },
-  actionsCard: {
-    backgroundColor: birdUi.white,
-    borderRadius: birdUi.cardRadius,
-    borderWidth: 1,
-    borderColor: birdUi.border,
-    paddingHorizontal: 8,
-    marginBottom: 12,
-  },
-  section: {
-    marginTop: 8,
-    marginBottom: 8,
-    fontSize: 13,
-    fontWeight: "800",
-    color: birdUi.muted,
-    textTransform: "uppercase",
-  },
-  lifeCard: {
-    backgroundColor: birdUi.white,
-    borderRadius: birdUi.cardRadius,
-    borderWidth: 1,
-    borderColor: birdUi.border,
-    padding: 12,
-    gap: 4,
-    marginBottom: 8,
-  },
-  lifeTitle: { fontWeight: "800", color: birdUi.text },
-  row: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 12 },
-  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: birdUi.border },
-  rowLabel: { color: birdUi.muted, fontSize: 14 },
-  rowValue: { color: birdUi.text, fontSize: 14, fontWeight: "700", flex: 1, textAlign: "right" },
-  actionRow: {
+  cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    minHeight: 56,
+    gap: 8,
+    marginBottom: 8,
   },
-  actionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  cardIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  actionLabel: { flex: 1, fontSize: 15, fontWeight: "700", color: birdUi.text },
-  meta: { color: birdUi.muted, marginTop: 8, fontSize: 13 },
+  cardTitle: { flex: 1, fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: birdUi.deepGreen },
+  headerAction: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: birdUi.paleMint,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerActionText: { fontSize: typography.secondary.fontSize, fontWeight: "800", color: birdUi.primary },
+  saleGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingBottom: 8,
+  },
+  saleCell: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    minWidth: 96,
+    backgroundColor: birdUi.orangePale,
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+  },
+  saleLabel: { fontSize: typography.label.fontSize, color: birdUi.muted, fontWeight: "600" },
+  saleValue: { fontSize: typography.secondary.fontSize, fontWeight: "800", color: birdUi.text },
+  row: { flexDirection: "row", justifyContent: "space-between", gap: 12, paddingVertical: 10 },
+  rowBorder: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: birdUi.border },
+  rowLabel: { color: birdUi.muted, fontSize: typography.label.fontSize },
+  rowValue: { color: birdUi.text, fontSize: typography.bodyStrong.fontSize, fontWeight: "700", flex: 1, textAlign: "right" },
+  parentRow: { flexDirection: "row", gap: 8, paddingBottom: 8 },
+  parentCard: {
+    flex: 1,
+    backgroundColor: birdUi.paleMint,
+    borderRadius: 12,
+    padding: 10,
+    gap: 4,
+    minHeight: 72,
+  },
+  parentCardTop: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
+  parentAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1.5,
+    backgroundColor: birdUi.white,
+  },
+  parentAvatarImg: { width: "100%", height: "100%" },
+  parentRoleRow: { flexDirection: "row", alignItems: "center", gap: 4 },
+  parentRoleIcon: { width: 14, height: 14, borderRadius: 7 },
+  parentRole: { fontSize: typography.overline.fontSize, fontWeight: "700", color: birdUi.muted },
+  parentValue: { fontSize: typography.secondary.fontSize, fontWeight: "800", color: birdUi.text },
+  parentDetails: { fontSize: typography.overline.fontSize, color: birdUi.muted, lineHeight: 15 },
+  parentEmpty: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: birdUi.paleMint,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    minHeight: 56,
+  },
+  parentEmptyTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: birdUi.text },
+  parentEmptySub: { fontSize: typography.caption.fontSize, color: birdUi.muted },
+  emptyBox: {
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: birdUi.border,
+    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    gap: 4,
+    marginBottom: 8,
+    backgroundColor: birdUi.paleMint,
+  },
+  emptyTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: birdUi.text, textAlign: "center" },
+  emptySub: {
+    fontSize: typography.caption.fontSize,
+    color: birdUi.muted,
+    textAlign: "center",
+    lineHeight: 16,
+    marginBottom: 8,
+  },
+  vaxCard: { paddingVertical: 10, gap: 4 },
+  vaxTitleRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  vaxName: { flex: 1, fontSize: typography.label.fontSize, fontWeight: "800", color: birdUi.text },
+  vaxCohortBadge: {
+    alignSelf: "flex-start",
+    fontSize: typography.overline.fontSize,
+    fontWeight: "700",
+    color: birdUi.primary,
+    backgroundColor: birdUi.successBg,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  vaxDate: { fontSize: typography.secondary.fontSize, color: birdUi.primary, fontWeight: "700" },
+  vaxMeta: { fontSize: typography.caption.fontSize, color: birdUi.muted, lineHeight: 16 },
+  lifeRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    paddingVertical: 10,
+  },
+  lifeSale: {
+    backgroundColor: birdUi.orangePale,
+    marginHorizontal: -6,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+  },
+  lifeDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: birdUi.iconCircle,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  lifeTitle: { fontWeight: "800", color: birdUi.text, fontSize: typography.sectionTitle.fontSize },
+  lifeDetail: { color: birdUi.muted, fontSize: typography.caption.fontSize, lineHeight: 16 },
+  lifeDate: { fontSize: typography.caption.fontSize, fontWeight: "700", color: birdUi.muted },
   error: { color: birdUi.error, fontWeight: "600" },
 });

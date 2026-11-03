@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Keyboard,
   Modal,
@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 import {
   clampIsoDate,
   formatDisplayDate,
@@ -43,6 +43,19 @@ export type AppDatePickerProps = {
   testID?: string;
 };
 
+/** Ignore field presses briefly after the Android system dialog closes (ghost OK tap). */
+const ANDROID_REOPEN_GUARD_MS = 500;
+
+function draftFromValue(
+  value: string | null | undefined,
+  minimumDate?: string | null,
+  maximumDate?: string | null,
+): Date {
+  const base = parseIsoDate(value ?? "") ?? new Date();
+  const iso = clampIsoDate(formatIsoDate(base), minimumDate, maximumDate);
+  return parseIsoDate(iso) ?? base;
+}
+
 /**
  * App-wide date-only picker.
  * - Field is a non-editable pressable (never focuses a TextInput / keyboard).
@@ -67,7 +80,8 @@ export function AppDatePicker({
 }: AppDatePickerProps) {
   const insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Date>(() => parseIsoDate(value ?? "") ?? new Date());
+  const [draft, setDraft] = useState<Date>(() => draftFromValue(value, minimumDate, maximumDate));
+  const suppressOpenUntil = useRef(0);
 
   const minDt = useMemo(
     () => (minimumDate ? parseIsoDate(minimumDate) ?? undefined : undefined),
@@ -78,13 +92,6 @@ export function AppDatePicker({
     [maximumDate],
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const base = parseIsoDate(value ?? "") ?? new Date();
-    const iso = clampIsoDate(formatIsoDate(base), minimumDate, maximumDate);
-    setDraft(parseIsoDate(iso) ?? base);
-  }, [open, value, minimumDate, maximumDate]);
-
   const display = value
     ? humanReadable
       ? formatDisplayDate(value)
@@ -93,7 +100,12 @@ export function AppDatePicker({
 
   const openPicker = () => {
     if (disabled) return;
+    // Android: the OK/Cancel tap that dismisses the system dialog can land on this
+    // Pressable and reopen with a stale draft (today). Guard against that ghost press.
+    if (Platform.OS === "android" && Date.now() < suppressOpenUntil.current) return;
     Keyboard.dismiss();
+    // Sync draft before mount so the native dialog never opens on "today" after a prior pick.
+    setDraft(draftFromValue(value, minimumDate, maximumDate));
     setOpen(true);
   };
 
@@ -105,8 +117,10 @@ export function AppDatePicker({
 
   const onNativeChange = (event: DateTimePickerEvent, selected?: Date) => {
     if (Platform.OS === "android") {
+      suppressOpenUntil.current = Date.now() + ANDROID_REOPEN_GUARD_MS;
       setOpen(false);
       if (event.type === "dismissed" || !selected) return;
+      setDraft(selected);
       commitIso(formatIsoDate(selected));
       return;
     }
@@ -216,9 +230,9 @@ export function AppDatePicker({
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  label: { color: colors.ink, fontSize: 14, fontWeight: "700" },
+  label: { color: colors.ink, fontSize: typography.label.fontSize, fontWeight: "700" },
   required: { color: colors.danger },
-  helper: { color: colors.inkMuted, fontSize: 12, marginTop: -2 },
+  helper: { color: colors.inkMuted, fontSize: typography.caption.fontSize, marginTop: -2 },
   field: {
     minHeight: 52,
     borderRadius: radius.md,
@@ -232,9 +246,9 @@ const styles = StyleSheet.create({
   },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { opacity: 0.55 },
-  value: { flex: 1, fontSize: 16, color: colors.ink, fontWeight: "600" },
+  value: { flex: 1, fontSize: typography.bodyStrong.fontSize, color: colors.ink, fontWeight: "600" },
   placeholder: { color: colors.inkMuted, fontWeight: "500" },
-  error: { color: colors.danger, fontSize: 13 },
+  error: { color: colors.danger, fontSize: typography.secondary.fontSize },
   scrim: {
     flex: 1,
     backgroundColor: "rgba(10,30,20,0.45)",
@@ -257,18 +271,18 @@ const styles = StyleSheet.create({
   sheetTitle: {
     flex: 1,
     textAlign: "center",
-    fontSize: 16,
+    fontSize: typography.sectionTitle.fontSize,
     fontWeight: "800",
     color: colors.ink,
     marginHorizontal: 8,
   },
-  cancelText: { color: colors.inkMuted, fontWeight: "700", fontSize: 16 },
-  confirmText: { color: colors.brand, fontWeight: "800", fontSize: 16 },
+  cancelText: { color: colors.inkMuted, fontWeight: "700", fontSize: typography.bodyStrong.fontSize },
+  confirmText: { color: colors.brand, fontWeight: "800", fontSize: typography.bodyStrong.fontSize },
   iosPicker: { alignSelf: "stretch" },
   todayBtn: {
     alignItems: "center",
     paddingVertical: 12,
     marginBottom: 4,
   },
-  todayText: { color: colors.brand, fontWeight: "700", fontSize: 15 },
+  todayText: { color: colors.brand, fontWeight: "700", fontSize: typography.bodyStrong.fontSize },
 });

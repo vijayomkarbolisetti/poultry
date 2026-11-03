@@ -6,6 +6,8 @@ import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { typography } from "../../../src/theme/tokens";
+
 
 export default function GroupCreatedScreen() {
   const params = useLocalSearchParams<{
@@ -85,16 +87,16 @@ const styles = StyleSheet.create({
   },
   confettiRow: { flexDirection: "row", gap: 8, marginTop: 12 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  title: { fontSize: 28, fontWeight: "800", color: birdUi.text, letterSpacing: -0.4 },
+  title: { fontSize: typography.display.fontSize, fontWeight: "800", color: birdUi.text, letterSpacing: -0.4 },
   body: {
-    fontSize: 16,
+    fontSize: typography.bodyStrong.fontSize,
     color: birdUi.textSecondary,
     textAlign: "center",
     lineHeight: 24,
     paddingHorizontal: 12,
   },
   meta: {
-    fontSize: 14,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "700",
     color: birdUi.primary,
     backgroundColor: birdUi.paleMint,

@@ -41,3 +41,8 @@ class LifecycleEventType(str, enum.Enum):
     band_assignment = "band_assignment"
     count_adjustment = "count_adjustment"
     onboarding = "onboarding"
+
+
+class BirdParentRole(str, enum.Enum):
+    sire = "sire"
+    dam = "dam"

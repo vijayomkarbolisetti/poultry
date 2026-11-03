@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 import type { SelectOption } from "./SelectField";
 import { filterSelectOptions } from "./selectUtils";
 
@@ -139,9 +139,9 @@ export function MultiSelectField({
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  label: { color: colors.ink, fontSize: 14, fontWeight: "700" },
+  label: { color: colors.ink, fontSize: typography.label.fontSize, fontWeight: "700" },
   required: { color: colors.danger },
-  helper: { color: colors.inkMuted, fontSize: 12, marginTop: -2 },
+  helper: { color: colors.inkMuted, fontSize: typography.caption.fontSize, marginTop: -2 },
   field: {
     minHeight: 52,
     borderRadius: radius.md,
@@ -155,9 +155,9 @@ const styles = StyleSheet.create({
   },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { opacity: 0.55 },
-  value: { flex: 1, fontSize: 16, color: colors.ink, fontWeight: "600" },
+  value: { flex: 1, fontSize: typography.bodyStrong.fontSize, color: colors.ink, fontWeight: "600" },
   placeholder: { color: colors.inkMuted, fontWeight: "500" },
-  errorText: { color: colors.danger, fontSize: 13 },
+  errorText: { color: colors.danger, fontSize: typography.secondary.fontSize },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(10,30,20,0.45)",
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
     padding: space.md,
     gap: space.sm,
   },
-  sheetTitle: { fontSize: 16, fontWeight: "800", color: colors.ink },
+  sheetTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: colors.ink },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     backgroundColor: colors.bg,
   },
-  search: { flex: 1, fontSize: 16, color: colors.ink, paddingVertical: 10 },
+  search: { flex: 1, fontSize: typography.body.fontSize, color: colors.ink, paddingVertical: 10 },
   option: {
     flexDirection: "row",
     alignItems: "center",
@@ -203,9 +203,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  checkMark: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  optionLabel: { fontSize: 15, fontWeight: "700", color: colors.ink },
-  optionHint: { fontSize: 12, color: colors.inkMuted, marginTop: 2 },
+  checkMark: { color: "#fff", fontWeight: "800", fontSize: typography.secondary.fontSize },
+  optionLabel: { fontSize: typography.body.fontSize, fontWeight: "700", color: colors.ink },
+  optionHint: { fontSize: typography.caption.fontSize, color: colors.inkMuted, marginTop: 2 },
   empty: { color: colors.inkMuted, padding: space.md },
   done: {
     alignItems: "center",

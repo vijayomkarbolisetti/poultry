@@ -17,16 +17,11 @@ import { z } from "zod";
 
 import { createFarmer, type Farmer } from "../../api/farmers";
 import { describeApiError } from "../../api/client";
+import { DEFAULT_FARMER_PERMS } from "../../features/auth/permissions";
 import { Button } from "../ui/Button";
 import { TextField } from "../ui/TextField";
-import { colors, radius, space } from "../../theme/tokens";
-
-const DEFAULT_FARMER_PERMS = [
-  "shed.view",
-  "flock.view",
-  "bird.view",
-  "report.view",
-];
+import { colors, radius, space, typography } from "../../theme/tokens";
+import { toast } from "../../ui/toast/toastStore";
 
 const schema = z.object({
   full_name: z.string().min(1, "Required"),
@@ -100,6 +95,7 @@ export function AddFarmerModal({ visible, onClose, onCreated }: Props) {
         shed_ids: [],
       });
       reset();
+      toast.success("Farmer added");
       onCreated(farmer);
     } catch (e: unknown) {
       setError(describeApiError(e, "add the farmer"));
@@ -198,9 +194,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  title: { fontSize: 18, fontWeight: "800", color: colors.brand },
-  close: { fontSize: 15, fontWeight: "600", color: colors.inkMuted },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand },
+  close: { fontSize: typography.body.fontSize, fontWeight: "600", color: colors.inkMuted },
   body: { padding: space.md, gap: space.sm, paddingBottom: space.xl },
-  hint: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
-  error: { color: colors.danger, fontSize: 14 },
+  hint: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, lineHeight: 20 },
+  error: { color: colors.danger, fontSize: typography.label.fontSize },
 });

@@ -72,6 +72,24 @@ async def record_vaccination(
         if existing:
             return existing
 
+    if data.bird_id:
+        from app.models.enums import BirdLifecycleStatus
+        from app.models.flock import Bird
+
+        target = await db.scalar(
+            select(Bird).where(
+                Bird.id == data.bird_id,
+                Bird.owner_account_id == ctx.owner_account_id,
+            )
+        )
+        if target is None:
+            raise VaccinationError("Bird not found", "NOT_FOUND")
+        if not target.is_active or target.lifecycle_status != BirdLifecycleStatus.active:
+            raise VaccinationError(
+                "Cannot record vaccination for a bird that is not active (sold, dead, or transferred)",
+                "BIRD_INACTIVE",
+            )
+
     dose: ScheduledDose | None = None
     if data.scheduled_dose_id:
         stmt = select(ScheduledDose).where(

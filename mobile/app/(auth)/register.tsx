@@ -11,6 +11,7 @@ import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Button } from "../../src/components/ui/Button";
 import { Screen } from "../../src/components/ui/Screen";
 import { TextField } from "../../src/components/ui/TextField";
+import { APP_BRAND_NAME } from "../../src/config/appConfig";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { colors, radius, shadows, space, typography } from "../../src/theme/tokens";
 
@@ -60,7 +61,7 @@ export default function RegisterScreen() {
       <View style={styles.hero}>
         <BrandLogo size={56} />
         <Text style={styles.brand}>Create your farm</Text>
-        <Text style={styles.sub}>You’ll be the owner of this PoultryTrack organization.</Text>
+        <Text style={styles.sub}>You’ll be the owner of this {APP_BRAND_NAME} organization.</Text>
       </View>
 
       <View style={[styles.card, shadows.soft]}>
@@ -124,7 +125,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  error: { color: colors.error, fontSize: 14 },
-  footer: { color: colors.textSecondary, fontSize: 15, textAlign: "center", marginTop: space.sm },
+  error: { color: colors.error, fontSize: typography.label.fontSize },
+  footer: { color: colors.textSecondary, fontSize: typography.body.fontSize, textAlign: "center", marginTop: space.sm },
   link: { color: colors.primary, fontWeight: "700" },
 });

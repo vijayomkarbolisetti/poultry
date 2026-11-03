@@ -14,7 +14,7 @@ import { SelectField } from "../../../src/components/ui/SelectField";
 import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
-import { colors, radius, space } from "../../../src/theme/tokens";
+import { colors, radius, space, typography } from "../../../src/theme/tokens";
 
 /** Bird-level lifecycle events supported by the API for active hens. */
 const BIRD_EVENT_OPTIONS = [
@@ -36,6 +36,8 @@ export default function FlockDetailScreen() {
   const [bulkText, setBulkText] = useState("B10\nB11\nB12");
   const [eventType, setEventType] = useState<string | null>("mortality");
   const [eventDate, setEventDate] = useState<string>(todayIsoDate());
+  const [buyerName, setBuyerName] = useState("");
+  const [buyerMobile, setBuyerMobile] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -103,6 +105,18 @@ export default function FlockDetailScreen() {
       setMsg("Select an effective date");
       return;
     }
+    if (eventType === "sale") {
+      const name = buyerName.trim();
+      const mobile = buyerMobile.replace(/[\s\-().]/g, "").trim();
+      if (!name) {
+        setMsg("Person name is required for sale");
+        return;
+      }
+      if (!/^\+?\d{10,15}$/.test(mobile)) {
+        setMsg("Enter a valid mobile number (10–15 digits)");
+        return;
+      }
+    }
     setBusy(true);
     setMsg(null);
     try {
@@ -112,6 +126,9 @@ export default function FlockDetailScreen() {
         bird_id: birdId,
         quantity: 1,
         reason: `Recorded from app (${eventType})`,
+        buyer_name: eventType === "sale" ? buyerName.trim() : undefined,
+        buyer_mobile:
+          eventType === "sale" ? buyerMobile.replace(/[\s\-().]/g, "").trim() : undefined,
       });
       await refresh();
       setMsg("Lifecycle event recorded");
@@ -232,6 +249,26 @@ export default function FlockDetailScreen() {
             maximumDate={todayIsoDate()}
             onChange={(v) => setEventDate(v ?? todayIsoDate())}
           />
+          {eventType === "sale" ? (
+            <>
+              <Text style={styles.label}>Person name *</Text>
+              <TextInput
+                style={styles.input}
+                value={buyerName}
+                onChangeText={setBuyerName}
+                placeholder="Buyer / person name"
+                autoCapitalize="words"
+              />
+              <Text style={styles.label}>Person mobile *</Text>
+              <TextInput
+                style={styles.input}
+                value={buyerMobile}
+                onChangeText={setBuyerMobile}
+                placeholder="+91 98765 43210"
+                keyboardType="phone-pad"
+              />
+            </>
+          ) : null}
         </>
       ) : null}
 
@@ -266,8 +303,8 @@ export default function FlockDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand },
-  section: { marginTop: space.sm, fontSize: 13, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase" },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand },
+  section: { marginTop: space.sm, fontSize: typography.secondary.fontSize, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase" },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.md,
@@ -277,8 +314,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   name: { fontWeight: "700", color: colors.ink },
-  link: { color: colors.brand, fontSize: 13, fontWeight: "700", marginTop: 2 },
-  meta: { color: colors.inkMuted, fontSize: 14 },
+  link: { color: colors.brand, fontSize: typography.secondary.fontSize, fontWeight: "700", marginTop: 2 },
+  meta: { color: colors.inkMuted, fontSize: typography.secondary.fontSize },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: colors.inkMuted, marginTop: 4 },
   unbandedCard: {
     backgroundColor: "#FFF4E5",
     borderRadius: radius.md,

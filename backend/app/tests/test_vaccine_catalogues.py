@@ -36,10 +36,12 @@ async def test_list_and_assign_example_catalogue(client: AsyncClient) -> None:
     assert listed.status_code == 200, listed.text
     assert len(listed.json()) >= 1
     cat = next(c for c in listed.json() if c["code"] == "EXAMPLE_GENERAL_POULTRY")
-    assert cat["is_example"] is True
+    assert cat["is_example"] is False
+    assert cat["name"] == "General Schedule"
 
     detail = await client.get(f"/api/v1/vaccine-catalogues/{cat['id']}", headers=ctx["headers"])
     assert detail.status_code == 200, detail.text
+    assert detail.json()["name"] == "General Schedule"
     assert len(detail.json()["items"]) >= 1
     rules = detail.json()["items"][0]["rules"]
     assert any(r.get("target_age_days") == 0 for r in rules), "Day 1 / hatch must be offset 0"

@@ -4,12 +4,10 @@
  */
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -32,7 +30,9 @@ import {
 import { describeApiError } from "../../api/client";
 import { listFarmers, type Farmer } from "../../api/farmers";
 import { createShed, getShedOverview, updateShed } from "../../api/sheds";
+import { BrandLogo } from "../../components/brand/BrandLogo";
 import { AddFarmerModal } from "../../components/sheds/AddFarmerModal";
+import { AppDialog } from "../../components/ui/AppDialog";
 import { HenLoader } from "../../components/ui/HenLoader";
 import { useAuth } from "../auth/AuthContext";
 import { hasPermission } from "../auth/permissions";
@@ -40,8 +40,16 @@ import {
   catalogueAgeRangeLabel,
   catalogueListMetaLine,
 } from "../catalogues/catalogueListHelpers";
+import {
+  markTransferDraftPreferDest,
+  peekTransferDraft,
+} from "../birds/transferDraftStore";
+import { firstRouteParam } from "../../navigation/routeParams";
 import { safeBack } from "../../navigation/safeBack";
 import { vaccineUi as ui } from "../../theme/vaccineUi";
+import { toast } from "../../ui/toast/toastStore";
+import { typography } from "../../theme/tokens";
+
 import {
   createShedPayload,
   mergeCreatedFarmerIntoList,
@@ -52,8 +60,6 @@ import {
   validateCreateShedDraft,
 } from "./createShedForm";
 
-const brandLogo = require("../../../assets/brand-logo.png");
-
 type Mode = "create" | "edit";
 
 type Props = {
@@ -62,6 +68,14 @@ type Props = {
 };
 
 export function ShedEditorScreen({ mode, shedId }: Props) {
+  const params = useLocalSearchParams<{
+    returnTo?: string | string[];
+    sourceShedId?: string | string[];
+  }>();
+  const returnTo = firstRouteParam(params.returnTo);
+  const sourceShedId = firstRouteParam(params.sourceShedId);
+  const resumeTransfer = mode === "create" && returnTo === "transfer" && !!sourceShedId;
+
   const { user, ownerAccountId } = useAuth();
   const qc = useQueryClient();
   const canCreate = hasPermission(user, ownerAccountId, "shed.create");
@@ -84,6 +98,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
   const [cataloguePickerOpen, setCataloguePickerOpen] = useState(false);
   const [farmerPickerOpen, setFarmerPickerOpen] = useState(false);
   const [addFarmerOpen, setAddFarmerOpen] = useState(false);
+  const [ownerManagedConfirmOpen, setOwnerManagedConfirmOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -262,27 +277,19 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     });
   };
 
+  const applyOwnerManaged = () => {
+    setOwnerManaged(true);
+    setFarmerId(null);
+    setFieldErrors((e) => {
+      const { farmer: _, ...rest } = e;
+      return rest;
+    });
+  };
+
   const applyManagementMode = (nextOwnerManaged: boolean) => {
     if (nextOwnerManaged === ownerManaged) return;
     if (nextOwnerManaged && mode === "edit") {
-      Alert.alert(
-        "Switch to Owner Managed?",
-        "Saving will revoke active farmer assignments for this shed. Farm ownership and bird/vaccination history are unchanged.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Continue",
-            onPress: () => {
-              setOwnerManaged(true);
-              setFarmerId(null);
-              setFieldErrors((e) => {
-                const { farmer: _, ...rest } = e;
-                return rest;
-              });
-            },
-          },
-        ],
-      );
+      setOwnerManagedConfirmOpen(true);
       return;
     }
     setOwnerManaged(nextOwnerManaged);
@@ -387,11 +394,19 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
       }
 
       await invalidateAfterSave(id!);
-      if (mode === "create") {
-        router.replace({ pathname: "/(app)/sheds/[id]", params: { id: id! } });
-      } else {
-        router.replace({ pathname: "/(app)/sheds/[id]", params: { id: id! } });
+      toast.success(mode === "create" ? "Shed created" : "Shed updated");
+
+      if (resumeTransfer && sourceShedId && id) {
+        // Keep transfer draft; prefer the newly created shed as destination.
+        if (peekTransferDraft()) markTransferDraftPreferDest(id);
+        router.replace({
+          pathname: "/(app)/sheds/[id]/birds",
+          params: { id: sourceShedId, resumeTransfer: "1" },
+        });
+        return;
       }
+
+      router.replace({ pathname: "/(app)/sheds/[id]/birds", params: { id: id! } });
     } catch (e: unknown) {
       setError(describeApiError(e, mode === "create" ? "create the shed" : "save the shed"));
     } finally {
@@ -400,11 +415,23 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     }
   };
 
+  const onBack = () => {
+    if (resumeTransfer && sourceShedId) {
+      // Draft remains so the source shed screen can reopen Transfer unchanged.
+      router.replace({
+        pathname: "/(app)/sheds/[id]/birds",
+        params: { id: sourceShedId, resumeTransfer: "1" },
+      });
+      return;
+    }
+    safeBack();
+  };
+
   if (!permitted) {
     return (
       <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
         <View style={styles.header}>
-          <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Back" style={styles.backBtn}>
+          <Pressable onPress={onBack} hitSlop={12} accessibilityLabel="Back" style={styles.backBtn}>
             <Ionicons name="arrow-back" size={22} color={ui.ink} />
           </Pressable>
           <Text style={styles.headerTitle}>{mode === "create" ? "Create Shed" : "Edit Shed"}</Text>
@@ -449,7 +476,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => safeBack()}
+          onPress={onBack}
           hitSlop={12}
           accessibilityLabel="Back"
           style={styles.backBtn}
@@ -626,7 +653,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
               accessibilityLabel="Select vaccination catalogue"
             >
               <View style={styles.catalogueIcon}>
-                <Image source={brandLogo} style={styles.catalogueIconImg} resizeMode="contain" />
+                <BrandLogo size={28} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.catalogueTitle} numberOfLines={2}>
@@ -735,6 +762,27 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
         onClose={() => setAddFarmerOpen(false)}
         onCreated={onFarmerCreated}
       />
+
+      <AppDialog
+        visible={ownerManagedConfirmOpen}
+        title="Switch to Owner Managed?"
+        description="Saving will revoke active farmer assignments for this shed. Farm ownership and bird/vaccination history are unchanged."
+        tone="warning"
+        onDismiss={() => setOwnerManagedConfirmOpen(false)}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setOwnerManagedConfirmOpen(false),
+        }}
+        primary={{
+          label: "Continue",
+          variant: "primary",
+          onPress: () => {
+            setOwnerManagedConfirmOpen(false);
+            applyOwnerManaged();
+          },
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -822,7 +870,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: "center",
-    fontSize: 18,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "700",
     color: ui.ink,
   },
@@ -836,10 +884,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: ui.white, fontWeight: "700", fontSize: 14 },
+  saveBtnText: { color: ui.white, fontWeight: "700", fontSize: typography.label.fontSize },
   savePlaceholder: { width: 64 },
   content: { paddingHorizontal: 20, paddingBottom: 40, gap: 8 },
-  label: { fontSize: 14, fontWeight: "700", color: ui.ink, marginTop: 10 },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: ui.ink, marginTop: 10 },
   required: { color: "#C62828", fontWeight: "700" },
   input: {
     backgroundColor: ui.white,
@@ -848,7 +896,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     color: ui.ink,
   },
   notesInput: { minHeight: 96, paddingTop: 12 },
@@ -864,8 +912,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  selectValue: { flex: 1, fontSize: 15, color: ui.ink, fontWeight: "600" },
-  selectMeta: { fontSize: 12, color: ui.muted, marginTop: 2, fontWeight: "600" },
+  selectValue: { flex: 1, fontSize: typography.bodyStrong.fontSize, color: ui.ink, fontWeight: "600" },
+  selectMeta: { fontSize: typography.caption.fontSize, color: ui.muted, marginTop: 2, fontWeight: "600" },
   placeholder: { color: ui.mutedSoft, fontWeight: "500" },
   segmentRow: {
     flexDirection: "row",
@@ -885,7 +933,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   segmentBtnOn: { backgroundColor: ui.brandSoftStrong },
-  segmentText: { fontSize: 13, fontWeight: "700", color: ui.muted, textAlign: "center" },
+  segmentText: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: ui.muted, textAlign: "center" },
   segmentTextOn: { color: ui.brand },
   addFarmerLink: {
     flexDirection: "row",
@@ -894,7 +942,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     alignSelf: "flex-start",
   },
-  addFarmerLinkText: { color: ui.brand, fontWeight: "700", fontSize: 14 },
+  addFarmerLinkText: { color: ui.brand, fontWeight: "700", fontSize: typography.label.fontSize },
   catalogueSelect: {
     backgroundColor: ui.white,
     borderWidth: 1,
@@ -914,9 +962,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  catalogueIconImg: { width: 28, height: 28 },
-  catalogueTitle: { fontSize: 15, fontWeight: "700", color: ui.ink },
-  catalogueMeta: { fontSize: 12, color: ui.muted, marginTop: 2, fontWeight: "600" },
+  catalogueTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "700", color: ui.ink },
+  catalogueMeta: { fontSize: typography.caption.fontSize, color: ui.muted, marginTop: 2, fontWeight: "600" },
   catalogueLoading: {
     flexDirection: "row",
     alignItems: "center",
@@ -931,7 +978,7 @@ const styles = StyleSheet.create({
   catalogueLoadingText: { color: ui.muted, fontWeight: "600" },
   catalogueErrorBox: { gap: 6 },
   retryLink: { color: ui.brand, fontWeight: "700" },
-  hint: { fontSize: 12, color: ui.muted, fontWeight: "600", lineHeight: 16 },
+  hint: { fontSize: typography.caption.fontSize, color: ui.muted, fontWeight: "600", lineHeight: 16 },
   infoBanner: {
     marginTop: 16,
     backgroundColor: ui.infoBg,
@@ -941,8 +988,8 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: "flex-start",
   },
-  infoText: { flex: 1, fontSize: 13, lineHeight: 18, color: ui.infoText, fontWeight: "600" },
-  fieldError: { color: "#C62828", fontSize: 12, fontWeight: "600" },
+  infoText: { flex: 1, fontSize: typography.secondary.fontSize, lineHeight: 18, color: ui.infoText, fontWeight: "600" },
+  fieldError: { color: "#C62828", fontSize: typography.caption.fontSize, fontWeight: "600" },
   pageError: { color: "#C62828", marginHorizontal: 20, marginTop: 12, fontWeight: "600" },
   retryBtn: {
     marginHorizontal: 20,
@@ -966,7 +1013,7 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     gap: 8,
   },
-  modalTitle: { fontSize: 16, fontWeight: "800", color: ui.ink, marginBottom: 4 },
+  modalTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: ui.ink, marginBottom: 4 },
   modalRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -976,10 +1023,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   modalRowOn: { backgroundColor: ui.highlightRow },
-  modalRowTitle: { fontSize: 15, fontWeight: "700", color: ui.ink },
-  modalRowMeta: { fontSize: 12, color: ui.muted, marginTop: 2, fontWeight: "600" },
+  modalRowTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "700", color: ui.ink },
+  modalRowMeta: { fontSize: typography.caption.fontSize, color: ui.muted, marginTop: 2, fontWeight: "600" },
   modalEmpty: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     color: ui.muted,
     fontWeight: "600",
     lineHeight: 18,
@@ -992,7 +1039,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: ui.cardBorder,
   },
-  modalFooterActionText: { color: ui.brand, fontWeight: "800", fontSize: 15 },
+  modalFooterActionText: { color: ui.brand, fontWeight: "800", fontSize: typography.bodyStrong.fontSize },
   modalCancel: { alignItems: "center", paddingVertical: 12 },
   modalCancelText: { color: ui.muted, fontWeight: "700" },
 });

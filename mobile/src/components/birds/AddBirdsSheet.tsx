@@ -3,6 +3,8 @@ import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { birdUi } from "../../theme/birdManagementUi";
+import { typography } from "../../theme/tokens";
+
 
 type Props = {
   visible: boolean;
@@ -124,7 +126,7 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 4 },
   title: {
     flex: 1,
-    fontSize: 20,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "800",
     color: birdUi.text,
     letterSpacing: -0.3,
@@ -156,11 +158,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   optionText: { flex: 1, gap: 2 },
-  optionTitle: { fontSize: 16, fontWeight: "700", color: birdUi.text },
-  optionSub: { fontSize: 13, color: birdUi.muted, lineHeight: 18 },
+  optionTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "700", color: birdUi.text },
+  optionSub: { fontSize: typography.secondary.fontSize, color: birdUi.muted, lineHeight: 18 },
   warn: {
     color: birdUi.orange,
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "600",
     backgroundColor: birdUi.orangePale,
     padding: 10,

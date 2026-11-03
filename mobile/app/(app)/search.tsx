@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { ComponentProps, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
+  Image,
   Pressable,
   StyleSheet,
   Text,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 
 import { describeApiError } from "../../src/api/client";
+import { birdIcons } from "../../src/theme/media";
 import {
   globalSearch,
   type BirdSearchHit,
@@ -31,7 +33,7 @@ import {
   shedSubtitle,
 } from "../../src/features/search/globalSearchHelpers";
 import { safeBack } from "../../src/navigation/safeBack";
-import { colors, radius, space } from "../../src/theme/tokens";
+import { colors, radius, space, typography } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -204,6 +206,7 @@ export default function GlobalSearchScreen() {
               return (
                 <ResultCard
                   icon="egg-outline"
+                  iconImage={birdIcons.bird}
                   title={item.hit.band_id ?? item.hit.display_code ?? "Bird"}
                   subtitle={birdSubtitle(item.hit)}
                   tag={item.hit.match_kind === "exact" ? "Exact" : "Partial"}
@@ -229,12 +232,14 @@ export default function GlobalSearchScreen() {
 
 function ResultCard({
   icon,
+  iconImage,
   title,
   subtitle,
   tag,
   onPress,
 }: {
   icon: IconName;
+  iconImage?: number;
   title: string;
   subtitle: string;
   tag: string;
@@ -249,7 +254,11 @@ function ResultCard({
     >
       <View style={styles.row}>
         <View style={styles.iconWrap}>
-          <Ionicons name={icon} size={18} color={colors.brand} />
+          {iconImage != null ? (
+            <Image source={iconImage} style={styles.iconImg} resizeMode="cover" />
+          ) : (
+            <Ionicons name={icon} size={18} color={colors.brand} />
+          )}
         </View>
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={styles.name}>{title}</Text>
@@ -274,9 +283,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     paddingVertical: 10,
   },
-  input: { flex: 1, color: colors.ink, fontSize: 16, paddingVertical: 4 },
+  input: { flex: 1, color: colors.ink, fontSize: typography.body.fontSize, paddingVertical: 4 },
   section: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "800",
     color: colors.brandDark,
     marginTop: space.sm,
@@ -301,9 +310,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandSoft,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
-  name: { fontWeight: "800", color: colors.ink, fontSize: 16 },
-  meta: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
-  tag: { color: colors.brand, fontSize: 12, fontWeight: "700", marginTop: 2 },
+  iconImg: { width: 28, height: 28, borderRadius: 8 },
+  name: { fontWeight: "800", color: colors.ink, fontSize: typography.body.fontSize },
+  meta: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, lineHeight: 20 },
+  tag: { color: colors.brand, fontSize: typography.caption.fontSize, fontWeight: "700", marginTop: 2 },
   error: { color: colors.danger },
 });

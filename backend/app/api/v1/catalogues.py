@@ -14,6 +14,8 @@ from app.schemas.catalogue import (
     CatalogueCreateIn,
     CatalogueDetailOut,
     CatalogueItemOut,
+    CataloguePreviewUpdateIn,
+    CataloguePreviewUpdateOut,
     CatalogueRuleOut,
     CatalogueSummaryOut,
     CatalogueUpdateIn,
@@ -32,6 +34,7 @@ def _summary(cat, item_count: int) -> CatalogueSummaryOut:
         version=cat.version,
         status=cat.status,
         is_example=cat.is_example,
+        requires_veterinary_review=bool(getattr(cat, "requires_veterinary_review", False)),
         owner_account_id=cat.owner_account_id,
         cloned_from_catalogue_id=cat.cloned_from_catalogue_id,
         is_platform=cat.owner_account_id is None,
@@ -42,6 +45,8 @@ def _summary(cat, item_count: int) -> CatalogueSummaryOut:
 def _detail(cat) -> CatalogueDetailOut:
     items = []
     for item in sorted(cat.items, key=lambda i: (i.sort_order, i.name)):
+        if not getattr(item, "is_active", True):
+            continue
         items.append(
             CatalogueItemOut(
                 id=item.id,
@@ -54,6 +59,7 @@ def _detail(cat) -> CatalogueDetailOut:
                 recommended_dose_text=item.recommended_dose_text,
                 route=item.route,
                 diluent_instructions=item.diluent_instructions,
+                is_active=bool(getattr(item, "is_active", True)),
                 rules=[CatalogueRuleOut.model_validate(r) for r in sorted(item.rules, key=lambda x: x.dose_number)],
             )
         )
@@ -65,9 +71,11 @@ def _http_for(exc: catalogue_service.CatalogueError) -> HTTPException:
     code = 400
     if exc.code == "NOT_FOUND":
         code = 404
-    elif exc.code == "CONFIRM_REQUIRED":
+    elif exc.code in {"CONFIRM_REQUIRED", "STALE_PREVIEW"}:
         code = 409
     elif exc.code == "PLATFORM_IMMUTABLE":
+        code = 403
+    elif exc.code == "SCOPE_ALL_ACTIVE_GATED":
         code = 403
     elif exc.code == "DUPLICATE_CODE":
         code = 409
@@ -176,6 +184,20 @@ async def preview_assign(
     except catalogue_service.CatalogueError as exc:
         raise _http_for(exc) from exc
     return AssignPreviewOut(**data)
+
+
+@router.post("/{catalogue_id}/preview-update", response_model=CataloguePreviewUpdateOut)
+async def preview_update(
+    catalogue_id: UUID,
+    body: CataloguePreviewUpdateIn,
+    ctx: AuthContext = Depends(require_permission("schedule.manage")),
+    db: AsyncSession = Depends(get_db),
+) -> CataloguePreviewUpdateOut:
+    try:
+        data = await catalogue_service.preview_update(db, ctx, catalogue_id, body)
+    except catalogue_service.CatalogueError as exc:
+        raise _http_for(exc) from exc
+    return CataloguePreviewUpdateOut(**data)
 
 
 @router.post("/assign", response_model=CatalogueAssignmentOut, status_code=status.HTTP_200_OK)

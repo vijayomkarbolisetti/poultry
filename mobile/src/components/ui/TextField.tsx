@@ -158,8 +158,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 14,
     color: colors.textPrimary,
-    fontSize: 16,
+    ...typography.body,
   },
   eye: { paddingLeft: space.sm, paddingVertical: 8, minWidth: layout.touchTarget / 2 },
-  error: { color: colors.error, fontSize: typography.caption.fontSize },
+  error: { color: colors.error, ...typography.secondary },
 });

@@ -26,6 +26,9 @@ import {
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 export default function TransferBirdsScreen() {
   const params = useLocalSearchParams<{ shedId?: string | string[]; birdIds?: string | string[] }>();
@@ -69,7 +72,7 @@ export default function TransferBirdsScreen() {
     () =>
       (sheds.data ?? [])
         .filter((s) => s.is_active && s.id !== shedId)
-        .map((s) => ({ value: s.id, label: s.name, hint: s.code })),
+        .map((s) => ({ value: s.id, label: s.name })),
     [sheds.data, shedId],
   );
 
@@ -160,6 +163,7 @@ export default function TransferBirdsScreen() {
       void qc.invalidateQueries({ queryKey: ["shed-birds"] });
       void qc.invalidateQueries({ queryKey: ["flocks"] });
       void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
+      toast.success("Birds transferred");
       safeBack(shedId ? `/(app)/sheds/${shedId}/birds` : "/(app)/sheds");
     } catch (e: unknown) {
       const apiMsg = describeApiError(e, "transfer birds");
@@ -336,9 +340,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 22, fontWeight: "800", color: birdUi.text },
-  sub: { fontSize: 13, color: birdUi.muted },
-  hint: { fontSize: 13, color: birdUi.muted, lineHeight: 18, marginBottom: 4 },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text },
+  sub: { fontSize: typography.secondary.fontSize, color: birdUi.muted },
+  hint: { fontSize: typography.secondary.fontSize, color: birdUi.muted, lineHeight: 18, marginBottom: 4 },
   modeRow: { flexDirection: "row", gap: 8 },
   modeChip: {
     flex: 1,
@@ -353,7 +357,7 @@ const styles = StyleSheet.create({
   modeText: { fontWeight: "700", color: birdUi.text },
   modeTextOn: { color: "#fff" },
   list: { gap: 6 },
-  listTitle: { fontSize: 14, fontWeight: "700", color: birdUi.muted },
+  listTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "700", color: birdUi.muted },
   birdRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -365,14 +369,14 @@ const styles = StyleSheet.create({
     backgroundColor: birdUi.white,
   },
   birdOn: { borderColor: birdUi.primary, backgroundColor: birdUi.paleMint },
-  band: { fontSize: 16, fontWeight: "700", color: birdUi.text },
-  birdMeta: { fontSize: 12, color: birdUi.muted, marginTop: 2 },
+  band: { fontSize: typography.body.fontSize, fontWeight: "700", color: birdUi.text },
+  birdMeta: { fontSize: typography.caption.fontSize, color: birdUi.muted, marginTop: 2 },
   input: {
     borderWidth: 1,
     borderColor: birdUi.border,
     borderRadius: 14,
     padding: 14,
-    fontSize: 17,
+    fontSize: typography.body.fontSize,
     fontWeight: "700",
     backgroundColor: birdUi.white,
     color: birdUi.text,

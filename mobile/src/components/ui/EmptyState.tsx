@@ -1,6 +1,6 @@
 import { Image, StyleSheet, Text, View } from "react-native";
 
-import { colors, radius, shadow, space } from "../../theme/tokens";
+import { colors, radius, shadow, space, typography } from "../../theme/tokens";
 import { Button } from "./Button";
 
 type Props = {
@@ -35,6 +35,6 @@ const styles = StyleSheet.create({
   },
   image: { width: "100%", height: 160 },
   copy: { padding: space.lg, gap: space.sm },
-  title: { fontSize: 18, fontWeight: "800", color: colors.ink },
-  body: { fontSize: 14, color: colors.inkMuted, lineHeight: 20, marginBottom: space.xs },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.ink },
+  body: { fontSize: typography.label.fontSize, color: colors.inkMuted, lineHeight: 20, marginBottom: space.xs },
 });

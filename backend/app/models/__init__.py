@@ -9,6 +9,7 @@ from app.models.enums import (
 )
 from app.models.flock import Bird, Flock
 from app.models.lifecycle import LifecycleEvent
+from app.models.parentage import BirdParentDescriptor
 from app.models.media import AnimalMedia
 from app.models.membership import OwnerMembership
 from app.models.notification import Notification

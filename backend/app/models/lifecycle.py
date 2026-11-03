@@ -42,6 +42,8 @@ class LifecycleEvent(Base):
     effective_date: Mapped[date] = mapped_column(Date, nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    buyer_name: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
+    buyer_mobile: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     recorded_by_user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     # Uniqueness is owner-scoped via partial index uq_lifecycle_owner_idempotency_key (migration 0007).
     idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)

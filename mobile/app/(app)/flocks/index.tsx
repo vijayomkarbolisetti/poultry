@@ -14,7 +14,7 @@ import { SelectField } from "../../../src/components/ui/SelectField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { media } from "../../../src/theme/media";
-import { colors, space } from "../../../src/theme/tokens";
+import { colors, space, typography } from "../../../src/theme/tokens";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
@@ -40,7 +40,7 @@ export default function FlocksScreen() {
       { value: "all", label: "All sheds", hint: "Every accessible shed" },
       ...(sheds.data ?? [])
         .filter((s) => s.is_active)
-        .map((s) => ({ value: s.id, label: s.name, hint: s.code })),
+        .map((s) => ({ value: s.id, label: s.name })),
     ],
     [sheds.data],
   );
@@ -130,7 +130,7 @@ export default function FlocksScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand },
-  sub: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand },
+  sub: { fontSize: typography.secondary.fontSize, color: colors.inkMuted, marginTop: 2 },
   error: { color: colors.danger },
 });

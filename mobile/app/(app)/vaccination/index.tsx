@@ -18,6 +18,10 @@ import { listSheds, type ShedListItem } from "../../../src/api/sheds";
 import { listScheduledDoses } from "../../../src/api/vaccines";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
+import {
+  IMMERSIVE_HERO_SHEET_OVERLAP,
+  ImmersiveHeroHeader,
+} from "../../../src/components/ui/ImmersiveHeroHeader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import {
@@ -33,8 +37,10 @@ import {
   statusBadgeLabel,
   summaryCounts,
 } from "../../../src/features/vaccination/dashboardHelpers";
-import { media } from "../../../src/theme/media";
+import { heroArt, media } from "../../../src/theme/media";
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
+import { typography } from "../../../src/theme/tokens";
+
 
 type ShedFilter = "all" | string;
 
@@ -256,10 +262,6 @@ export default function VaccinationDashboardScreen() {
     return <Redirect href="/(app)/home" />;
   }
 
-  const membership =
-    user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
-  const farmName = membership?.organization_name?.trim() || "Your farm";
-
   const refreshing = query.isRefetching && !query.isLoading;
   const showInitialLoader = query.isLoading && !query.data;
   const errorMessage = query.error
@@ -268,39 +270,43 @@ export default function VaccinationDashboardScreen() {
   const isEmpty = !showInitialLoader && !errorMessage && rows.length === 0;
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Vaccination</Text>
-        <Text style={styles.subtitle} numberOfLines={1}>
-          {farmName}
-        </Text>
+    <SafeAreaView style={styles.safe} edges={["left", "right"]}>
+      <ImmersiveHeroHeader
+        source={heroArt.vaccination}
+        curveFill={ui.bg}
+        accessibilityLabel="Vaccination farm illustration"
+      >
+        <View style={styles.heroCopy}>
+          <Text style={styles.title}>Vaccination</Text>
+        </View>
+      </ImmersiveHeroHeader>
+
+      <View style={styles.sheet}>
+        {canSheds && shedOptions.length > 0 ? (
+          <View style={styles.filterWrap}>
+            <Pressable
+              style={styles.filterBtn}
+              onPress={() => setShedPickerOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`Filter by shed: ${shedLabel}`}
+            >
+              <Ionicons name="options-outline" size={18} color={ui.muted} />
+              <Text style={styles.filterLabel} numberOfLines={1}>
+                {shedLabel}
+              </Text>
+              <Ionicons name="chevron-down" size={18} color={ui.muted} />
+            </Pressable>
+          </View>
+        ) : null}
+
+        {!showInitialLoader && !errorMessage ? (
+          <View style={styles.summaryRow}>
+            <SummaryCard label="Overdue" count={summary.overdue} tone="overdue" icon="alert-circle" />
+            <SummaryCard label="Due today" count={summary.dueToday} tone="due" icon="calendar" />
+            <SummaryCard label="Upcoming" count={summary.upcoming} tone="upcoming" icon="time" />
+          </View>
+        ) : null}
       </View>
-
-      {canSheds && shedOptions.length > 0 ? (
-        <View style={styles.filterWrap}>
-          <Pressable
-            style={styles.filterBtn}
-            onPress={() => setShedPickerOpen(true)}
-            accessibilityRole="button"
-            accessibilityLabel={`Filter by shed: ${shedLabel}`}
-          >
-            <Ionicons name="options-outline" size={18} color={ui.muted} />
-            <Text style={styles.filterLabel} numberOfLines={1}>
-              {shedLabel}
-            </Text>
-            <Ionicons name="chevron-down" size={18} color={ui.muted} />
-          </Pressable>
-        </View>
-      ) : null}
-
-      {!showInitialLoader && !errorMessage ? (
-        <View style={styles.summaryRow}>
-          <SummaryCard label="Overdue" count={summary.overdue} tone="overdue" icon="alert-circle" />
-          <SummaryCard label="Due today" count={summary.dueToday} tone="due" icon="calendar" />
-          <SummaryCard label="Upcoming" count={summary.upcoming} tone="upcoming" icon="time" />
-          <SummaryCard label="Needs review" count={summary.needsReview} tone="review" icon="help-circle" />
-        </View>
-      ) : null}
 
       {showInitialLoader ? (
         <View style={styles.center}>
@@ -431,10 +437,33 @@ export default function VaccinationDashboardScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: ui.bg },
-  header: { paddingHorizontal: ui.horizontal, paddingTop: 8, paddingBottom: 4 },
-  title: { fontSize: 28, fontWeight: "800", color: ui.ink },
-  subtitle: { marginTop: 2, fontSize: 14, color: ui.muted, fontWeight: "600" },
-  filterWrap: { paddingHorizontal: ui.horizontal, paddingTop: 10, paddingBottom: 4 },
+  // Mirror Home farmRow / farmTitle / farmName placement over the hero.
+  heroCopy: {
+    marginTop: 18,
+    paddingBottom: 6,
+    gap: 4,
+  },
+  title: {
+    fontSize: typography.screenTitle.fontSize,
+    fontWeight: "800",
+    color: ui.ink,
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    flexShrink: 1,
+    fontSize: typography.secondary.fontSize,
+    fontWeight: "700",
+    color: ui.brand,
+  },
+  sheet: {
+    marginTop: IMMERSIVE_HERO_SHEET_OVERLAP,
+    backgroundColor: ui.bg,
+  },
+  filterWrap: {
+    paddingHorizontal: ui.horizontal,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
   filterBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -446,7 +475,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  filterLabel: { flex: 1, fontSize: 15, fontWeight: "700", color: ui.ink },
+  filterLabel: { flex: 1, fontSize: typography.body.fontSize, fontWeight: "700", color: ui.ink },
   summaryRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -464,12 +493,12 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 2,
   },
-  summaryCount: { fontSize: 20, fontWeight: "800", marginTop: 2 },
-  summaryLabel: { fontSize: 11, fontWeight: "700", lineHeight: 14 },
+  summaryCount: { fontSize: typography.display.fontSize, fontWeight: "800", marginTop: 2 },
+  summaryLabel: { fontSize: typography.overline.fontSize, fontWeight: "700", lineHeight: 14 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerPad: { flex: 1, paddingHorizontal: ui.horizontal, justifyContent: "center", gap: 10 },
-  errorTitle: { fontSize: 18, fontWeight: "800", color: ui.ink },
-  errorBody: { fontSize: 14, color: ui.muted, lineHeight: 20 },
+  errorTitle: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink },
+  errorBody: { fontSize: typography.label.fontSize, color: ui.muted, lineHeight: 20 },
   retryBtn: {
     alignSelf: "flex-start",
     backgroundColor: ui.brand,
@@ -478,7 +507,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 4,
   },
-  retryText: { color: ui.white, fontWeight: "800", fontSize: 14 },
+  retryText: { color: ui.white, fontWeight: "800", fontSize: typography.label.fontSize },
   emptyWrap: { flex: 1, paddingHorizontal: ui.horizontal },
   listContent: { paddingHorizontal: ui.horizontal, paddingBottom: 16, gap: 12 },
   overviewBlock: { gap: 8, marginBottom: 4 },
@@ -493,7 +522,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 14,
   },
-  shedName: { flex: 1, fontSize: 15, fontWeight: "800", color: ui.ink },
+  shedName: { flex: 1, fontSize: typography.body.fontSize, fontWeight: "800", color: ui.ink },
   dotRow: { flexDirection: "row", gap: 6 },
   countDot: {
     minWidth: 28,
@@ -503,9 +532,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 6,
   },
-  countDotText: { fontSize: 12, fontWeight: "800" },
+  countDotText: { fontSize: typography.caption.fontSize, fontWeight: "800" },
   legend: { flexDirection: "row", flexWrap: "wrap", gap: 12, paddingHorizontal: 4, marginTop: 2 },
-  legendItem: { fontSize: 11, fontWeight: "700", color: ui.muted },
+  legendItem: { fontSize: typography.overline.fontSize, fontWeight: "700", color: ui.muted },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -513,8 +542,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 2,
   },
-  sectionTitle: { fontSize: 17, fontWeight: "800", color: ui.ink },
-  sectionCount: { fontSize: 13, fontWeight: "600", color: ui.mutedSoft },
+  sectionTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: ui.ink },
+  sectionCount: { fontSize: typography.secondary.fontSize, fontWeight: "600", color: ui.mutedSoft },
   card: {
     backgroundColor: ui.white,
     borderRadius: 18,
@@ -529,18 +558,18 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: 2 },
-  vaccineName: { flex: 1, fontSize: 16, fontWeight: "800", color: ui.ink, paddingRight: 4 },
+  vaccineName: { flex: 1, fontSize: typography.body.fontSize, fontWeight: "800", color: ui.ink, paddingRight: 4 },
   statusBadge: {
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  statusBadgeText: { fontSize: 10, fontWeight: "800", letterSpacing: 0.3 },
+  statusBadgeText: { fontSize: typography.overline.fontSize, fontWeight: "800", letterSpacing: 0.3 },
   cardChevron: { marginTop: 2 },
   metaRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
   metaIcon: { marginTop: 1 },
-  metaText: { flex: 1, fontSize: 13, color: ui.muted, fontWeight: "600", lineHeight: 18 },
-  popHint: { fontSize: 12, color: ui.mutedSoft, fontWeight: "600", marginLeft: 23 },
+  metaText: { flex: 1, fontSize: typography.secondary.fontSize, color: ui.muted, fontWeight: "600", lineHeight: 18 },
+  popHint: { fontSize: typography.caption.fontSize, color: ui.mutedSoft, fontWeight: "600", marginLeft: 23 },
   progressRow: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },
   progressTrack: {
     flex: 1,
@@ -550,7 +579,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   progressFill: { height: "100%", backgroundColor: ui.progressFill, borderRadius: 999 },
-  progressPct: { fontSize: 12, fontWeight: "700", color: ui.mutedSoft, minWidth: 32, textAlign: "right" },
+  progressPct: { fontSize: typography.caption.fontSize, fontWeight: "700", color: ui.mutedSoft, minWidth: 32, textAlign: "right" },
   reviewBtn: {
     marginTop: 8,
     backgroundColor: ui.brand,
@@ -562,7 +591,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 4,
   },
-  reviewBtnText: { color: ui.white, fontWeight: "800", fontSize: 15 },
+  reviewBtnText: { color: ui.white, fontWeight: "800", fontSize: typography.bodyStrong.fontSize },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(15, 30, 25, 0.35)",
@@ -576,7 +605,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: 4,
   },
-  modalTitle: { fontSize: 17, fontWeight: "800", color: ui.ink, marginBottom: 8 },
+  modalTitle: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink, marginBottom: 8 },
   modalRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -586,6 +615,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   modalRowActive: { backgroundColor: ui.brandSoft },
-  modalRowText: { fontSize: 15, fontWeight: "600", color: ui.ink },
+  modalRowText: { fontSize: typography.bodyStrong.fontSize, fontWeight: "600", color: ui.ink },
   modalRowTextActive: { color: ui.brand, fontWeight: "800" },
 });

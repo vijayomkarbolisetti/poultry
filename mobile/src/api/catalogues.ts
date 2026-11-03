@@ -28,6 +28,7 @@ export type CatalogueItem = {
   recommended_dose_text: string | null;
   route: string | null;
   diluent_instructions: string | null;
+  is_active?: boolean;
   rules: CatalogueRule[];
 };
 
@@ -39,6 +40,7 @@ export type CatalogueSummary = {
   version: number;
   status: string;
   is_example: boolean;
+  requires_veterinary_review?: boolean;
   owner_account_id: string | null;
   cloned_from_catalogue_id: string | null;
   is_platform: boolean;
@@ -64,6 +66,8 @@ export type CatalogueAssignment = {
 };
 
 export type CatalogueItemInput = {
+  /** Stable id for existing entries; omit when creating a new item. */
+  id?: string;
   sort_order?: number;
   name: string;
   category?: string;
@@ -84,6 +88,50 @@ export type CatalogueItemInput = {
     is_manual_only?: boolean;
     label?: string | null;
   }[];
+};
+
+/** Fingerprint fields required by PATCH when items / remove_item_ids change. */
+export type CatalogueUpdateGuards = {
+  expected_version: number;
+  expected_assignment_catalogue_id: string | null;
+  expected_override_flock_count: number;
+};
+
+export type CataloguePreviewUpdate = {
+  catalogue_id: string;
+  catalogue_name: string;
+  catalogue_version: number;
+  requires_veterinary_review: boolean;
+  apply_scope: string;
+  effective_date: string;
+  is_farm_default: boolean;
+  expected_assignment_catalogue_id: string | null;
+  expected_override_flock_count: number;
+  inheriting_flock_count_if_default: number;
+  items_added: string[];
+  items_updated: string[];
+  items_removed: string[];
+  rule_changes: string[];
+  open_doses_eligible_for_change: number;
+  completed_event_count: number;
+  flocks_affected_new_flocks: number;
+  flocks_affected_all_active: number;
+  warning: string;
+  all_active_gated: boolean;
+};
+
+export type CatalogueUpdateBody = {
+  name?: string;
+  description?: string | null;
+  status?: string;
+  items?: CatalogueItemInput[];
+  remove_item_ids?: string[];
+  apply_scope?: string;
+  effective_date?: string | null;
+  confirm_change?: boolean;
+  expected_version?: number;
+  expected_assignment_catalogue_id?: string | null;
+  expected_override_flock_count?: number;
 };
 
 export async function listCatalogues(opts?: { includeInactive?: boolean }): Promise<CatalogueSummary[]> {
@@ -124,18 +172,25 @@ export async function cloneCatalogue(
   return data;
 }
 
-export async function updateCatalogue(
+export async function previewCatalogueUpdate(
   id: string,
   body: {
     name?: string;
     description?: string | null;
-    status?: string;
-    items?: CatalogueItemInput[];
+    items?: CatalogueItemInput[] | null;
+    remove_item_ids?: string[];
     apply_scope?: string;
     effective_date?: string | null;
-    confirm_change?: boolean;
   },
-): Promise<CatalogueDetail> {
+): Promise<CataloguePreviewUpdate> {
+  const { data } = await api.post<CataloguePreviewUpdate>(`/vaccine-catalogues/${id}/preview-update`, {
+    apply_scope: "new_flocks",
+    ...body,
+  });
+  return data;
+}
+
+export async function updateCatalogue(id: string, body: CatalogueUpdateBody): Promise<CatalogueDetail> {
   const { data } = await api.patch<CatalogueDetail>(`/vaccine-catalogues/${id}`, body);
   return data;
 }
@@ -152,4 +207,27 @@ export async function assignCatalogue(body: {
     ...body,
   });
   return data;
+}
+
+export function guardsFromPreview(preview: CataloguePreviewUpdate): CatalogueUpdateGuards {
+  return {
+    expected_version: preview.catalogue_version,
+    expected_assignment_catalogue_id: preview.expected_assignment_catalogue_id,
+    expected_override_flock_count: preview.expected_override_flock_count,
+  };
+}
+
+export function isStalePreviewError(e: unknown): boolean {
+  const err = e as { response?: { status?: number; data?: { detail?: unknown } } };
+  if (err.response?.status !== 409) return false;
+  const detail = err.response?.data?.detail;
+  if (typeof detail !== "string") return false;
+  const lower = detail.toLowerCase();
+  // Match STALE_PREVIEW messages; avoid CONFIRM_REQUIRED (also 409, mentions "impact preview").
+  return lower.includes("since preview") || lower.includes("from preview");
+}
+
+/** Farm-owned catalogues cloned from a given platform/source id. */
+export function farmCopiesOf(sourceId: string, list: CatalogueSummary[]): CatalogueSummary[] {
+  return list.filter((c) => !c.is_platform && c.cloned_from_catalogue_id === sourceId);
 }

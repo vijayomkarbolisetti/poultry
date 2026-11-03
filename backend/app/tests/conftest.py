@@ -314,8 +314,8 @@ async def engine():
             )
         # Hard-check that migration chain is applied (fail loud if create_all sneaks back).
         ver = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        if ver != "0011_shed_capacity":
-            raise RuntimeError(f"Expected alembic 0011_shed_capacity, got {ver!r}")
+        if ver != "0016_catalogue_item_is_active":
+            raise RuntimeError(f"Expected alembic 0016_catalogue_item_is_active, got {ver!r}")
         idx = await conn.scalar(
             text(
                 """

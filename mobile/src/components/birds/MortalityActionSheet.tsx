@@ -29,6 +29,8 @@ import { birdUi } from "../../theme/birdManagementUi";
 import { Button } from "../ui/Button";
 import { AppDatePicker } from "../ui/AppDatePicker";
 import { todayIsoDate } from "../ui/selectUtils";
+import { typography } from "../../theme/tokens";
+
 
 export type MortalityBandedPayload = {
   mode: "banded";
@@ -301,8 +303,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 18, fontWeight: "800", color: birdUi.text },
-  sub: { fontSize: 13, color: birdUi.muted, marginTop: 2 },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text },
+  sub: { fontSize: typography.secondary.fontSize, color: birdUi.muted, marginTop: 2 },
   closeBtn: {
     width: 36,
     height: 36,
@@ -318,23 +320,23 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 8,
   },
-  band: { fontSize: 14, fontWeight: "700", color: birdUi.text },
-  label: { fontSize: 13, fontWeight: "700", color: birdUi.muted, marginBottom: 6 },
+  band: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.text },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.muted, marginBottom: 6 },
   input: {
     borderWidth: 1,
     borderColor: birdUi.border,
     borderRadius: 14,
     padding: 12,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     fontWeight: "600",
     backgroundColor: birdUi.white,
     color: birdUi.text,
     marginBottom: 10,
   },
   reason: { minHeight: 64, textAlignVertical: "top" },
-  hint: { fontSize: 12, color: birdUi.muted },
+  hint: { fontSize: typography.caption.fontSize, color: birdUi.muted },
   warn: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     color: birdUi.orange,
     backgroundColor: birdUi.orangePale,
     padding: 10,

@@ -22,7 +22,7 @@ import {
   toggleSelection,
 } from "../../features/birds/birdSelectionHelpers";
 import { media } from "../../theme/media";
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { HenLoader } from "../ui/HenLoader";
@@ -498,20 +498,20 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: space.sm },
   headerActions: { flexDirection: "row", flexWrap: "wrap", gap: space.sm, alignItems: "center" },
   section: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "700",
     color: colors.inkMuted,
     textTransform: "uppercase",
   },
   subsection: {
-    fontSize: 12,
+    fontSize: typography.caption.fontSize,
     fontWeight: "700",
     color: colors.inkMuted,
     textTransform: "uppercase",
   },
-  meta: { color: colors.inkMuted, fontSize: 13, lineHeight: 18 },
-  hint: { color: colors.inkMuted, fontSize: 12, marginTop: 4 },
-  warn: { color: colors.accent, fontSize: 12, fontWeight: "600", marginTop: 2 },
+  meta: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, lineHeight: 18 },
+  hint: { color: colors.inkMuted, fontSize: typography.caption.fontSize, marginTop: 4 },
+  warn: { color: colors.accent, fontSize: typography.caption.fontSize, fontWeight: "600", marginTop: 2 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -520,7 +520,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: colors.bgElevated,
     color: colors.ink,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
   },
   card: {
     backgroundColor: colors.bgElevated,
@@ -532,9 +532,9 @@ const styles = StyleSheet.create({
   },
   cardSelected: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
   rowTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space.sm },
-  band: { fontSize: 17, fontWeight: "800", color: colors.ink, flex: 1 },
+  band: { fontSize: typography.button.fontSize, fontWeight: "800", color: colors.ink, flex: 1 },
   badge: {
-    fontSize: 11,
+    fontSize: typography.overline.fontSize,
     fontWeight: "700",
     color: colors.brand,
     backgroundColor: colors.brandSoft,
@@ -553,7 +553,7 @@ const styles = StyleSheet.create({
     borderColor: colors.info + "44",
     gap: space.sm,
   },
-  unbandedTitle: { fontSize: 15, fontWeight: "800", color: colors.ink },
+  unbandedTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: colors.ink },
   unbandedRow: { gap: 6 },
   error: { color: colors.danger },
   selectBanner: {
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
     borderColor: colors.brand + "55",
     gap: space.sm,
   },
-  selectTitle: { fontWeight: "800", color: colors.ink, fontSize: 15 },
+  selectTitle: { fontWeight: "800", color: colors.ink, fontSize: typography.sectionTitle.fontSize },
   bulkBar: { gap: space.sm },
   batchBlock: {
     gap: space.sm,
@@ -587,5 +587,5 @@ const styles = StyleSheet.create({
   },
   checkboxOn: { backgroundColor: colors.brand, borderColor: colors.brand },
   checkboxDisabled: { opacity: 0.35 },
-  checkMark: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  checkMark: { color: "#fff", fontWeight: "800", fontSize: typography.label.fontSize },
 });

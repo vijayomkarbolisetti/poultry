@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 import { filterSelectOptions, reconcileSelectValue } from "./selectUtils";
 
 export type SelectOption = {
@@ -200,9 +200,9 @@ export function SelectField({
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  label: { color: colors.ink, fontSize: 14, fontWeight: "700" },
+  label: { color: colors.ink, fontSize: typography.label.fontSize, fontWeight: "700" },
   required: { color: colors.danger },
-  helper: { color: colors.inkMuted, fontSize: 12, marginTop: -2 },
+  helper: { color: colors.inkMuted, fontSize: typography.caption.fontSize, marginTop: -2 },
   field: {
     minHeight: 52,
     borderRadius: radius.md,
@@ -216,10 +216,10 @@ const styles = StyleSheet.create({
   },
   fieldError: { borderColor: colors.danger },
   fieldDisabled: { opacity: 0.55 },
-  value: { flex: 1, fontSize: 16, color: colors.ink, fontWeight: "600" },
+  value: { flex: 1, fontSize: typography.bodyStrong.fontSize, color: colors.ink, fontWeight: "600" },
   placeholder: { color: colors.inkMuted, fontWeight: "500" },
   clearBtn: { padding: 4 },
-  error: { color: colors.danger, fontSize: 13 },
+  error: { color: colors.danger, fontSize: typography.secondary.fontSize },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(10,30,20,0.45)",
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     padding: space.md,
     gap: space.sm,
   },
-  sheetTitle: { fontSize: 16, fontWeight: "800", color: colors.ink, marginBottom: 4 },
+  sheetTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: colors.ink, marginBottom: 4 },
   searchWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     backgroundColor: colors.bg,
   },
-  search: { flex: 1, fontSize: 16, color: colors.ink, paddingVertical: 10 },
+  search: { flex: 1, fontSize: typography.body.fontSize, color: colors.ink, paddingVertical: 10 },
   option: {
     flexDirection: "row",
     alignItems: "center",
@@ -256,9 +256,9 @@ const styles = StyleSheet.create({
   },
   optionOn: { backgroundColor: colors.brandSoft },
   optionDisabled: { opacity: 0.4 },
-  optionLabel: { fontSize: 15, fontWeight: "700", color: colors.ink },
+  optionLabel: { fontSize: typography.body.fontSize, fontWeight: "700", color: colors.ink },
   optionLabelOn: { color: colors.brand },
-  optionHint: { fontSize: 12, color: colors.inkMuted, marginTop: 2 },
+  optionHint: { fontSize: typography.caption.fontSize, color: colors.inkMuted, marginTop: 2 },
   emptyBlock: { padding: space.md, gap: space.sm, alignItems: "center" },
   empty: { color: colors.inkMuted, textAlign: "center" },
   retry: { paddingVertical: 8, paddingHorizontal: 16 },

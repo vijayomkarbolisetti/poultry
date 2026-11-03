@@ -40,6 +40,125 @@ export const FARMER_PERM_OPTIONS = [
   "schedule.view",
 ] as const;
 
+export type FarmerPermCode = (typeof FARMER_PERM_OPTIONS)[number];
+
+/** UI grouping only — codes must stay within FARMER_PERM_OPTIONS. */
+export const FARMER_PERM_GROUPS: { title: string; codes: FarmerPermCode[] }[] = [
+  {
+    title: "Shed management",
+    codes: ["shed.view", "shed.update", "flock.view", "flock.create", "flock.update"],
+  },
+  {
+    title: "Bird management",
+    codes: ["bird.view", "bird.create"],
+  },
+  {
+    title: "Operations and reporting",
+    codes: ["report.view", "lifecycle.record"],
+  },
+  {
+    title: "Vaccination",
+    codes: ["vaccination.view", "vaccination.record", "schedule.view"],
+  },
+];
+
+/**
+ * Compact create-farmer categories matching the onboarding reference
+ * (Sheds / Birds / Vaccination / Lifecycle / Reports).
+ */
+export const FARMER_CREATE_PERM_CATEGORIES: {
+  id: string;
+  title: string;
+  hint: string;
+  codes: FarmerPermCode[];
+}[] = [
+  {
+    id: "sheds",
+    title: "Sheds",
+    hint: "View and manage assigned sheds",
+    codes: ["shed.view", "shed.update", "flock.view", "flock.create", "flock.update"],
+  },
+  {
+    id: "birds",
+    title: "Birds",
+    hint: "View and register birds",
+    codes: ["bird.view", "bird.create"],
+  },
+  {
+    id: "vaccination",
+    title: "Vaccination",
+    hint: "View schedules and record doses",
+    codes: ["vaccination.view", "vaccination.record", "schedule.view"],
+  },
+  {
+    id: "lifecycle",
+    title: "Lifecycle",
+    hint: "Record mortality, sale, and transfer",
+    codes: ["lifecycle.record"],
+  },
+  {
+    id: "reports",
+    title: "Reports",
+    hint: "View dashboard and compliance",
+    codes: ["report.view"],
+  },
+];
+
+/** All codes an owner may grant via the farmer create UI (includes vaccination.record). */
+export const ALL_GRANTABLE_FARMER_PERMS: FarmerPermCode[] = [...FARMER_PERM_OPTIONS];
+
+/**
+ * Safe role presets — only existing FARMER_PERM_OPTIONS codes.
+ * Never includes vaccination.record (must be granted explicitly by owner/admin).
+ */
+export const FARMER_ROLE_PRESETS: { id: string; label: string; codes: FarmerPermCode[] }[] = [
+  {
+    id: "viewer",
+    label: "Viewer",
+    codes: ["shed.view", "flock.view", "bird.view", "report.view"],
+  },
+  {
+    id: "field",
+    label: "Field worker",
+    codes: [
+      "shed.view",
+      "flock.view",
+      "flock.create",
+      "bird.view",
+      "bird.create",
+      "report.view",
+      "lifecycle.record",
+      "vaccination.view",
+      "schedule.view",
+    ],
+  },
+  {
+    id: "shed_lead",
+    label: "Shed lead",
+    codes: [
+      "shed.view",
+      "shed.update",
+      "flock.view",
+      "flock.create",
+      "flock.update",
+      "bird.view",
+      "bird.create",
+      "report.view",
+      "lifecycle.record",
+      "vaccination.view",
+      "schedule.view",
+    ],
+  },
+];
+
+/** Default grants when creating a farmer — no vaccination.record. */
+export const DEFAULT_FARMER_PERMS: FarmerPermCode[] = [
+  "shed.view",
+  "flock.view",
+  "bird.view",
+  "report.view",
+];
+
 export function activeMembership(user: UserMe | null, ownerAccountId: string | null): Membership | null {
   if (!user) return null;
   return user.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user.memberships[0] ?? null;

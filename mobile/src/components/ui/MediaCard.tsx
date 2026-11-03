@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { ComponentProps, ReactNode } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, radius, shadow, space } from "../../theme/tokens";
+import { colors, radius, shadow, space, typography } from "../../theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -99,9 +99,9 @@ const styles = StyleSheet.create({
   },
   content: { flex: 1, gap: 3 },
   top: { flexDirection: "row", alignItems: "center", gap: space.sm },
-  title: { flex: 1, fontSize: 16, fontWeight: "800", color: colors.ink },
-  subtitle: { fontSize: 13, color: colors.inkMuted, fontWeight: "600" },
-  meta: { fontSize: 12, color: colors.inkMuted },
+  title: { flex: 1, fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.ink },
+  subtitle: { fontSize: typography.secondary.fontSize, color: colors.inkMuted, fontWeight: "600" },
+  meta: { fontSize: typography.caption.fontSize, color: colors.inkMuted },
   badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: radius.pill },
-  badgeText: { fontSize: 11, fontWeight: "800" },
+  badgeText: { fontSize: typography.overline.fontSize, fontWeight: "800" },
 });
