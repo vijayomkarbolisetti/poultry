@@ -132,13 +132,10 @@ export default function SettingsScreen() {
   const { user, ownerAccountId, setActiveOwner, signOut } = useAuth();
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
+  const isSuperAdmin = Boolean(user?.is_platform_super_admin);
   const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
   const canCatalogues = hasPermission(user, ownerAccountId, "schedule.view");
-  const canSearch =
-    hasPermission(user, ownerAccountId, "bird.view") ||
-    hasPermission(user, ownerAccountId, "shed.view") ||
-    hasPermission(user, ownerAccountId, "flock.view");
-  const canSoldBirds = hasPermission(user, ownerAccountId, "bird.view");
+  const canBirdHistory = hasPermission(user, ownerAccountId, "bird.view");
 
   const onSignOut = async () => {
     await signOut();
@@ -154,6 +151,14 @@ export default function SettingsScreen() {
     show: boolean;
   }[] = [
     {
+      key: "farms",
+      label: "All farms",
+      description: "Create farms and open any organization",
+      icon: "globe-outline",
+      href: "/(app)/farms",
+      show: isSuperAdmin,
+    },
+    {
       key: "farmers",
       label: "Farmers",
       description: "Manage farm workers and access",
@@ -162,20 +167,20 @@ export default function SettingsScreen() {
       show: canFarmers,
     },
     {
-      key: "search",
-      label: "Search",
-      description: "Find birds and farm records",
-      icon: "search-outline",
-      href: "/(app)/search",
-      show: canSearch,
-    },
-    {
       key: "sold",
       label: "Sold Birds",
       description: "View sales and sold-bird history",
       icon: "pricetag-outline",
       href: "/(app)/birds/sold",
-      show: canSoldBirds,
+      show: canBirdHistory,
+    },
+    {
+      key: "dead",
+      label: "Dead Birds",
+      description: "View mortality and dead-bird history",
+      icon: "heart-dislike-outline",
+      href: "/(app)/birds/dead-birds",
+      show: canBirdHistory,
     },
     {
       key: "catalogues",
@@ -234,10 +239,12 @@ export default function SettingsScreen() {
             {user?.email}
           </Text>
           <View style={styles.profileMeta}>
-            <View style={[styles.roleBadge, isOwner && styles.roleBadgeOwner]}>
-              {isOwner ? <Ionicons name="shield-checkmark" size={11} color="#fff" /> : null}
+            <View style={[styles.roleBadge, (isOwner || isSuperAdmin) && styles.roleBadgeOwner]}>
+              {isOwner || isSuperAdmin ? (
+                <Ionicons name="shield-checkmark" size={11} color="#fff" />
+              ) : null}
               <Text style={styles.roleBadgeText} numberOfLines={1}>
-                {role}
+                {isSuperAdmin ? "platform admin" : role}
               </Text>
             </View>
           </View>
@@ -263,17 +270,25 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      {/* Organizations — preserve switch via card press when not active */}
+      {/* Organizations — memberships; super admins also use All farms */}
       <Text style={styles.section}>Organizations</Text>
       <View style={styles.orgList}>
-        {(user?.memberships ?? []).map((m) => (
-          <OrgCard
-            key={m.id}
-            membership={m}
-            active={m.owner_account_id === ownerAccountId}
-            onSwitch={() => setActiveOwner(m.owner_account_id)}
-          />
-        ))}
+        {(user?.memberships ?? []).length === 0 ? (
+          <Text style={styles.emptyManage}>
+            {isSuperAdmin
+              ? "No personal farm memberships. Open a farm from All farms."
+              : "No organizations linked to this account."}
+          </Text>
+        ) : (
+          (user?.memberships ?? []).map((m) => (
+            <OrgCard
+              key={m.id}
+              membership={m}
+              active={m.owner_account_id === ownerAccountId}
+              onSwitch={() => setActiveOwner(m.owner_account_id)}
+            />
+          ))
+        )}
       </View>
 
       {/* Log out — same session clear as before */}

@@ -2,6 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useQuery } from "@tanstack/react-query";
 import { Href, router, useFocusEffect } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
 import { StatusBar } from "expo-status-bar";
 import { ComponentProps, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -77,20 +78,6 @@ const ui = {
   horizontal: 20,
 };
 
-function formatLastUpdated(ts?: number): string {
-  if (!ts) return "Last updated: —";
-  const d = new Date(ts);
-  const now = new Date();
-  const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  if (sameDay) return `Last updated: Today ${time}`;
-  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  return `Last updated: ${date} ${time}`;
-}
-
 function softCardShadow() {
   return {
     shadowColor: "#022C22",
@@ -116,7 +103,7 @@ function HeaderCurve({ width }: { width: number }) {
 }
 
 /**
- * Soft pastel landscape behind card copy (subject weighted right).
+ * Full-bleed card illustration behind copy (subject weighted right/bottom).
  * Falls back to a faint icon if no asset is wired yet.
  */
 function CardWatermark({
@@ -133,15 +120,25 @@ function CardWatermark({
   variant?: "stat" | "action";
 }) {
   if (source) {
+    const isAction = variant === "action";
     return (
-      <View
-        style={variant === "stat" ? styles.statArtClip : styles.actionArtClip}
-        pointerEvents="none"
-      >
+      <View style={isAction ? styles.actionArtClip : styles.statArtClip} pointerEvents="none">
         <Image
           source={source}
-          style={variant === "stat" ? styles.statArtImg : styles.actionArtImg}
+          style={isAction ? styles.actionArtImg : styles.statArtImg}
           resizeMode="cover"
+        />
+        {/* Soft left wash for title contrast; keep right side vivid so cover art reads as full-bleed. */}
+        <LinearGradient
+          colors={
+            isAction
+              ? ["rgba(255,255,255,0.58)", "rgba(255,255,255,0.22)", "rgba(255,255,255,0)"]
+              : ["rgba(255,255,255,0.4)", "rgba(255,255,255,0.15)", "rgba(255,255,255,0)"]
+          }
+          locations={[0, 0.48, 1]}
+          start={{ x: 0, y: 0.2 }}
+          end={{ x: 1, y: 0.85 }}
+          style={styles.artOverlay}
         />
       </View>
     );
@@ -254,38 +251,40 @@ function QuickAction({
         if (onPress) onPress();
         else if (href) router.push(href);
       }}
-      style={({ pressed }) => [styles.quick, softCardShadow(), pressed && { opacity: 0.88 }]}
+      style={({ pressed }) => [styles.quickPress, softCardShadow(), pressed && { opacity: 0.88 }]}
       accessibilityRole="button"
       accessibilityLabel={title}
     >
-      <CardWatermark
-        source={watermark}
-        fallbackIcon={watermarkIcon}
-        fallbackMci={watermarkMci}
-        color={`${iconColor}28`}
-        variant="action"
-      />
-      <View style={[styles.quickIcon, { backgroundColor: iconBg }]}>
-        {iconImage != null ? (
-          <Image source={iconImage} style={styles.quickIconImg} resizeMode="cover" />
-        ) : (
-          <Ionicons name={icon} size={18} color={iconColor} />
-        )}
+      <View style={styles.quick}>
+        <CardWatermark
+          source={watermark}
+          fallbackIcon={watermarkIcon}
+          fallbackMci={watermarkMci}
+          color={`${iconColor}28`}
+          variant="action"
+        />
+        <View style={[styles.quickIcon, { backgroundColor: iconBg }]}>
+          {iconImage != null ? (
+            <Image source={iconImage} style={styles.quickIconImg} resizeMode="cover" />
+          ) : (
+            <Ionicons name={icon} size={18} color={iconColor} />
+          )}
+        </View>
+        <View style={styles.quickText}>
+          <Text
+            style={styles.quickTitle}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+          >
+            {title}
+          </Text>
+          <Text style={styles.quickSubtitle} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={15} color="#9AA8A1" />
       </View>
-      <View style={styles.quickText}>
-        <Text
-          style={styles.quickTitle}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.85}
-        >
-          {title}
-        </Text>
-        <Text style={styles.quickSubtitle} numberOfLines={2}>
-          {subtitle}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={15} color="#9AA8A1" />
     </Pressable>
   );
 }
@@ -293,9 +292,11 @@ function QuickAction({
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, ownerAccountId } = useAuth();
+  const isSuperAdmin = Boolean(user?.is_platform_super_admin);
+  const needsFarmPick = isSuperAdmin && !ownerAccountId;
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
-  const farmName = membership?.organization_name?.trim() || "Your farm";
+  const farmName = membership?.organization_name?.trim() || (isSuperAdmin ? "All farms" : "Your farm");
   const farmTitle = user?.full_name?.trim().split(/\s+/).filter(Boolean)[0] || farmName;
 
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
@@ -337,7 +338,6 @@ export default function HomeScreen() {
   });
 
   const d = dash.data;
-  const lastUpdated = formatLastUpdated(dash.dataUpdatedAt || undefined);
 
   const hasQuickActions = canSheds || canBirdSearch || canVaccination || canCatalogues;
 
@@ -345,7 +345,7 @@ export default function HomeScreen() {
     <Screen edges={["left", "right"]} style={{ padding: 0, gap: 0, backgroundColor: ui.contentBg }}>
       <StatusBar style="dark" />
       <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingBottom: space.xl + 8 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: Math.max(insets.bottom, 12) + 72 }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -362,7 +362,7 @@ export default function HomeScreen() {
       >
         <ImageBackground
           source={HEADER_ART}
-          style={[styles.header, { paddingTop: Math.max(insets.top, 10) + 4 }]}
+          style={[styles.header, { paddingTop: Math.max(insets.top, 10) + 6 }]}
           imageStyle={styles.headerImg}
           resizeMode="cover"
         >
@@ -392,12 +392,18 @@ export default function HomeScreen() {
                   {farmName}
                 </Text>
               </View>
-              <View style={styles.manageFarmBadge}>
-                <Ionicons name="settings-outline" size={13} color={ui.accentGreen} />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Manage farm"
+                onPress={() => router.push("/(app)/settings")}
+                style={({ pressed }) => [styles.manageFarmBadge, pressed && { opacity: 0.85 }]}
+                hitSlop={6}
+              >
+                <MaterialCommunityIcons name="barn" size={14} color={ui.accentGreen} />
                 <Text style={styles.manageFarmText} numberOfLines={1}>
                   Manage farm · Simple
                 </Text>
-              </View>
+              </Pressable>
             </View>
           </View>
 
@@ -405,6 +411,24 @@ export default function HomeScreen() {
         </ImageBackground>
 
         <View style={styles.sheet}>
+          {needsFarmPick ? (
+            <Pressable
+              onPress={() => router.push("/(app)/farms")}
+              accessibilityRole="button"
+              accessibilityLabel="Open all farms"
+              style={({ pressed }) => [styles.superAdminBanner, pressed && { opacity: 0.92 }]}
+            >
+              <Ionicons name="globe-outline" size={22} color={ui.emerald} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.superAdminBannerTitle}>Select a farm to manage</Text>
+                <Text style={styles.superAdminBannerBody}>
+                  Create owner accounts or open an existing farm.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={ui.emerald} />
+            </Pressable>
+          ) : null}
+
           <View style={[styles.searchBar, softCardShadow(), !canSearch ? { opacity: 0.7 } : null]}>
             <Ionicons name="search" size={18} color="#8A9A93" />
             <TextInput
@@ -430,16 +454,7 @@ export default function HomeScreen() {
               >
                 <Ionicons name="close-circle" size={20} color="#8A9A93" />
               </Pressable>
-            ) : (
-              <View
-                style={styles.searchFilter}
-                pointerEvents="none"
-                importantForAccessibility="no"
-                accessibilityElementsHidden
-              >
-                <Ionicons name="options-outline" size={18} color="#8A9A93" />
-              </View>
-            )}
+            ) : null}
           </View>
 
           {searchActive && canSearch ? (
@@ -465,25 +480,8 @@ export default function HomeScreen() {
                 </Pressable>
               ) : null}
 
-              <View style={styles.sectionHead}>
-                <Text style={styles.sectionTitle}>Overview</Text>
-                <View style={styles.refreshRow}>
-                  <Text style={styles.lastUpdated} numberOfLines={1}>
-                    {lastUpdated}
-                  </Text>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Refresh dashboard"
-                    onPress={() => dash.refetch()}
-                    hitSlop={10}
-                    style={styles.refreshBtn}
-                  >
-                    <Ionicons name="refresh" size={15} color={ui.secondaryText} />
-                  </Pressable>
-                </View>
-              </View>
+              <Text style={styles.sectionTitle}>Overview</Text>
 
-              {/* Three equal cards in one row — mock layout */}
               <View style={styles.statRow}>
                 <StatCard
                   label="Live birds"
@@ -535,9 +533,7 @@ export default function HomeScreen() {
                 />
               </View>
 
-              <Text style={[styles.sectionTitle, { marginTop: 22, marginBottom: 12 }]}>
-                Quick actions
-              </Text>
+              <Text style={styles.quickSectionTitle}>Quick actions</Text>
               <View style={styles.quickGrid}>
                 {canSheds ? (
                   <QuickAction
@@ -616,9 +612,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1, backgroundColor: ui.contentBg },
   header: {
-    minHeight: 188,
+    minHeight: 168,
     paddingHorizontal: ui.horizontal,
-    paddingBottom: 40,
+    paddingBottom: 30,
     overflow: "hidden",
   },
   headerImg: { resizeMode: "cover" },
@@ -626,6 +622,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginBottom: 2,
   },
   brandName: {
     color: ui.forest,
@@ -645,10 +642,11 @@ const styles = StyleSheet.create({
     ...softCardShadow(),
   },
   farmRow: {
-    marginTop: 18,
-    paddingBottom: 6,
+    marginTop: 12,
+    paddingBottom: 4,
+    maxWidth: "62%",
   },
-  farmIdentity: { gap: 4 },
+  farmIdentity: { gap: 3 },
   farmTitle: {
     color: ui.primaryText,
     fontSize: typography.screenTitle.fontSize,
@@ -670,10 +668,10 @@ const styles = StyleSheet.create({
     backgroundColor: ui.healthBadgeBg,
     borderRadius: 999,
     paddingHorizontal: 11,
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderWidth: 1,
     borderColor: "#C7EBDD",
-    marginTop: 4,
+    marginTop: 6,
   },
   manageFarmText: {
     color: ui.accentGreen,
@@ -687,11 +685,33 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   sheet: {
-    marginTop: -18,
+    marginTop: -14,
     backgroundColor: ui.contentBg,
     paddingHorizontal: ui.horizontal,
     paddingTop: 0,
     minHeight: 400,
+  },
+  superAdminBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: ui.white,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: ui.birdsBorder,
+    padding: 14,
+    marginTop: 8,
+    marginBottom: 10,
+  },
+  superAdminBannerTitle: {
+    fontSize: typography.bodyStrong.fontSize,
+    fontWeight: "800",
+    color: ui.primaryText,
+  },
+  superAdminBannerBody: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "600",
+    color: ui.secondaryText,
   },
   searchBar: {
     flexDirection: "row",
@@ -703,8 +723,8 @@ const styles = StyleSheet.create({
     borderColor: ui.searchBorder,
     paddingHorizontal: 16,
     height: 50,
-    marginTop: -8,
-    marginBottom: 18,
+    marginTop: -4,
+    marginBottom: 14,
   },
   searchInput: {
     flex: 1,
@@ -714,38 +734,20 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
     margin: 0,
   },
-  searchFilter: {
-    width: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  sectionHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
-    gap: 8,
-  },
   sectionTitle: {
     fontSize: typography.sectionTitle.fontSize,
     fontWeight: "800",
     color: ui.primaryText,
     letterSpacing: -0.2,
+    marginBottom: 10,
   },
-  refreshRow: { flexDirection: "row", alignItems: "center", gap: 4, flexShrink: 1 },
-  lastUpdated: {
-    fontSize: typography.overline.fontSize,
-    color: ui.secondaryText,
-    fontWeight: "500",
-    flexShrink: 1,
-  },
-  refreshBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
+  quickSectionTitle: {
+    fontSize: typography.sectionTitle.fontSize,
+    fontWeight: "800",
+    color: ui.primaryText,
+    letterSpacing: -0.2,
+    marginTop: 16,
+    marginBottom: 10,
   },
   statRow: {
     flexDirection: "row",
@@ -761,23 +763,40 @@ const styles = StyleSheet.create({
     minHeight: 112,
     overflow: "hidden",
   },
-  /** Overview KPI — art fills card, subject sits on the right. */
+  /**
+   * Bottom-anchored cover: taller than the card so pale sky is cropped and subjects fill the frame.
+   * Width/height % work here because the clip parent is absoluteFill against a sized card.
+   */
   statArtClip: {
     ...StyleSheet.absoluteFill,
-    opacity: 0.55,
+    overflow: "hidden",
   },
   statArtImg: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     width: "100%",
-    height: "100%",
+    height: "135%",
   },
-  /** Quick action — softer fill so title/subtitle stay readable. */
   actionArtClip: {
     ...StyleSheet.absoluteFill,
-    opacity: 0.28,
+    overflow: "hidden",
   },
+  /**
+   * Landscape assets are sky-heavy; a taller bottom-anchored frame crops sky so
+   * sheds / birds / vials / books fill the short quick-action cards.
+   */
   actionArtImg: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
     width: "100%",
-    height: "100%",
+    height: "170%",
+  },
+  artOverlay: {
+    ...StyleSheet.absoluteFill,
   },
   watermarkFallback: {
     position: "absolute",
@@ -819,9 +838,13 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
   },
-  quick: {
+  /** Shadow/elevation lives on the pressable; overflow clip stays on the inner card. */
+  quickPress: {
     width: "47.5%",
     flexGrow: 1,
+    borderRadius: 18,
+  },
+  quick: {
     minHeight: 88,
     backgroundColor: ui.white,
     borderRadius: 18,

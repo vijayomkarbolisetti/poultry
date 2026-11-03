@@ -3,6 +3,8 @@
  * Status vocabulary matches backend `schedule_engine` (do not invent new statuses).
  */
 
+import { todayIsoDate } from "../../components/ui/selectUtils";
+
 export type DoseBucket =
   | "overdue"
   | "due_today"
@@ -249,7 +251,8 @@ export function daysPastDue(isoDate: string | null | undefined, todayIso?: strin
   if (!isoDate || isoDate.length < 10) return null;
   const due = new Date(`${isoDate.slice(0, 10)}T12:00:00`);
   if (Number.isNaN(due.getTime())) return null;
-  const todayStr = todayIso && todayIso.length >= 10 ? todayIso.slice(0, 10) : new Date().toISOString().slice(0, 10);
+  // Prefer local-calendar today (IST on Indian devices); never UTC via toISOString().
+  const todayStr = todayIso && todayIso.length >= 10 ? todayIso.slice(0, 10) : todayIsoDate();
   const today = new Date(`${todayStr}T12:00:00`);
   const diff = Math.floor((today.getTime() - due.getTime()) / 86_400_000);
   return diff;

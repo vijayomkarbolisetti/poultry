@@ -15,6 +15,7 @@ import {
 
 import { listSoldBirds, type SoldBirdHit } from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
+import { BirdListExportSheet } from "../../../src/components/birds/BirdListExportSheet";
 import { Button } from "../../../src/components/ui/Button";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { ImmersiveHeroHeader } from "../../../src/components/ui/ImmersiveHeroHeader";
@@ -49,6 +50,7 @@ export default function SoldBirdsScreen() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [period, setPeriod] = useState<PeriodKey>("all");
+  const [exportOpen, setExportOpen] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -110,13 +112,23 @@ export default function SoldBirdsScreen() {
               accessibilityLabel="Sold birds farm illustration"
               contentStyle={styles.heroCopy}
             >
-              <Pressable
-                onPress={() => safeBack("/(app)/settings")}
-                style={styles.backBtn}
-                accessibilityLabel="Back"
-              >
-                <Ionicons name="arrow-back" size={22} color={birdUi.text} />
-              </Pressable>
+              <View style={styles.heroTopRow}>
+                <Pressable
+                  onPress={() => safeBack("/(app)/settings")}
+                  style={styles.backBtn}
+                  accessibilityLabel="Back"
+                >
+                  <Ionicons name="arrow-back" size={22} color={birdUi.text} />
+                </Pressable>
+                <Pressable
+                  onPress={() => setExportOpen(true)}
+                  style={styles.downloadBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download sold birds export"
+                >
+                  <Ionicons name="download-outline" size={20} color={birdUi.primary} />
+                </Pressable>
+              </View>
               <View style={styles.heroTitles}>
                 <Text style={styles.title}>Sold Birds</Text>
                 <Text style={styles.subtitle}>Birds that have been sold</Text>
@@ -124,6 +136,19 @@ export default function SoldBirdsScreen() {
             </ImmersiveHeroHeader>
 
             <View style={styles.headerBody}>
+              <View style={styles.countCard} accessibilityLabel={`${total} sold birds`}>
+                <View style={[styles.countIcon, { backgroundColor: birdUi.orangePale }]}>
+                  <Ionicons name="pricetag-outline" size={18} color={birdUi.orange} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.countValue}>{total}</Text>
+                  <Text style={styles.countLabel}>
+                    {total === 1 ? "sold bird" : "sold birds"}
+                    {period !== "all" && period !== "custom" ? " in this period" : ""}
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.searchRow}>
                 <View style={styles.searchBox}>
                   <Ionicons name="search" size={18} color={birdUi.muted} />
@@ -131,7 +156,7 @@ export default function SoldBirdsScreen() {
                     style={styles.searchInput}
                     value={q}
                     onChangeText={setQ}
-                    placeholder="Search by band no., breed, batch, buyer name or mobile…"
+                    placeholder="Search by Band no or id"
                     placeholderTextColor={birdUi.muted}
                     accessibilityLabel="Search sold birds"
                   />
@@ -141,7 +166,7 @@ export default function SoldBirdsScreen() {
               <View style={styles.chips}>
                 {(
                   [
-                    ["all", `All (${total})`],
+                    ["all", "All"],
                     ["month", "This Month"],
                     ["quarter", "Last 3 Months"],
                   ] as const
@@ -178,6 +203,11 @@ export default function SoldBirdsScreen() {
           )
         }
         renderItem={({ item }) => <SoldCard item={item} />}
+      />
+      <BirdListExportSheet
+        visible={exportOpen}
+        kind="sold"
+        onClose={() => setExportOpen(false)}
       />
     </Screen>
   );
@@ -264,7 +294,20 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     marginTop: -4,
   },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  downloadBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -274,6 +317,31 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text, letterSpacing: -0.3 },
   subtitle: { fontSize: typography.sectionTitle.fontSize, color: birdUi.muted },
+  countCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: birdUi.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: birdUi.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  countIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countValue: {
+    fontSize: typography.screenTitle.fontSize,
+    fontWeight: "800",
+    color: birdUi.text,
+    lineHeight: 26,
+  },
+  countLabel: { fontSize: typography.caption.fontSize, fontWeight: "600", color: birdUi.muted },
   searchRow: { marginTop: 4 },
   searchBox: {
     flexDirection: "row",

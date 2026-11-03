@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LinearGradient } from "expo-linear-gradient";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import {
   Dispatch,
   type RefObject,
@@ -260,10 +260,7 @@ function LoginForm({
 
       <View style={[styles.footerBlock, shadows.soft]}>
         <Text style={styles.footer}>
-          Don’t have an account?{" "}
-          <Link href="/(auth)/register" style={styles.link}>
-            Create Farm Account
-          </Link>
+          Farm accounts are created by a platform admin.
         </Text>
         <Pressable
           accessibilityRole="button"

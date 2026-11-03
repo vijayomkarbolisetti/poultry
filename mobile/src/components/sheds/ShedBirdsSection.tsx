@@ -1,7 +1,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { listBirdsInShed, type ShedBirdListItem } from "../../api/birds";
 import { describeApiError } from "../../api/client";
@@ -23,6 +23,7 @@ import {
 } from "../../features/birds/birdSelectionHelpers";
 import { media } from "../../theme/media";
 import { colors, radius, space, typography } from "../../theme/tokens";
+import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { HenLoader } from "../ui/HenLoader";
@@ -49,6 +50,7 @@ type Props = {
   canCreate: boolean;
   canUpdate: boolean;
   canLifecycle: boolean;
+  canRecordVaccination?: boolean;
 };
 
 export function ShedBirdsSection({
@@ -59,6 +61,7 @@ export function ShedBirdsSection({
   canCreate,
   canUpdate,
   canLifecycle,
+  canRecordVaccination = false,
 }: Props) {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -67,6 +70,7 @@ export function ShedBirdsSection({
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [selectionNote, setSelectionNote] = useState<string | null>(null);
+  const [selectAllNote, setSelectAllNote] = useState<string | null>(null);
   const [batchActionId, setBatchActionId] = useState<string | null>(null);
 
   const debounceTimer = useMemo(() => ({ id: null as ReturnType<typeof setTimeout> | null }), []);
@@ -249,7 +253,7 @@ export function ShedBirdsSection({
                 if (!selecting) return;
                 const scopeNote = selectAllLoadedScopeMessage(birds.hasNextPage);
                 if (scopeNote) {
-                  Alert.alert("Select all", scopeNote, [{ text: "OK" }]);
+                  setSelectAllNote(scopeNote);
                 }
               }}
             />
@@ -263,6 +267,26 @@ export function ShedBirdsSection({
           {selectionNote ? <Text style={styles.warn}>{selectionNote}</Text> : null}
           {selected.size > 0 ? (
             <View style={styles.bulkBar}>
+              {canRecordVaccination ? (
+                <Button
+                  label="Record vaccination"
+                  variant="secondary"
+                  onPress={() => {
+                    const ids = [...selected];
+                    const birdLabels = items
+                      .filter((b) => selected.has(b.id))
+                      .map(birdLabel);
+                    router.push({
+                      pathname: "/(app)/birds/record-vaccination",
+                      params: {
+                        shedId,
+                        birdIds: ids.join(","),
+                        labels: birdLabels.join("|"),
+                      },
+                    });
+                  }}
+                />
+              ) : null}
               <Button label="Record Mortality" variant="secondary" onPress={() => openBulk("mortality")} />
               <Button label="Record Sale" variant="secondary" onPress={() => openBulk("sale")} />
               <Button label="Record Transfer" variant="secondary" onPress={() => openBulk("transfer")} />
@@ -393,6 +417,20 @@ export function ShedBirdsSection({
           onPress={() => birds.fetchNextPage()}
         />
       ) : null}
+
+      <AppDialog
+        visible={Boolean(selectAllNote)}
+        title="Select all"
+        description={selectAllNote ?? undefined}
+        tone="info"
+        dismissible
+        onDismiss={() => setSelectAllNote(null)}
+        primary={{
+          label: "OK",
+          variant: "primary",
+          onPress: () => setSelectAllNote(null),
+        }}
+      />
     </View>
   );
 }

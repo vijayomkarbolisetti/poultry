@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.authorization.deps import get_current_user
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models.user import User
 from app.schemas.auth import (
@@ -44,6 +45,11 @@ async def _serialize_user(db: AsyncSession, loaded: User) -> UserOut:
 
 @router.post("/register-owner", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register_owner(body: RegisterOwnerRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
+    if not get_settings().allow_public_owner_registration:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public farm registration is disabled. Ask a platform admin to create your account.",
+        )
     try:
         user, _owner, _membership, access, refresh = await auth_service.register_owner(
             db,

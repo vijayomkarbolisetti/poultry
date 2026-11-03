@@ -7,6 +7,8 @@ from app.authorization.deps import AuthContext
 from app.authorization.permissions import require_permission
 from app.core.database import get_db
 from app.schemas.vaccine import (
+    ManualVaccinationBatchIn,
+    ManualVaccinationBatchOut,
     VaccinationBatchRecordIn,
     VaccinationCorrectionIn,
     VaccinationEventOut,
@@ -27,7 +29,8 @@ async def record(
         event = await vaccination_service.record_vaccination(db, ctx, body)
     except vaccination_service.VaccinationError as exc:
         raise HTTPException(status_code=400, detail=exc.message) from exc
-    return VaccinationEventOut.model_validate(event)
+    enriched = await vaccination_service.enrich_vaccination_events(db, [event])
+    return VaccinationEventOut.model_validate(enriched[0])
 
 
 @router.post("/batch", response_model=list[VaccinationEventOut], status_code=status.HTTP_201_CREATED)
@@ -42,7 +45,26 @@ async def record_batch(
     except vaccination_service.VaccinationError as exc:
         code = 409 if exc.code == "IDEMPOTENCY_CONFLICT" else 400
         raise HTTPException(status_code=code, detail=exc.message) from exc
-    return [VaccinationEventOut.model_validate(e) for e in events]
+    enriched = await vaccination_service.enrich_vaccination_events(db, events)
+    return [VaccinationEventOut.model_validate(row) for row in enriched]
+
+
+@router.post(
+    "/manual-batch",
+    response_model=ManualVaccinationBatchOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_manual_batch(
+    body: ManualVaccinationBatchIn,
+    ctx: AuthContext = Depends(require_permission("vaccination.record")),
+    db: AsyncSession = Depends(get_db),
+) -> ManualVaccinationBatchOut:
+    """Record the same ad-hoc vaccine details for one or more selected birds."""
+    try:
+        return await vaccination_service.record_manual_vaccination_batch(db, ctx, body)
+    except vaccination_service.VaccinationError as exc:
+        code = 409 if exc.code == "IDEMPOTENCY_CONFLICT" else 400
+        raise HTTPException(status_code=code, detail=exc.message) from exc
 
 
 @router.get("", response_model=list[VaccinationEventOut])
@@ -52,7 +74,8 @@ async def list_events(
     db: AsyncSession = Depends(get_db),
 ) -> list[VaccinationEventOut]:
     rows = await vaccination_service.list_events(db, ctx, flock_id=flock_id)
-    return [VaccinationEventOut.model_validate(r) for r in rows]
+    enriched = await vaccination_service.enrich_vaccination_events(db, rows)
+    return [VaccinationEventOut.model_validate(row) for row in enriched]
 
 
 @router.post("/{event_id}/correct", response_model=VaccinationEventOut)
@@ -66,4 +89,5 @@ async def correct(
         event = await vaccination_service.void_or_correct(db, ctx, event_id, body)
     except vaccination_service.VaccinationError as exc:
         raise HTTPException(status_code=400, detail=exc.message) from exc
-    return VaccinationEventOut.model_validate(event)
+    enriched = await vaccination_service.enrich_vaccination_events(db, [event])
+    return VaccinationEventOut.model_validate(enriched[0])

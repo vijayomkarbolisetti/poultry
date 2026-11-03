@@ -1,8 +1,12 @@
 /**
- * Lightweight Node checks for report filename helpers.
+ * Lightweight Node checks for report filename + cancel helpers.
  * Run: npx --yes tsx src/features/birds/birdReportDownload.test.ts
  */
 import { buildBirdReportFilename, filenameFromContentDisposition } from "./birdReportFilename";
+import {
+  BirdReportSaveCancelledError,
+  isBirdReportSaveCancelled,
+} from "./birdReportSaveErrors";
 
 function assert(cond: unknown, msg: string) {
   if (!cond) throw new Error(msg);
@@ -24,5 +28,9 @@ const fromHeader = filenameFromContentDisposition(
   "fallback.pdf",
 );
 assert(fromHeader === "bird-report-pdf-band-1-2026-10-28.pdf", `cd parse: ${fromHeader}`);
+
+assert(isBirdReportSaveCancelled(new BirdReportSaveCancelledError()), "typed cancel");
+assert(isBirdReportSaveCancelled(new Error("Picker cancelled by user")), "message cancel");
+assert(!isBirdReportSaveCancelled(new Error("disk full")), "non-cancel");
 
 console.log("birdReportDownload.test.ts OK");

@@ -28,6 +28,7 @@ from app.authorization.deps import AuthContext
 from app.models.enums import BirdLifecycleStatus
 from app.models.lifecycle import LifecycleEvent
 from app.models.owner import OwnerAccount
+from app.models.shed import Shed
 from app.models.user import User
 from app.models.vaccination import VaccinationEvent
 from app.models.vaccine import ScheduledDose, VaccineDefinition
@@ -39,7 +40,13 @@ from app.schemas.flock import (
     BirdSaleDetailsOut,
 )
 from app.services import flock_service
+from app.services.lifecycle_display import (
+    enrich_lifecycle_shed_names,
+    format_lifecycle_detail,
+    format_lifecycle_label,
+)
 from app.services.schedule_engine import (
+    DEFAULT_FARM_TIMEZONE,
     STATUS_COMPLETED_LATE,
     STATUS_COMPLETED_ON_TIME,
     STATUS_COMPLETED_TIMING_UNKNOWN,
@@ -107,29 +114,17 @@ def _enum_value(value: object) -> str:
     return str(value)
 
 
-def format_lifecycle_label(status: object) -> str:
-    """Map BirdLifecycleStatus / event types to customer-facing labels."""
-    raw = _enum_value(status).lower().strip()
-    mapping = {
-        BirdLifecycleStatus.active.value: "Active",
-        BirdLifecycleStatus.dead.value: "Dead",
-        BirdLifecycleStatus.sold.value: "Sold",
-        BirdLifecycleStatus.transferred_out.value: "Transferred out",
-        BirdLifecycleStatus.inactive.value: "Inactive",
-        "mortality": "Mortality",
-        "sale": "Sale",
-        "transfer": "Transfer",
-        "registration": "Registration",
-        "intake": "Intake",
-        "onboarding": "Record created",
-        "adjustment": "Adjustment",
-        "band_assignment": "Band assigned",
-        "count_adjustment": "Count adjustment",
-        "flock_closure": "Batch closed",
-    }
-    if raw in mapping:
-        return mapping[raw]
-    return raw.replace("_", " ").strip().title() or "Not recorded"
+# Re-export for existing test imports.
+__all__ = (
+    "BirdReportError",
+    "build_bird_vaccination_pdf_bytes",
+    "enrich_lifecycle_shed_names",
+    "format_lifecycle_detail",
+    "format_lifecycle_label",
+    "generate_bird_vaccination_report",
+    "lifecycle_badge_colors",
+    "sanitize_report_filename",
+)
 
 
 def lifecycle_badge_colors(status: object) -> tuple[colors.Color, colors.Color]:
@@ -179,17 +174,27 @@ def format_display_date(value: date | datetime | None) -> str:
     return value.strftime("%d %b %Y")
 
 
+def _display_tz_label(tz_name: str | None) -> str:
+    """User-facing timezone label; prefer IST for Asia/Kolkata."""
+    label = (tz_name or "").strip() or DEFAULT_FARM_TIMEZONE
+    if label.upper() == "UTC":
+        return "UTC"
+    if label in ("Asia/Kolkata", "Asia/Calcutta", "IST"):
+        return "IST"
+    return label
+
+
 def format_generated_at(when: datetime, tz_name: str | None) -> tuple[str, str]:
     """Return (display_string, timezone_label) using the farm timezone policy."""
-    label = (tz_name or "UTC").strip() or "UTC"
+    label = (tz_name or "").strip() or DEFAULT_FARM_TIMEZONE
     if label.upper() == "UTC":
         local = when.astimezone(timezone.utc)
         return local.strftime("%d %b %Y, %H:%M"), "UTC"
-    tzinfo = _tz(label)
+    # Accept friendly "IST" as Asia/Kolkata for conversion.
+    resolve_as = DEFAULT_FARM_TIMEZONE if label.upper() == "IST" else label
+    tzinfo = _tz(resolve_as)
     local = when.astimezone(tzinfo)
-    if getattr(tzinfo, "key", None) == label:
-        return local.strftime("%d %b %Y, %H:%M"), label
-    return local.strftime("%d %b %Y, %H:%M"), "UTC"
+    return local.strftime("%d %b %Y, %H:%M"), _display_tz_label(resolve_as)
 
 
 def age_as_of_report(
@@ -220,6 +225,11 @@ def _blank(value: str | None, fallback: str = "Not recorded") -> str:
 def format_record_status(ev: BirdProfileVaccinationEventOut) -> str:
     """Plain-language status for an administered vaccination row."""
     bits: list[str] = []
+    kind = (getattr(ev, "recording_kind", None) or "").strip().lower()
+    if kind == "scheduled" or ev.scheduled_dose_id:
+        bits.append("Scheduled vaccination")
+    else:
+        bits.append("Manual vaccination")
     if ev.coverage_scope == "cohort":
         bits.append(f"Vaccinations recorded for the batch ({ev.birds_covered} birds)")
     else:
@@ -415,7 +425,10 @@ def build_bird_vaccination_pdf_bytes(
     recorder_names = recorder_names or {}
     scheduled_dues = scheduled_dues or {}
     gen_str, tz_label = format_generated_at(generated_at, timezone_name)
-    as_of = generated_at.astimezone(timezone.utc).date()
+    resolve_as = (timezone_name or "").strip() or DEFAULT_FARM_TIMEZONE
+    if resolve_as.upper() == "IST":
+        resolve_as = DEFAULT_FARM_TIMEZONE
+    as_of = generated_at.astimezone(_tz(resolve_as)).date()
 
     buf = io.BytesIO()
     footer_note = "PoultryTrack · Bird Profile & Health Record"
@@ -552,7 +565,6 @@ def build_bird_vaccination_pdf_bytes(
         str(profile.sex).replace("_", " ").strip().title() if profile.sex else "Not recorded"
     )
     age_label = age_as_of_report(profile.hatch_date, profile.estimated_age_days, as_of)
-    display_code = profile.display_code if profile.display_code != profile.band_id else None
     shed_bits = [b for b in [profile.shed_name] if b]
     father = _parentage_display(profile.sire_parentage, _parent_label(profile.sire))
     mother = _parentage_display(profile.dam_parentage, _parent_label(profile.dam))
@@ -561,7 +573,6 @@ def build_bird_vaccination_pdf_bytes(
     story.extend(_section_heading("Bird details", h2))
     left_pairs: list[tuple[str, object]] = [
         ("Band number", band),
-        ("Name / code", _blank(display_code)),
         ("Breed", breed),
         ("Sex", sex_label),
         ("Date hatched", format_display_date(profile.hatch_date)),
@@ -570,7 +581,6 @@ def build_bird_vaccination_pdf_bytes(
     right_pairs: list[tuple[str, object]] = [
         ("Farm", _blank(profile.organization_name)),
         ("Shed", " · ".join(shed_bits) if shed_bits else "Not recorded"),
-        ("Batch", _blank(profile.batch_code)),
         ("Record created on", format_display_date(profile.created_at)),
         ("Father", father),
         ("Mother", mother),
@@ -789,20 +799,11 @@ def build_bird_vaccination_pdf_bytes(
         ]
         rows = [header]
         for ev in ordered:
-            detail_bits = []
-            if ev.reason:
-                detail_bits.append(ev.reason)
-            if ev.buyer_name:
-                detail_bits.append(f"Buyer {ev.buyer_name}")
-            if ev.buyer_mobile:
-                detail_bits.append(f"Mobile {ev.buyer_mobile}")
-            if ev.quantity and ev.quantity != 1:
-                detail_bits.append(f"Qty {ev.quantity}")
             rows.append(
                 [
                     _p(format_lifecycle_label(ev.event_type), small),
                     _p(format_display_date(ev.effective_date), small),
-                    _p(" · ".join(detail_bits) if detail_bits else "—", small),
+                    _p(format_lifecycle_detail(ev), small),
                 ]
             )
         life = Table(rows, colWidths=[36 * mm, 28 * mm, 118 * mm], repeatRows=1)
@@ -853,7 +854,7 @@ async def _load_complete_vaccinations(
 async def _load_complete_lifecycle(
     db: AsyncSession, ctx: AuthContext, bird_id: UUID
 ) -> list[BirdProfileLifecycleOut]:
-    """All lifecycle events for the bird (no UI pagination limit)."""
+    """All lifecycle events for the bird (no UI pagination limit), with shed-move labels."""
     life_rows = list(
         await db.scalars(
             select(LifecycleEvent)
@@ -864,7 +865,13 @@ async def _load_complete_lifecycle(
             .order_by(LifecycleEvent.effective_date.asc(), LifecycleEvent.created_at.asc())
         )
     )
-    return [
+    shed_ids = {e.shed_id for e in life_rows if e.shed_id}
+    shed_names: dict[UUID, str] = {}
+    if shed_ids:
+        rows = await db.execute(select(Shed.id, Shed.name).where(Shed.id.in_(shed_ids)))
+        shed_names = {rid: name for rid, name in rows.all()}
+
+    mapped = [
         BirdProfileLifecycleOut(
             id=e.id,
             event_type=e.event_type,
@@ -874,9 +881,12 @@ async def _load_complete_lifecycle(
             buyer_name=e.buyer_name,
             buyer_mobile=e.buyer_mobile,
             created_at=e.created_at,
+            shed_id=e.shed_id,
+            to_shed_name=shed_names.get(e.shed_id) if e.shed_id else None,
         )
         for e in life_rows
     ]
+    return enrich_lifecycle_shed_names(mapped, shed_names)
 
 
 async def generate_bird_vaccination_report(

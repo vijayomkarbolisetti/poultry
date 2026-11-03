@@ -1,8 +1,8 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
   getBirdProfile,
@@ -12,6 +12,7 @@ import {
 } from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
 import { recordLifecycle } from "../../../src/api/flocks";
+import { BirdReportActionsSheet } from "../../../src/components/birds/BirdReportActionsSheet";
 import {
   SaleActionSheet,
   type SaleBandedPayload,
@@ -31,6 +32,8 @@ import {
 } from "../../../src/features/birds/birdListHelpers";
 import {
   downloadBirdReportPdf,
+  isBirdReportSaveCancelled,
+  prepareBirdReportForShare,
   shareBirdReport,
 } from "../../../src/features/birds/birdReportDownload";
 import { newLifecycleIdempotencyKey } from "../../../src/features/birds/birdSelectionHelpers";
@@ -41,13 +44,21 @@ import { toast } from "../../../src/ui/toast/toastStore";
 import { typography } from "../../../src/theme/tokens";
 
 
+/** True only for real bird UUIDs — blocks mistaken routes like /birds/dead. */
+function isBirdUuid(value: string | undefined | null): boolean {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
 export default function BirdProfileScreen() {
   const { id, fromShedId } = useLocalSearchParams<{ id: string; fromShedId?: string }>();
+  const birdId = Array.isArray(id) ? id[0] : id;
   const { user, ownerAccountId } = useAuth();
   const qc = useQueryClient();
   const canView = hasPermission(user, ownerAccountId, "bird.view");
   const canUpdate = hasPermission(user, ownerAccountId, "bird.update");
   const canLifecycle = hasPermission(user, ownerAccountId, "lifecycle.record");
+  const canRecordVaccination = hasPermission(user, ownerAccountId, "vaccination.record");
   const [lifeBusy, setLifeBusy] = useState(false);
   const [lifeMsg, setLifeMsg] = useState<string | null>(null);
   const [mortalityOpen, setMortalityOpen] = useState(false);
@@ -55,31 +66,29 @@ export default function BirdProfileScreen() {
   const [vaxExpanded, setVaxExpanded] = useState(false);
   const [lifeExpanded, setLifeExpanded] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
-  const [reportDialog, setReportDialog] = useState<{
-    uri: string;
-    filename: string;
-  } | null>(null);
+  const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const lifeLock = useRef(false);
   const reportLock = useRef(false);
   const lifeIdemKey = useRef<string | null>(null);
+  const reserved = (birdId ?? "").trim().toLowerCase();
 
   const profile = useQuery({
-    queryKey: ["bird-profile", id],
-    queryFn: () => getBirdProfile(id!),
-    enabled: !!id && canView,
+    queryKey: ["bird-profile", birdId],
+    queryFn: () => getBirdProfile(birdId!),
+    enabled: isBirdUuid(birdId) && canView,
   });
 
   useFocusEffect(
     useCallback(() => {
-      if (!id || !canView) return;
+      if (!isBirdUuid(birdId) || !canView) return;
       void profile.refetch();
-    }, [id, canView]),
+    }, [birdId, canView]),
   );
 
   const backTarget = fromShedId ? `/(app)/sheds/${fromShedId}/birds` : "/(app)/search";
 
   const invalidateRelated = (shedId?: string, flockId?: string) => {
-    void qc.invalidateQueries({ queryKey: ["bird-profile", id] });
+    void qc.invalidateQueries({ queryKey: ["bird-profile", birdId] });
     void qc.invalidateQueries({ queryKey: ["shed-birds"] });
     void qc.invalidateQueries({ queryKey: ["shed-overview", shedId] });
     void qc.invalidateQueries({ queryKey: ["birds", flockId] });
@@ -87,26 +96,27 @@ export default function BirdProfileScreen() {
     void qc.invalidateQueries({ queryKey: ["flocks"] });
     void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
     void qc.invalidateQueries({ queryKey: ["sold-birds"] });
+    void qc.invalidateQueries({ queryKey: ["dead-birds"] });
   };
 
   const onMortality = () => {
-    if (!id || !profile.data || lifeLock.current || !profile.data.is_active) return;
+    if (!birdId || !profile.data || lifeLock.current || !profile.data.is_active) return;
     setMortalityOpen(true);
   };
 
   const confirmMortality = async () => {
-    if (!id || !profile.data || lifeLock.current) return;
+    if (!birdId || !profile.data || lifeLock.current) return;
     lifeLock.current = true;
     setLifeBusy(true);
     setLifeMsg(null);
     if (!lifeIdemKey.current) {
-      lifeIdemKey.current = newLifecycleIdempotencyKey(`mortality-${id}`);
+      lifeIdemKey.current = newLifecycleIdempotencyKey(`mortality-${birdId}`);
     }
     try {
       await recordLifecycle({
         event_type: "mortality",
         effective_date: todayIsoDate(),
-        bird_id: id,
+        bird_id: birdId,
         quantity: 1,
         reason: "Recorded from bird profile (mortality)",
         idempotency_key: lifeIdemKey.current,
@@ -126,9 +136,9 @@ export default function BirdProfileScreen() {
   };
 
   const onSell = () => {
-    if (!id || !profile.data || !profile.data.is_active) return;
-    const label = profile.data.band_id ?? profile.data.display_code ?? id.slice(0, 8);
-    setSalePayload({ mode: "banded", birdIds: [id], labels: [label] });
+    if (!birdId || !profile.data || !profile.data.is_active) return;
+    const label = profile.data.band_id ?? profile.data.display_code ?? birdId.slice(0, 8);
+    setSalePayload({ mode: "banded", birdIds: [birdId], labels: [label] });
   };
 
   const openEdit = (section: "details" | "parentage" | "band") => {
@@ -143,30 +153,80 @@ export default function BirdProfileScreen() {
     });
   };
 
-  const onDownloadReport = async () => {
-    if (!id || !profile.data || reportLock.current) return;
+  const reportExportOpts = () => {
+    if (!birdId || !profile.data) {
+      throw new Error("Bird profile is not loaded yet.");
+    }
+    return {
+      birdId,
+      bandOrCode: profile.data.band_id ?? profile.data.display_code,
+    };
+  };
+
+  const onReportDownload = () => {
+    if (!birdId || !profile.data || reportLock.current) return;
+    setReportSheetOpen(false);
     reportLock.current = true;
     setReportBusy(true);
-    try {
-      const result = await downloadBirdReportPdf({
-        birdId: id,
-        bandOrCode: profile.data.band_id ?? profile.data.display_code,
-      });
-      setReportDialog({ uri: result.uri, filename: result.filename });
-      toast.success("Report downloaded");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : describeApiError(e, "download bird report");
-      toast.error(msg);
-    } finally {
-      setReportBusy(false);
-      reportLock.current = false;
-    }
+    void (async () => {
+      try {
+        const result = await downloadBirdReportPdf(reportExportOpts());
+        toast.success(`Saved ${result.filename} to selected folder`);
+      } catch (e: unknown) {
+        if (isBirdReportSaveCancelled(e)) {
+          toast.info("Save cancelled — file was not written.");
+          return;
+        }
+        const msg = e instanceof Error ? e.message : describeApiError(e, "download bird report");
+        // Keep failures visible long enough to read / screenshot while debugging.
+        toast.error(msg, 10_000);
+      } finally {
+        setReportBusy(false);
+        reportLock.current = false;
+      }
+    })();
   };
+
+  const onReportShare = () => {
+    if (!birdId || !profile.data || reportLock.current) return;
+    setReportSheetOpen(false);
+    reportLock.current = true;
+    setReportBusy(true);
+    void (async () => {
+      try {
+        const result = await prepareBirdReportForShare(reportExportOpts());
+        await shareBirdReport(result.uri, result.filename);
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : describeApiError(e, "share bird report");
+        toast.error(msg, 10_000);
+      } finally {
+        setReportBusy(false);
+        reportLock.current = false;
+      }
+    })();
+  };
+
+  // After hooks: recover if a static history path was captured by birds/[id].
+  if (reserved === "dead" || reserved === "dead-birds") {
+    return <Redirect href="/(app)/birds/dead-birds" />;
+  }
+  if (reserved === "sold") {
+    return <Redirect href="/(app)/birds/sold" />;
+  }
 
   if (!canView) {
     return (
       <Screen>
         <Text style={styles.error}>You do not have permission to view bird profiles.</Text>
+        <Button label="Back" variant="secondary" onPress={() => safeBack(backTarget)} />
+      </Screen>
+    );
+  }
+
+  if (!isBirdUuid(birdId)) {
+    return (
+      <Screen>
+        <Text style={styles.error}>This bird link is not valid.</Text>
         <Button label="Back" variant="secondary" onPress={() => safeBack(backTarget)} />
       </Screen>
     );
@@ -242,7 +302,8 @@ export default function BirdProfileScreen() {
   return (
     <Screen
       scroll
-      edges={["left", "right", "bottom"]}
+      // Custom in-screen header (no stack nav bar) — include top so status bar is cleared once.
+      edges={["top", "left", "right", "bottom"]}
       style={{ backgroundColor: birdUi.bg, gap: 12, paddingBottom: 28 }}
     >
       <View style={styles.topBar}>
@@ -254,13 +315,20 @@ export default function BirdProfileScreen() {
           <Text style={styles.screenSub}>Details, actions, and history</Text>
         </View>
         <Pressable
-          onPress={() => void onDownloadReport()}
+          onPress={() => {
+            if (!reportBusy) setReportSheetOpen(true);
+          }}
           disabled={reportBusy}
           style={[styles.downloadIconBtn, reportBusy && { opacity: 0.6 }]}
           accessibilityRole="button"
-          accessibilityLabel="Download report"
+          accessibilityLabel="Export bird report"
+          accessibilityState={{ busy: reportBusy }}
         >
-          <Ionicons name="download-outline" size={20} color={birdUi.primary} />
+          {reportBusy ? (
+            <ActivityIndicator size="small" color={birdUi.primary} />
+          ) : (
+            <Ionicons name="download-outline" size={20} color={birdUi.primary} />
+          )}
         </Pressable>
       </View>
 
@@ -366,6 +434,25 @@ export default function BirdProfileScreen() {
                 router.push({
                   pathname: "/(app)/birds/transfer",
                   params: { shedId: p.shed_id, birdIds: p.id },
+                })
+              }
+            />
+          ) : null}
+          {canRecordVaccination ? (
+            <ActionTile
+              icon="medkit-outline"
+              color={birdUi.primary}
+              bg={birdUi.paleMint}
+              label="Record vaccination"
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/birds/record-vaccination",
+                  params: {
+                    shedId: p.shed_id,
+                    birdIds: p.id,
+                    labels: p.band_id?.trim() || p.display_code?.trim() || p.id,
+                    flockId: p.flock_id,
+                  },
                 })
               }
             />
@@ -546,7 +633,7 @@ export default function BirdProfileScreen() {
         title="Record mortality?"
         description={
           profile.data
-            ? `Bird ${profile.data.band_id ?? profile.data.display_code ?? id?.slice(0, 8)}\n\nThis marks the bird as dead and removes it from the live population. History is preserved.`
+            ? `Bird ${profile.data.band_id ?? profile.data.display_code ?? birdId?.slice(0, 8)}\n\nThis marks the bird as dead and removes it from the live population. History is preserved.`
             : undefined
         }
         tone="danger"
@@ -568,35 +655,14 @@ export default function BirdProfileScreen() {
         }}
       />
 
-      <AppDialog
-        visible={!!reportDialog}
-        title="Report ready"
-        description={
-          reportDialog
-            ? `${reportDialog.filename}\n\nThe PDF was saved on this device. You can open or share it now.`
-            : undefined
-        }
-        tone="success"
-        icon="document-text-outline"
-        dismissible
-        onDismiss={() => setReportDialog(null)}
-        secondary={{
-          label: "Close",
-          variant: "secondary",
-          onPress: () => setReportDialog(null),
+      <BirdReportActionsSheet
+        visible={reportSheetOpen}
+        busy={reportBusy}
+        onClose={() => {
+          if (!reportBusy) setReportSheetOpen(false);
         }}
-        primary={{
-          label: "Share / Open",
-          variant: "primary",
-          onPress: () => {
-            if (!reportDialog) return;
-            void shareBirdReport(reportDialog.uri, reportDialog.filename)
-              .then(() => setReportDialog(null))
-              .catch((e: unknown) => {
-                toast.error(e instanceof Error ? e.message : "Could not share the report.");
-              });
-          },
-        }}
+        onDownload={onReportDownload}
+        onShare={onReportShare}
       />
     </Screen>
   );
@@ -814,11 +880,16 @@ function VaccinationCard({
     event.manufacturer_or_brand ? `Brand ${event.manufacturer_or_brand}` : null,
     event.lot_number ? `Lot ${event.lot_number}` : null,
     event.product_expiry ? `Exp ${formatDisplayDate(event.product_expiry)}` : null,
+    event.vaccine_type_or_strain ? `Strain ${event.vaccine_type_or_strain}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
 
   const isCohort = event.coverage_scope === "cohort";
+  const kindLabel =
+    event.recording_kind === "scheduled" || event.scheduled_dose_id
+      ? "Scheduled"
+      : "Manual";
 
   return (
     <View style={[styles.vaxCard, !last && styles.rowBorder]}>
@@ -826,14 +897,43 @@ function VaccinationCard({
         <Text style={styles.vaxName}>{event.vaccine_name?.trim() || "Vaccine"}</Text>
         <Text style={styles.vaxDate}>{formatDisplayDate(event.administration_date)}</Text>
       </View>
+      <Text style={styles.vaxCohortBadge}>{kindLabel} vaccination</Text>
       {isCohort ? (
         <Text style={styles.vaxCohortBadge}>
           Hatch-cohort coverage · {event.birds_covered} bird{event.birds_covered === 1 ? "" : "s"}
         </Text>
       ) : null}
       {meta ? <Text style={styles.vaxMeta}>{meta}</Text> : null}
+      {event.notes?.trim() ? <Text style={styles.vaxMeta}>{event.notes.trim()}</Text> : null}
     </View>
   );
+}
+
+function lifecycleEventDetail(event: BirdProfileLifecycle): string {
+  const fromName = event.from_shed_name?.trim();
+  const toName = event.to_shed_name?.trim();
+  if (fromName && toName) return `From ${fromName} to ${toName}`;
+  if (toName) return `Transferred to ${toName}`;
+  if (fromName) return `Transferred from ${fromName}`;
+
+  const raw = event.reason?.trim() ?? "";
+  const cleaned = raw
+    .replace(/^\[shed-move(?:-batch)?\]\s*/i, "")
+    .replace(/^\[band-from-unbanded\]\s*/i, "Band assigned: ")
+    .trim();
+  if (cleaned) return cleaned;
+
+  if (event.event_type === "sale") {
+    return (
+      [
+        event.buyer_name ? `Buyer ${event.buyer_name}` : null,
+        event.buyer_mobile ? `Mobile ${event.buyer_mobile}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ") || "Bird was sold"
+    );
+  }
+  return "—";
 }
 
 function LifecycleCard({
@@ -844,16 +944,7 @@ function LifecycleCard({
   last?: boolean;
 }) {
   const isSale = event.event_type === "sale";
-  const detail =
-    event.reason?.trim() ||
-    (isSale
-      ? [
-          event.buyer_name ? `Buyer ${event.buyer_name}` : null,
-          event.buyer_mobile ? `Mobile ${event.buyer_mobile}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ") || "Bird was sold"
-      : "—");
+  const detail = lifecycleEventDetail(event);
 
   return (
     <View style={[styles.lifeRow, !last && styles.rowBorder, isSale && styles.lifeSale]}>

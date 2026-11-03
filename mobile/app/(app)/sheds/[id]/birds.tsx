@@ -3,7 +3,6 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -39,6 +38,7 @@ import {
   type TransferUnbandedPayload,
 } from "../../../../src/components/birds/TransferActionSheet";
 import { ShedManagePanel } from "../../../../src/components/sheds/ShedManagePanel";
+import { AppDialog } from "../../../../src/components/ui/AppDialog";
 import { Button } from "../../../../src/components/ui/Button";
 import { HenLoader } from "../../../../src/components/ui/HenLoader";
 import { ImmersiveHeroHeader } from "../../../../src/components/ui/ImmersiveHeroHeader";
@@ -109,6 +109,7 @@ export default function ShedBirdsScreen() {
   const canCreate = hasPermission(user, ownerAccountId, "bird.create");
   const canCreateGroup = hasPermission(user, ownerAccountId, "flock.create");
   const canLifecycle = hasPermission(user, ownerAccountId, "lifecycle.record");
+  const canRecordVaccination = hasPermission(user, ownerAccountId, "vaccination.record");
   const canUpdateShed = hasPermission(user, ownerAccountId, "shed.update");
 
   const [tab, setTab] = useState<TabKey>("banded");
@@ -127,6 +128,7 @@ export default function ShedBirdsScreen() {
     TransferBandedPayload | TransferUnbandedPayload | null
   >(null);
   const [transferResume, setTransferResume] = useState<TransferSheetResume | null>(null);
+  const [selectAllNote, setSelectAllNote] = useState<string | null>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterKey = useRef("");
 
@@ -416,6 +418,8 @@ export default function ShedBirdsScreen() {
     setTransferResume(null);
     setSelected(new Set());
     invalidate();
+    void qc.invalidateQueries({ queryKey: ["sold-birds"] });
+    void qc.invalidateQueries({ queryKey: ["dead-birds"] });
     void overview.refetch();
     void birds.refetch();
     void birdsSummary.refetch();
@@ -454,12 +458,34 @@ export default function ShedBirdsScreen() {
     );
   }
 
-  const showBulkBar = canLifecycle && !!shed?.is_active && selected.size > 0;
+  // Banded multi-select must work for vaccination-only users (no lifecycle.record),
+  // so they can open Record vaccination without visiting each Bird Profile.
+  const canSelectBanded =
+    (canLifecycle || canRecordVaccination) && !!shed?.is_active;
+  const showBulkBar =
+    !!shed?.is_active &&
+    selected.size > 0 &&
+    (canLifecycle || (canRecordVaccination && tab === "banded"));
   const bulkDisabledUnbanded = tab === "unbanded" && !unbandedBulk.ok;
   const allLoadedSelected =
     tab === "banded" && areAllEligibleSelected(selected, loadedEligibleIds);
   const showSelectAll =
-    canLifecycle && !!shed?.is_active && tab === "banded" && loadedEligibleIds.length > 0;
+    canSelectBanded && tab === "banded" && loadedEligibleIds.length > 0;
+
+  const openRecordVaccination = () => {
+    if (!id || selected.size === 0 || tab !== "banded") return;
+    const ids = [...selected];
+    const birdLabels = items.filter((b) => selected.has(b.id)).map((b) => birdLabel(b));
+    router.push({
+      pathname: "/(app)/birds/record-vaccination",
+      params: {
+        shedId: id,
+        birdIds: ids.join(","),
+        labels: birdLabels.join("|"),
+      },
+    });
+    setSelected(new Set());
+  };
 
   const onSelectAllPress = () => {
     const selecting = !allLoadedSelected;
@@ -467,7 +493,7 @@ export default function ShedBirdsScreen() {
     if (!selecting) return;
     const scopeNote = selectAllLoadedScopeMessage(birds.hasNextPage);
     if (scopeNote) {
-      Alert.alert("Select all", scopeNote, [{ text: "OK" }]);
+      setSelectAllNote(scopeNote);
     }
   };
 
@@ -659,36 +685,51 @@ export default function ShedBirdsScreen() {
           </View>
           {showBulkBar ? (
             <View style={styles.bulkActions}>
-              <Pressable
-                style={[styles.mortalityBtn, bulkDisabledUnbanded && styles.btnDisabled]}
-                onPress={openMortality}
-                disabled={bulkDisabledUnbanded}
-                accessibilityRole="button"
-                accessibilityLabel="Mortality"
-              >
-                <Ionicons name="skull-outline" size={16} color="#fff" />
-                <Text style={styles.mortalityBtnText}>Mortality</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.transferBtn, bulkDisabledUnbanded && styles.btnDisabled]}
-                onPress={openTransfer}
-                disabled={bulkDisabledUnbanded}
-                accessibilityRole="button"
-                accessibilityLabel="Transfer"
-              >
-                <Ionicons name="swap-horizontal" size={16} color="#fff" />
-                <Text style={styles.transferBtnText}>Transfer</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.soldBtn, bulkDisabledUnbanded && styles.btnDisabled]}
-                onPress={openSale}
-                disabled={bulkDisabledUnbanded}
-                accessibilityRole="button"
-                accessibilityLabel="Sold"
-              >
-                <Ionicons name="pricetag-outline" size={16} color="#fff" />
-                <Text style={styles.soldBtnText}>Sold</Text>
-              </Pressable>
+              {canRecordVaccination && tab === "banded" ? (
+                <Pressable
+                  style={styles.vaxBtn}
+                  onPress={openRecordVaccination}
+                  accessibilityRole="button"
+                  accessibilityLabel="Record vaccination"
+                >
+                  <Ionicons name="medkit-outline" size={16} color="#fff" />
+                  <Text style={styles.vaxBtnText}>Record vaccination</Text>
+                </Pressable>
+              ) : null}
+              {canLifecycle ? (
+                <>
+                  <Pressable
+                    style={[styles.mortalityBtn, bulkDisabledUnbanded && styles.btnDisabled]}
+                    onPress={openMortality}
+                    disabled={bulkDisabledUnbanded}
+                    accessibilityRole="button"
+                    accessibilityLabel="Mortality"
+                  >
+                    <Ionicons name="skull-outline" size={16} color="#fff" />
+                    <Text style={styles.mortalityBtnText}>Mortality</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.transferBtn, bulkDisabledUnbanded && styles.btnDisabled]}
+                    onPress={openTransfer}
+                    disabled={bulkDisabledUnbanded}
+                    accessibilityRole="button"
+                    accessibilityLabel="Transfer"
+                  >
+                    <Ionicons name="swap-horizontal" size={16} color="#fff" />
+                    <Text style={styles.transferBtnText}>Transfer</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.soldBtn, bulkDisabledUnbanded && styles.btnDisabled]}
+                    onPress={openSale}
+                    disabled={bulkDisabledUnbanded}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sold"
+                  >
+                    <Ionicons name="pricetag-outline" size={16} color="#fff" />
+                    <Text style={styles.soldBtnText}>Sold</Text>
+                  </Pressable>
+                </>
+              ) : null}
             </View>
           ) : null}
           {unbandedMultiHint ? <Text style={styles.bulkHint}>{unbandedMultiHint}</Text> : null}
@@ -739,7 +780,7 @@ export default function ShedBirdsScreen() {
               bird={item}
               shedId={id!}
               selected={selected.has(item.id)}
-              canSelect={canLifecycle && !!shed?.is_active}
+              canSelect={canSelectBanded}
               onToggle={() => setSelected((prev) => toggleSelection(prev, item.id))}
             />
           )}
@@ -823,6 +864,20 @@ export default function ShedBirdsScreen() {
         </View>
       ) : null}
 
+      <AppDialog
+        visible={Boolean(selectAllNote)}
+        title="Select all"
+        description={selectAllNote ?? undefined}
+        tone="info"
+        dismissible
+        onDismiss={() => setSelectAllNote(null)}
+        primary={{
+          label: "OK",
+          variant: "primary",
+          onPress: () => setSelectAllNote(null),
+        }}
+      />
+
       <MortalityActionSheet
         visible={!!mortalityPayload}
         payload={mortalityPayload}
@@ -835,7 +890,6 @@ export default function ShedBirdsScreen() {
         onClose={() => setSalePayload(null)}
         onSuccess={() => {
           onActionSuccess();
-          void qc.invalidateQueries({ queryKey: ["sold-birds"] });
         }}
       />
       <TransferActionSheet
@@ -1211,6 +1265,16 @@ const styles = StyleSheet.create({
   },
   bulkActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   bulkHint: { fontSize: typography.caption.fontSize, color: birdUi.orange, fontWeight: "600" },
+  vaxBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: birdUi.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  vaxBtnText: { color: "#fff", fontWeight: "700", fontSize: typography.secondary.fontSize },
   mortalityBtn: {
     flexDirection: "row",
     alignItems: "center",

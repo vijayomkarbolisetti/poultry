@@ -55,6 +55,7 @@ async def create_shed(
             is_owner_managed=body.is_owner_managed,
             initial_farmer_membership_id=body.initial_farmer_membership_id,
             capacity=body.capacity,
+            auto_vaccination_schedules_enabled=body.auto_vaccination_schedules_enabled,
         )
     except shed_service.ShedError as exc:
         code = 409 if exc.code == "DUPLICATE_CODE" else 400
@@ -135,6 +136,7 @@ async def update_shed(
             initial_farmer_membership_id=body.initial_farmer_membership_id,
             capacity=body.capacity,
             capacity_provided="capacity" in body.model_fields_set,
+            auto_vaccination_schedules_enabled=body.auto_vaccination_schedules_enabled,
         )
     except shed_service.ShedError as exc:
         code = 404 if exc.code == "NOT_FOUND" else 400

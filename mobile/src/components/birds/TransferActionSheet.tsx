@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
+  Keyboard,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +12,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { describeApiError } from "../../api/client";
 import { listFlocks, transferToShedByCohort, type Flock } from "../../api/flocks";
@@ -34,6 +33,7 @@ import {
 import { birdUi } from "../../theme/birdManagementUi";
 import { toast } from "../../ui/toast/toastStore";
 import { Button } from "../ui/Button";
+import { FormBottomSheet } from "../ui/FormBottomSheet";
 import { AppDatePicker } from "../ui/AppDatePicker";
 import { todayIsoDate } from "../ui/selectUtils";
 import { typography } from "../../theme/tokens";
@@ -73,7 +73,6 @@ export function TransferActionSheet({
   resume = null,
   onResumeConsumed,
 }: Props) {
-  const insets = useSafeAreaInsets();
   const qc = useQueryClient();
   const { user, ownerAccountId } = useAuth();
   const canCreateShed = hasPermission(user, ownerAccountId, "shed.create");
@@ -166,10 +165,12 @@ export function TransferActionSheet({
   const requestClose = () => {
     if (busy) return;
     if (shedPickerOpen) {
+      Keyboard.dismiss();
       setShedPickerOpen(false);
       setShedQuery("");
       return;
     }
+    Keyboard.dismiss();
     onClose();
   };
 
@@ -293,262 +294,257 @@ export function TransferActionSheet({
       </Pressable>
     ) : null;
 
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      statusBarTranslucent
-      onRequestClose={requestClose}
-    >
-      <Pressable style={styles.scrim} onPress={requestClose} accessibilityLabel="Close transfer">
+  const header = (
+    <>
+      <View style={styles.handle} />
+      <View style={styles.titleRow}>
+        <View style={[styles.iconCircle, { backgroundColor: birdUi.bluePale }]}>
+          <Ionicons name="swap-horizontal" size={20} color={birdUi.blue} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{shedPickerOpen ? "Destination shed" : "Transfer"}</Text>
+          <Text style={styles.sub}>
+            {shedPickerOpen
+              ? "Search and choose where these birds will go"
+              : payload.mode === "banded"
+                ? `${payload.birdIds.length} banded bird${payload.birdIds.length === 1 ? "" : "s"}`
+                : payload.label}
+          </Text>
+        </View>
         <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}
-          onPress={(e) => e.stopPropagation()}
+          onPress={requestClose}
+          hitSlop={12}
+          style={styles.closeBtn}
+          accessibilityLabel={shedPickerOpen ? "Back to transfer" : "Close"}
         >
-          <View style={styles.handle} />
-          <View style={styles.titleRow}>
-            <View style={[styles.iconCircle, { backgroundColor: birdUi.bluePale }]}>
-              <Ionicons name="swap-horizontal" size={20} color={birdUi.blue} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>
-                {shedPickerOpen ? "Destination shed" : "Transfer"}
-              </Text>
-              <Text style={styles.sub}>
-                {shedPickerOpen
-                  ? "Search and choose where these birds will go"
-                  : payload.mode === "banded"
-                    ? `${payload.birdIds.length} banded bird${payload.birdIds.length === 1 ? "" : "s"}`
-                    : payload.label}
-              </Text>
-            </View>
-            <Pressable
-              onPress={requestClose}
-              hitSlop={12}
-              style={styles.closeBtn}
-              accessibilityLabel={shedPickerOpen ? "Back to transfer" : "Close"}
-            >
-              <Ionicons name={shedPickerOpen ? "arrow-back" : "close"} size={22} color={birdUi.muted} />
-            </Pressable>
-          </View>
-
-          {shedPickerOpen ? (
-            <View style={styles.pickerBody}>
-              <View style={styles.searchBox}>
-                <Ionicons name="search" size={18} color={birdUi.muted} />
-                <TextInput
-                  style={styles.searchInput}
-                  value={shedQuery}
-                  onChangeText={setShedQuery}
-                  placeholder="Search sheds…"
-                  placeholderTextColor={birdUi.muted}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  accessibilityLabel="Search destination sheds"
-                />
-                {shedQuery ? (
-                  <Pressable onPress={() => setShedQuery("")} hitSlop={10} accessibilityLabel="Clear search">
-                    <Ionicons name="close-circle" size={18} color={birdUi.muted} />
-                  </Pressable>
-                ) : null}
-              </View>
-
-              {addShedButton}
-
-              {sheds.isLoading ? (
-                <View style={styles.pickerState}>
-                  <ActivityIndicator color={birdUi.primary} />
-                  <Text style={styles.pickerStateText}>Loading sheds…</Text>
-                </View>
-              ) : sheds.isError ? (
-                <View style={styles.pickerState}>
-                  <Text style={styles.error}>
-                    {describeApiError(sheds.error, "load destination sheds")}
-                  </Text>
-                  <Button label="Retry" variant="secondary" onPress={() => void sheds.refetch()} />
-                </View>
-              ) : destOptions.length === 0 ? (
-                <View style={styles.pickerState}>
-                  <Text style={styles.pickerStateText}>
-                    No other active sheds available for transfer.
-                  </Text>
-                  {canCreateShed ? (
-                    <Text style={styles.pickerStateText}>Create one with Add Shed.</Text>
-                  ) : null}
-                </View>
-              ) : filteredOptions.length === 0 ? (
-                <View style={styles.pickerState}>
-                  <Text style={styles.pickerStateText}>No sheds match “{shedQuery.trim()}”.</Text>
-                  {canCreateShed ? (
-                    <Text style={styles.pickerStateText}>Try a different search or add a new shed.</Text>
-                  ) : null}
-                </View>
-              ) : (
-                <ScrollView
-                  keyboardShouldPersistTaps="handled"
-                  style={styles.pickerScroll}
-                  nestedScrollEnabled
-                >
-                  {visibleOptions.map((opt) => {
-                    const on = opt.value === destShedId;
-                    return (
-                      <Pressable
-                        key={opt.value}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: on }}
-                        accessibilityLabel={`${opt.label}, ${opt.hint}${on ? ", selected" : ""}`}
-                        onPress={() => {
-                          setDestShedId(opt.value);
-                          setMsg(null);
-                          setShedPickerOpen(false);
-                          setShedQuery("");
-                        }}
-                        style={[styles.option, on && styles.optionOn]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.optionLabel, on && styles.optionLabelOn]}>
-                            {opt.label}
-                          </Text>
-                          <Text style={styles.optionHint}>{opt.hint}</Text>
-                        </View>
-                        {on ? (
-                          <Ionicons name="checkmark-circle" size={20} color={birdUi.primary} />
-                        ) : null}
-                      </Pressable>
-                    );
-                  })}
-                  {hiddenCount > 0 ? (
-                    <Text style={styles.truncateHint}>
-                      Showing {MAX_VISIBLE_RESULTS} of {filteredOptions.length}. Refine your search.
-                    </Text>
-                  ) : null}
-                </ScrollView>
-              )}
-            </View>
-          ) : (
-            <>
-              <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>
-                {payload.mode === "banded" ? (
-                  <View style={styles.listCard}>
-                    {(payload.labels.length ? payload.labels : payload.birdIds)
-                      .slice(0, 20)
-                      .map((label, i) => (
-                        <Text key={`${label}-${i}`} style={styles.band}>
-                          {label}
-                        </Text>
-                      ))}
-                    {payload.birdIds.length > 20 ? (
-                      <Text style={styles.hint}>…and {payload.birdIds.length - 20} more</Text>
-                    ) : null}
-                    <Text style={styles.hint}>
-                      Birds must share the same hatch date. They stay active in the destination shed.
-                    </Text>
-                  </View>
-                ) : (
-                  <>
-                    <Text style={styles.label}>Quantity (max {payload.unbandedCount})</Text>
-                    <TextInput
-                      style={styles.input}
-                      value={quantity}
-                      onChangeText={setQuantity}
-                      keyboardType="number-pad"
-                      accessibilityLabel="Transfer quantity"
-                    />
-                  </>
-                )}
-
-                <Text style={styles.label}>
-                  Destination shed <Text style={styles.required}>*</Text>
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    selectedDest
-                      ? `Destination shed, selected ${selectedDest.label}`
-                      : "Destination shed, no selection"
-                  }
-                  accessibilityState={{ expanded: false, disabled: busy }}
-                  disabled={busy}
-                  onPress={() => {
-                    setShedQuery("");
-                    setShedPickerOpen(true);
-                  }}
-                  style={({ pressed }) => [
-                    styles.destField,
-                    msg && !destShedId ? styles.destFieldError : null,
-                    pressed && !busy ? { opacity: 0.92 } : null,
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={[styles.destValue, !selectedDest && styles.destPlaceholder]}
-                      numberOfLines={1}
-                    >
-                      {selectedDest?.label ?? "Select destination shed"}
-                    </Text>
-                    {selectedDest ? (
-                      <Text style={styles.destHint} numberOfLines={1}>
-                        {selectedDest.hint}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Ionicons name="chevron-down" size={18} color={birdUi.muted} />
-                </Pressable>
-                {addShedButton}
-                {sheds.isError && !destShedId ? (
-                  <Pressable onPress={() => void sheds.refetch()} hitSlop={8}>
-                    <Text style={styles.retryInline}>Could not load sheds — tap to retry</Text>
-                  </Pressable>
-                ) : null}
-
-                <AppDatePicker
-                  label="Effective date"
-                  required
-                  value={effectiveDate}
-                  maximumDate={todayIsoDate()}
-                  onChange={(v) => setEffectiveDate(v ?? todayIsoDate())}
-                  disabled={busy}
-                />
-
-                {msg ? <Text style={styles.error}>{msg}</Text> : null}
-              </ScrollView>
-
-              <View style={styles.actions}>
-                <View style={{ flex: 1 }}>
-                  <Button label="Cancel" variant="secondary" onPress={requestClose} disabled={busy} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    label="Confirm transfer"
-                    onPress={() => void onConfirm()}
-                    loading={busy}
-                    disabled={!canConfirm}
-                  />
-                </View>
-              </View>
-            </>
-          )}
+          <Ionicons name={shedPickerOpen ? "arrow-back" : "close"} size={22} color={birdUi.muted} />
         </Pressable>
+      </View>
+    </>
+  );
+
+  if (shedPickerOpen) {
+    return (
+      <FormBottomSheet
+        visible={visible}
+        onClose={requestClose}
+        dismissAccessibilityLabel="Close transfer"
+        sheetStyle={styles.sheetPad}
+        header={header}
+        body={
+          <View style={styles.pickerBody}>
+            <View style={styles.searchBox}>
+              <Ionicons name="search" size={18} color={birdUi.muted} />
+              <TextInput
+                style={styles.searchInput}
+                value={shedQuery}
+                onChangeText={setShedQuery}
+                placeholder="Search sheds…"
+                placeholderTextColor={birdUi.muted}
+                autoCorrect={false}
+                autoCapitalize="none"
+                accessibilityLabel="Search destination sheds"
+              />
+              {shedQuery ? (
+                <Pressable onPress={() => setShedQuery("")} hitSlop={10} accessibilityLabel="Clear search">
+                  <Ionicons name="close-circle" size={18} color={birdUi.muted} />
+                </Pressable>
+              ) : null}
+            </View>
+
+            {addShedButton}
+
+            {sheds.isLoading ? (
+              <View style={styles.pickerState}>
+                <ActivityIndicator color={birdUi.primary} />
+                <Text style={styles.pickerStateText}>Loading sheds…</Text>
+              </View>
+            ) : sheds.isError ? (
+              <View style={styles.pickerState}>
+                <Text style={styles.error}>
+                  {describeApiError(sheds.error, "load destination sheds")}
+                </Text>
+                <Button label="Retry" variant="secondary" onPress={() => void sheds.refetch()} />
+              </View>
+            ) : destOptions.length === 0 ? (
+              <View style={styles.pickerState}>
+                <Text style={styles.pickerStateText}>
+                  No other active sheds available for transfer.
+                </Text>
+                {canCreateShed ? (
+                  <Text style={styles.pickerStateText}>Create one with Add Shed.</Text>
+                ) : null}
+              </View>
+            ) : filteredOptions.length === 0 ? (
+              <View style={styles.pickerState}>
+                <Text style={styles.pickerStateText}>No sheds match “{shedQuery.trim()}”.</Text>
+                {canCreateShed ? (
+                  <Text style={styles.pickerStateText}>Try a different search or add a new shed.</Text>
+                ) : null}
+              </View>
+            ) : (
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                style={styles.pickerScroll}
+                nestedScrollEnabled
+              >
+                {visibleOptions.map((opt) => {
+                  const on = opt.value === destShedId;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={`${opt.label}, ${opt.hint}${on ? ", selected" : ""}`}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setDestShedId(opt.value);
+                        setMsg(null);
+                        setShedPickerOpen(false);
+                        setShedQuery("");
+                      }}
+                      style={[styles.option, on && styles.optionOn]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.optionLabel, on && styles.optionLabelOn]}>
+                          {opt.label}
+                        </Text>
+                        <Text style={styles.optionHint}>{opt.hint}</Text>
+                      </View>
+                      {on ? (
+                        <Ionicons name="checkmark-circle" size={20} color={birdUi.primary} />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+                {hiddenCount > 0 ? (
+                  <Text style={styles.truncateHint}>
+                    Showing {MAX_VISIBLE_RESULTS} of {filteredOptions.length}. Refine your search.
+                  </Text>
+                ) : null}
+              </ScrollView>
+            )}
+          </View>
+        }
+      />
+    );
+  }
+
+  return (
+    <FormBottomSheet
+      visible={visible}
+      onClose={requestClose}
+      dismissAccessibilityLabel="Close transfer"
+      sheetStyle={styles.sheetPad}
+      header={header}
+      footer={
+        <View style={styles.actions}>
+          <View style={{ flex: 1 }}>
+            <Button label="Cancel" variant="secondary" onPress={requestClose} disabled={busy} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button
+              label="Confirm transfer"
+              onPress={() => void onConfirm()}
+              loading={busy}
+              disabled={!canConfirm}
+            />
+          </View>
+        </View>
+      }
+    >
+      {payload.mode === "banded" ? (
+        <View style={styles.listCard}>
+          {(payload.labels.length ? payload.labels : payload.birdIds)
+            .slice(0, 20)
+            .map((label, i) => (
+              <Text key={`${label}-${i}`} style={styles.band}>
+                {label}
+              </Text>
+            ))}
+          {payload.birdIds.length > 20 ? (
+            <Text style={styles.hint}>…and {payload.birdIds.length - 20} more</Text>
+          ) : null}
+          <Text style={styles.hint}>
+            Birds must share the same hatch date. They stay active in the destination shed.
+          </Text>
+        </View>
+      ) : (
+        <>
+          <Text style={styles.label}>Quantity (max {payload.unbandedCount})</Text>
+          <TextInput
+            style={styles.input}
+            value={quantity}
+            onChangeText={setQuantity}
+            keyboardType="number-pad"
+            accessibilityLabel="Transfer quantity"
+          />
+        </>
+      )}
+
+      <Text style={styles.label}>
+        Destination shed <Text style={styles.required}>*</Text>
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          selectedDest
+            ? `Destination shed, selected ${selectedDest.label}`
+            : "Destination shed, no selection"
+        }
+        accessibilityState={{ expanded: false, disabled: busy }}
+        disabled={busy}
+        onPress={() => {
+          Keyboard.dismiss();
+          setShedQuery("");
+          setShedPickerOpen(true);
+        }}
+        style={({ pressed }) => [
+          styles.destField,
+          msg && !destShedId ? styles.destFieldError : null,
+          pressed && !busy ? { opacity: 0.92 } : null,
+        ]}
+      >
+        <View style={{ flex: 1 }}>
+          <Text
+            style={[styles.destValue, !selectedDest && styles.destPlaceholder]}
+            numberOfLines={1}
+          >
+            {selectedDest?.label ?? "Select destination shed"}
+          </Text>
+          {selectedDest ? (
+            <Text style={styles.destHint} numberOfLines={1}>
+              {selectedDest.hint}
+            </Text>
+          ) : null}
+        </View>
+        <Ionicons name="chevron-down" size={18} color={birdUi.muted} />
       </Pressable>
-    </Modal>
+      {addShedButton}
+      {sheds.isError && !destShedId ? (
+        <Pressable onPress={() => void sheds.refetch()} hitSlop={8}>
+          <Text style={styles.retryInline}>Could not load sheds — tap to retry</Text>
+        </Pressable>
+      ) : null}
+
+      <AppDatePicker
+        label="Effective date"
+        required
+        value={effectiveDate}
+        maximumDate={todayIsoDate()}
+        onChange={(v) => setEffectiveDate(v ?? todayIsoDate())}
+        disabled={busy}
+      />
+
+      {msg ? <Text style={styles.error}>{msg}</Text> : null}
+    </FormBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  scrim: {
-    flex: 1,
-    backgroundColor: "rgba(2, 44, 34, 0.35)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: birdUi.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+  sheetPad: {
     paddingHorizontal: birdUi.horizontal,
-    paddingTop: 10,
-    gap: 10,
-    maxHeight: "92%",
   },
   handle: {
     alignSelf: "center",
@@ -655,8 +651,8 @@ const styles = StyleSheet.create({
   },
   actions: { flexDirection: "row", gap: 10, marginTop: 4 },
   error: { color: birdUi.error, fontWeight: "600", marginTop: 4 },
-  pickerBody: { minHeight: 220, maxHeight: 460, gap: 4 },
-  pickerScroll: { maxHeight: 320 },
+  pickerBody: { minHeight: 180, flexShrink: 1, gap: 4 },
+  pickerScroll: { flexGrow: 0, flexShrink: 1 },
   pickerState: {
     paddingVertical: 24,
     paddingHorizontal: 12,

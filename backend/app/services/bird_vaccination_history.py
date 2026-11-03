@@ -29,10 +29,12 @@ def _event_out(
     *,
     coverage_scope: str,
 ) -> BirdProfileVaccinationEventOut:
+    resolved = (vaccine_name or ev.custom_vaccine_name or "").strip() or None
     return BirdProfileVaccinationEventOut(
         id=ev.id,
         vaccine_definition_id=ev.vaccine_definition_id,
-        vaccine_name=vaccine_name,
+        custom_vaccine_name=ev.custom_vaccine_name,
+        vaccine_name=resolved,
         administration_date=ev.administration_date,
         birds_covered=ev.birds_covered,
         lot_number=ev.lot_number,
@@ -45,6 +47,7 @@ def _event_out(
         verification_status=ev.verification_status,
         notes=ev.notes,
         scheduled_dose_id=ev.scheduled_dose_id,
+        recording_kind="scheduled" if ev.scheduled_dose_id else "manual",
         created_at=ev.created_at,
         coverage_scope=coverage_scope,  # type: ignore[arg-type]
     )

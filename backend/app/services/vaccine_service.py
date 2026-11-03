@@ -295,6 +295,39 @@ async def retire_superseded_open_doses(
     return retired
 
 
+async def suppress_open_schedules_for_shed(
+    db: AsyncSession,
+    ctx: AuthContext,
+    shed_id: UUID,
+    *,
+    commit: bool = True,
+) -> int:
+    """Deactivate open (non-completed) scheduled doses for flocks in this shed.
+
+    Preserves completed vaccination tasks and all VaccinationEvent history.
+    Uses the existing inactive status convention (is_active=False, status=inactive).
+    """
+    assert ctx.owner_account_id is not None
+    doses = list(
+        await db.scalars(
+            select(ScheduledDose).where(
+                ScheduledDose.owner_account_id == ctx.owner_account_id,
+                ScheduledDose.shed_id == shed_id,
+                ScheduledDose.is_active.is_(True),
+                ~ScheduledDose.status.like("completed%"),
+            )
+        )
+    )
+    for dose in doses:
+        dose.is_active = False
+        dose.status = STATUS_INACTIVE
+    if doses:
+        await db.flush()
+    if commit:
+        await db.commit()
+    return len(doses)
+
+
 async def generate_schedules_for_flock(
     db: AsyncSession,
     ctx: AuthContext,
@@ -312,9 +345,15 @@ async def generate_schedules_for_flock(
     from app.services import shed_service
 
     try:
-        await shed_service.assert_shed_accepts_new_records(db, ctx, flock.shed_id)
+        shed = await shed_service.assert_shed_accepts_new_records(db, ctx, flock.shed_id)
     except shed_service.ShedError as exc:
         raise VaccineError(exc.message, exc.code) from exc
+
+    # Shed-level gate: do not mint new automatic doses when the setting is off.
+    if not shed.auto_vaccination_schedules_enabled:
+        if commit:
+            await db.commit()
+        return []
 
     owner = await db.get(OwnerAccount, ctx.owner_account_id)
     today = farm_local_today(owner.timezone if owner else None)

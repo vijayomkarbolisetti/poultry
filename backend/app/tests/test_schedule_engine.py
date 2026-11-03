@@ -89,8 +89,16 @@ def test_leap_year_boundary():
     assert dues == [date(2024, 2, 29)]
 
 
-def test_farm_local_today_utc_fallback():
-    d = farm_local_today(None, utc_now=datetime(2026, 3, 15, 12, 0, tzinfo=timezone.utc))
-    assert d == date(2026, 3, 15)
-    d2 = farm_local_today("UTC", utc_now=datetime(2026, 3, 15, 12, 0, tzinfo=timezone.utc))
-    assert d2 == date(2026, 3, 15)
+def test_farm_local_today_ist_default_and_explicit_utc():
+    # None → Asia/Kolkata (IST). 18:30 UTC == midnight IST next calendar day.
+    d = farm_local_today(None, utc_now=datetime(2026, 3, 15, 18, 30, tzinfo=timezone.utc))
+    assert d == date(2026, 3, 16)
+    d_before = farm_local_today(
+        None, utc_now=datetime(2026, 3, 15, 18, 29, tzinfo=timezone.utc)
+    )
+    assert d_before == date(2026, 3, 15)
+    # Explicit UTC remains UTC.
+    d_utc = farm_local_today(
+        "UTC", utc_now=datetime(2026, 3, 15, 18, 30, tzinfo=timezone.utc)
+    )
+    assert d_utc == date(2026, 3, 15)

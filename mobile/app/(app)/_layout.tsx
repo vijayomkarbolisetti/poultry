@@ -241,11 +241,16 @@ export default function AppLayout() {
       <Tabs.Screen name="birds/bird-added" options={hidden("Bird added")} />
       <Tabs.Screen name="birds/edit/[id]" options={hidden("Change band number")} />
       <Tabs.Screen name="birds/sold" options={hidden("Sold Birds")} />
+      <Tabs.Screen name="birds/dead-birds" options={hidden("Dead Birds")} />
+      <Tabs.Screen name="birds/dead" options={hidden("Dead Birds")} />
+      <Tabs.Screen name="birds/record-vaccination" options={hidden("Record vaccination")} />
       <Tabs.Screen name="lifecycle-bulk" options={hidden("Bulk lifecycle")} />
       <Tabs.Screen name="lifecycle-batch" options={hidden("Unbanded count action")} />
       <Tabs.Screen name="farmers/index" options={hidden("Farmers")} />
       <Tabs.Screen name="farmers/create" options={hidden("Add farmer")} />
       <Tabs.Screen name="farmers/[id]" options={hidden("Farmer")} />
+      <Tabs.Screen name="farms/index" options={hidden("All farms")} />
+      <Tabs.Screen name="farms/create" options={hidden("Create farm")} />
       <Tabs.Screen name="catalogues/index" options={hidden("Catalogues")} />
       <Tabs.Screen name="catalogues/create" options={hidden("Create catalogue")} />
       <Tabs.Screen name="catalogues/[id]" options={hidden("Catalogue")} />

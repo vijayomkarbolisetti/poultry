@@ -22,7 +22,7 @@
 | **D7** | Read-only role | **Enabled**. View permissions only; no write/correct/manage. |
 | **D8** | Farmer multi-owner | **Supported** via separate `owner_membership` rows. Switching active organization changes authorized scope. |
 | **D9** | Media delete | Soft-delete metadata in PostgreSQL + Cloudinary destroy when authorized. Retain audit trail. Missing media shows placeholder, never blocks workflow. |
-| **D10** | Platform Super Admin farm access | **No** automatic farm data access. Explicit break-glass procedure only if added later. |
+| **D10** | Platform Super Admin farm access | **Revised:** Platform super admin may **list all farms**, **create farm owner accounts**, and **operate in a selected farm** via `X-Owner-Account-Id` without a membership. Public self-serve `register-owner` is **disabled** by default (`ALLOW_PUBLIC_OWNER_REGISTRATION=false`). |
 
 ## Vaccination catalogue redesign (approved 2026-10-23)
 

@@ -63,5 +63,33 @@ class OwnerAccountOut(BaseModel):
     created_at: datetime
 
 
+class OwnerAccountListItem(OwnerAccountOut):
+    """Farm row for platform super-admin listing."""
+
+    owner_email: str | None = None
+    owner_full_name: str | None = None
+
+
+class CreateOwnerAccountRequest(BaseModel):
+    """Platform super admin creates a farm + its owner login."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str = Field(min_length=1, max_length=255)
+    organization_name: str = Field(min_length=1, max_length=255)
+
+
+class OwnerUserSummary(BaseModel):
+    id: UUID
+    email: EmailStr
+    full_name: str
+    is_active: bool
+
+
+class CreatedOwnerAccountOut(BaseModel):
+    owner: OwnerAccountOut
+    owner_user: OwnerUserSummary
+
+
 class SelectOwnerRequest(BaseModel):
     owner_account_id: UUID

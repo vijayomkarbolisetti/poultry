@@ -116,8 +116,8 @@ async def credit_individual_bird_coverage(db: AsyncSession, flock_id: UUID) -> i
 
     Evidence rules:
     - Non-void VaccinationEvent with bird_id currently in this flock.
-    - If event.scheduled_dose_id is set, use that dose's dose_number + vaccine.
-    - If not, credit dose_number 1 for the event's vaccine_definition_id only.
+    - Only events explicitly linked via scheduled_dose_id credit scheduled-dose compliance.
+    - Manual / ad-hoc events (no scheduled_dose_id) appear in history but do not complete doses.
     """
     flock = await db.get(Flock, flock_id)
     if not flock or flock.current_count <= 0:
@@ -144,6 +144,7 @@ async def credit_individual_bird_coverage(db: AsyncSession, flock_id: UUID) -> i
             select(VaccinationEvent).where(
                 VaccinationEvent.bird_id.in_(bird_ids),
                 VaccinationEvent.is_void.is_(False),
+                VaccinationEvent.scheduled_dose_id.is_not(None),
             )
         )
     )
@@ -161,13 +162,12 @@ async def credit_individual_bird_coverage(db: AsyncSession, flock_id: UUID) -> i
     # (bird_id, vaccine_definition_id, dose_number) covered with evidence
     covered: set[tuple[UUID, UUID, int]] = set()
     for event in events:
-        if event.bird_id is None:
+        if event.bird_id is None or not event.scheduled_dose_id:
             continue
-        if event.scheduled_dose_id and event.scheduled_dose_id in dose_meta:
-            src = dose_meta[event.scheduled_dose_id]
-            covered.add((event.bird_id, src.vaccine_definition_id, int(src.dose_number)))
-        else:
-            covered.add((event.bird_id, event.vaccine_definition_id, 1))
+        if event.scheduled_dose_id not in dose_meta:
+            continue
+        src = dose_meta[event.scheduled_dose_id]
+        covered.add((event.bird_id, src.vaccine_definition_id, int(src.dose_number)))
 
     doses = list(
         await db.scalars(

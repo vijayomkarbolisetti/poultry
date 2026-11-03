@@ -1,7 +1,8 @@
 from datetime import date, datetime
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ScheduleRuleIn(BaseModel):
@@ -80,6 +81,8 @@ class VaccinationRecordIn(BaseModel):
     flock_id: UUID | None = None
     bird_id: UUID | None = None
     vaccine_definition_id: UUID | None = None
+    # Free-text name when the vaccine is not in the catalogue (no fake catalogue entry).
+    custom_vaccine_name: str | None = Field(default=None, min_length=1, max_length=255)
     schedule_version_id: UUID | None = None
     administered_at: datetime | None = None
     administration_date: date | None = None
@@ -93,6 +96,67 @@ class VaccinationRecordIn(BaseModel):
     notes: str | None = None
     verification_status: str = "verified"
     idempotency_key: str | None = None
+
+    @model_validator(mode="after")
+    def require_vaccine_identity_for_adhoc(self) -> "VaccinationRecordIn":
+        if self.scheduled_dose_id is not None:
+            return self
+        has_def = self.vaccine_definition_id is not None
+        custom = (self.custom_vaccine_name or "").strip()
+        if not has_def and not custom:
+            raise ValueError("vaccine_definition_id or custom_vaccine_name is required")
+        if custom:
+            self.custom_vaccine_name = custom
+        return self
+
+
+class ManualVaccinationBirdItemIn(BaseModel):
+    bird_id: UUID
+    flock_id: UUID | None = None
+
+
+class ManualVaccinationBatchIn(BaseModel):
+    """Record the same ad-hoc vaccine details against one or more selected birds."""
+
+    bird_ids: list[UUID] = Field(min_length=1)
+    flock_id: UUID | None = None
+    vaccine_definition_id: UUID | None = None
+    custom_vaccine_name: str | None = Field(default=None, min_length=1, max_length=255)
+    administration_date: date | None = None
+    administered_at: datetime | None = None
+    lot_number: str | None = None
+    product_expiry: date | None = None
+    manufacturer_or_brand: str | None = Field(default=None, max_length=128)
+    vaccine_type_or_strain: str | None = Field(default=None, max_length=128)
+    dose_amount: str | None = None
+    route: str | None = None
+    notes: str | None = None
+    verification_status: str = "verified"
+    idempotency_key: str = Field(min_length=8, max_length=100)
+
+    @model_validator(mode="after")
+    def require_vaccine_identity(self) -> "ManualVaccinationBatchIn":
+        has_def = self.vaccine_definition_id is not None
+        custom = (self.custom_vaccine_name or "").strip()
+        if not has_def and not custom:
+            raise ValueError("vaccine_definition_id or custom_vaccine_name is required")
+        if custom:
+            self.custom_vaccine_name = custom
+        return self
+
+
+class ManualVaccinationBirdResultOut(BaseModel):
+    bird_id: UUID
+    status: Literal["success", "skipped", "failed"]
+    event_id: UUID | None = None
+    message: str | None = None
+
+
+class ManualVaccinationBatchOut(BaseModel):
+    results: list[ManualVaccinationBirdResultOut]
+    success_count: int
+    skipped_count: int
+    failed_count: int
 
 
 class VaccinationBatchItemIn(BaseModel):
@@ -132,7 +196,10 @@ class VaccinationEventOut(BaseModel):
     flock_id: UUID
     bird_id: UUID | None
     scheduled_dose_id: UUID | None
-    vaccine_definition_id: UUID
+    vaccine_definition_id: UUID | None = None
+    custom_vaccine_name: str | None = None
+    vaccine_name: str | None = None
+    recording_kind: Literal["scheduled", "manual"] = "manual"
     administration_date: date
     birds_covered: int
     lot_number: str | None = None

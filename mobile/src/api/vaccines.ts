@@ -29,7 +29,10 @@ export type VaccinationEvent = {
   flock_id: string;
   bird_id: string | null;
   scheduled_dose_id: string | null;
-  vaccine_definition_id: string;
+  vaccine_definition_id: string | null;
+  custom_vaccine_name?: string | null;
+  vaccine_name?: string | null;
+  recording_kind?: "scheduled" | "manual" | string;
   administration_date: string;
   birds_covered: number;
   lot_number: string | null;
@@ -45,6 +48,30 @@ export type VaccinationEvent = {
   created_at: string;
 };
 
+export type VaccineDefinitionSummary = {
+  id: string;
+  name: string;
+  category: string;
+  description: string | null;
+  instructions: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ManualVaccinationBirdResult = {
+  bird_id: string;
+  status: "success" | "skipped" | "failed" | string;
+  event_id?: string | null;
+  message?: string | null;
+};
+
+export type ManualVaccinationBatchResult = {
+  results: ManualVaccinationBirdResult[];
+  success_count: number;
+  skipped_count: number;
+  failed_count: number;
+};
+
 export type ListScheduledDosesParams = {
   flock_id?: string;
   shed_id?: string;
@@ -57,6 +84,7 @@ export type VaccinationRecordInput = {
   flock_id?: string;
   bird_id?: string | null;
   vaccine_definition_id?: string;
+  custom_vaccine_name?: string;
   administration_date?: string;
   birds_covered?: number;
   lot_number?: string | null;
@@ -68,6 +96,23 @@ export type VaccinationRecordInput = {
   notes?: string | null;
   verification_status?: string;
   idempotency_key?: string;
+};
+
+export type ManualVaccinationBatchInput = {
+  bird_ids: string[];
+  flock_id?: string;
+  vaccine_definition_id?: string;
+  custom_vaccine_name?: string;
+  administration_date?: string;
+  lot_number?: string | null;
+  product_expiry?: string | null;
+  manufacturer_or_brand?: string | null;
+  vaccine_type_or_strain?: string | null;
+  dose_amount?: string | null;
+  route?: string | null;
+  notes?: string | null;
+  verification_status?: string;
+  idempotency_key: string;
 };
 
 export type VaccinationBatchInput = {
@@ -104,6 +149,15 @@ export async function getScheduledDose(id: string): Promise<ScheduledDose | null
   return rows.find((d) => d.id === id) ?? null;
 }
 
+export async function listVaccineDefinitions(opts?: {
+  includeArchived?: boolean;
+}): Promise<VaccineDefinitionSummary[]> {
+  const { data } = await api.get<VaccineDefinitionSummary[]>("/vaccines", {
+    params: opts?.includeArchived ? { include_archived: true } : undefined,
+  });
+  return data ?? [];
+}
+
 export async function recordVaccination(input: VaccinationRecordInput): Promise<VaccinationEvent> {
   const { data } = await api.post<VaccinationEvent>("/vaccination-events", input);
   return data;
@@ -113,6 +167,16 @@ export async function recordVaccinationBatch(
   input: VaccinationBatchInput,
 ): Promise<VaccinationEvent[]> {
   const { data } = await api.post<VaccinationEvent[]>("/vaccination-events/batch", input);
+  return data;
+}
+
+export async function recordManualVaccinationBatch(
+  input: ManualVaccinationBatchInput,
+): Promise<ManualVaccinationBatchResult> {
+  const { data } = await api.post<ManualVaccinationBatchResult>(
+    "/vaccination-events/manual-batch",
+    input,
+  );
   return data;
 }
 

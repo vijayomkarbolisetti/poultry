@@ -46,6 +46,13 @@ class Settings(BaseSettings):
     cloudinary_api_secret: str | None = None
     media_enabled: bool = False
 
+    # Max rows for dead/sold bird list exports (CSV/XLSX). Over this → 400 EXPORT_LIMIT.
+    bird_list_export_max_rows: int = 10_000
+
+    # Public self-serve farm signup. Default off — platform super admin creates farms.
+    # Tests set ALLOW_PUBLIC_OWNER_REGISTRATION=true so existing fixtures keep working.
+    allow_public_owner_registration: bool = False
+
     @model_validator(mode="after")
     def _normalize_database_urls(self) -> "Settings":
         # Hosted Postgres (Neon/Render) provides one plain URL; derive the sync URL from it unless set explicitly.
