@@ -181,7 +181,9 @@ export function hasPermission(
   code: string,
 ): boolean {
   if (!user) return false;
-  if (user.is_platform_super_admin) return true;
+  // Super admins have every permission, but only inside a farm they have opened:
+  // farm-scoped APIs reject requests without X-Owner-Account-Id.
+  if (user.is_platform_super_admin) return Boolean(ownerAccountId);
   const m = activeMembership(user, ownerAccountId);
   if (!m) return false;
   if (m.role === "owner") return true;
