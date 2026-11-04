@@ -93,7 +93,10 @@ export default function FarmsScreen() {
         password: password || undefined,
       });
       await qc.invalidateQueries({ queryKey: ["owners", "all"] });
-      toast.success("Owner updated");
+      // Passwords are not stored in plain text, so this is the only time it is shown.
+      toast.success(
+        password ? `Owner updated. Share the new temporary password: ${password}` : "Owner updated",
+      );
       setEditFarm(null);
     } catch (e: unknown) {
       setEditError(describeApiError(e, "update owner"));
@@ -196,8 +199,9 @@ export default function FarmsScreen() {
                       {item.owner_email && item.owner_full_name ? ` · ${item.owner_email}` : ""}
                     </Text>
                     <Text style={styles.passwordLine} numberOfLines={1}>
-                      Password: {item.owner_password || "—"}
-                      {item.owner_must_change_password ? " · must change" : ""}
+                      {item.owner_must_change_password
+                        ? "Temporary password · owner must change it"
+                        : "Owner has set their own password"}
                     </Text>
                   </View>
                 </Pressable>

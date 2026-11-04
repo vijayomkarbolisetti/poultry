@@ -11,7 +11,6 @@ export type OwnerAccountListItem = OwnerAccount & {
   owner_user_id: string | null;
   owner_email: string | null;
   owner_full_name: string | null;
-  owner_password: string | null;
   owner_must_change_password: boolean;
 };
 
@@ -21,6 +20,7 @@ export type OwnerUserSummary = {
   full_name: string;
   is_active: boolean;
   must_change_password: boolean;
+  /** Temporary password just set, echoed once by create/reset. Never stored or listed. */
   password: string | null;
 };
 

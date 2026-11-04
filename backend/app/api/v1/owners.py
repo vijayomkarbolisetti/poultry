@@ -41,7 +41,6 @@ async def list_owners(
             owner_user_id=user.id if user else None,
             owner_email=user.email if user else None,
             owner_full_name=user.full_name if user else None,
-            owner_password=user.admin_visible_password if user else None,
             owner_must_change_password=bool(user.must_change_password) if user else False,
         )
         for owner, user in rows
@@ -75,7 +74,7 @@ async def create_owner_account(
             full_name=user.full_name,
             is_active=user.is_active,
             must_change_password=user.must_change_password,
-            password=user.admin_visible_password,
+            password=body.password,
         ),
     )
 
@@ -104,7 +103,7 @@ async def update_owner_user(
         full_name=user.full_name,
         is_active=user.is_active,
         must_change_password=user.must_change_password,
-        password=user.admin_visible_password,
+        password=body.password,
     )
 
 

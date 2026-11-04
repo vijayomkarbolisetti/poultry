@@ -124,8 +124,23 @@ async def test_super_admin_creates_lists_and_opens_farm(client: AsyncClient, db_
     assert any(f["id"] == owner_id for f in farms)
     match = next(f for f in farms if f["id"] == owner_id)
     assert match["owner_email"] == farm_email
-    assert match["owner_password"] == "password123"
+    assert "owner_password" not in match
     assert match["owner_must_change_password"] is True
+
+    # Only the bcrypt hash is stored — no plain-text copy anywhere on users.
+    await db_session.execute(text("SELECT set_config('app.rls_bypass', 'on', true)"))
+    user_cols = (
+        await db_session.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name = 'users'")
+        )
+    ).scalars().all()
+    assert "admin_visible_password" not in user_cols
+    stored_hash = (
+        await db_session.execute(
+            text("SELECT password_hash FROM users WHERE email = :e"), {"e": farm_email}
+        )
+    ).scalar_one()
+    assert stored_hash != "password123"
 
     detail = await client.get(f"/api/v1/owners/{owner_id}", headers=headers)
     assert detail.status_code == 200
@@ -158,10 +173,10 @@ async def test_super_admin_creates_lists_and_opens_farm(client: AsyncClient, db_
     assert changed.status_code == 200, changed.text
     assert changed.json()["must_change_password"] is False
 
-    # Latest password stays visible to super admin.
+    # The owner's chosen password is never exposed to the super admin.
     listed_after = await client.get("/api/v1/owners", headers=headers)
     match_after = next(f for f in listed_after.json() if f["id"] == owner_id)
-    assert match_after["owner_password"] == "newpass456"
+    assert "newpass456" not in listed_after.text
     assert match_after["owner_must_change_password"] is False
 
     # Super admin can rename owner and reset password.

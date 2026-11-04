@@ -79,7 +79,6 @@ class OwnerAccountListItem(OwnerAccountOut):
     owner_user_id: UUID | None = None
     owner_email: str | None = None
     owner_full_name: str | None = None
-    owner_password: str | None = None
     owner_must_change_password: bool = False
 
 
@@ -98,6 +97,8 @@ class OwnerUserSummary(BaseModel):
     full_name: str
     is_active: bool
     must_change_password: bool = False
+    # Temporary password just set by the super admin, echoed once so it can be handed
+    # to the owner. Never stored in plain text and never returned by list endpoints.
     password: str | None = None
 
 

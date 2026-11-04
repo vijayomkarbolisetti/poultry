@@ -41,7 +41,6 @@ async def _create_owner_account_core(
     actor_user_id: UUID | None,
     audit_action: str,
     must_change_password: bool = False,
-    store_admin_visible_password: bool = False,
 ) -> tuple[User, OwnerAccount, OwnerMembership]:
     """Create farm owner user + owner_account + owner membership (caller manages bypass/tx)."""
     existing = await session.scalar(select(User).where(User.email == email.lower()))
@@ -56,7 +55,6 @@ async def _create_owner_account_core(
         full_name=full_name,
         is_active=True,
         must_change_password=must_change_password,
-        admin_visible_password=password if store_admin_visible_password else None,
     )
     session.add(user)
     await session.flush()
@@ -145,7 +143,6 @@ async def create_owner_account_as_super_admin(
             actor_user_id=actor_user_id,
             audit_action="owner.create_by_super_admin",
             must_change_password=True,
-            store_admin_visible_password=True,
         )
         await session.commit()
     except Exception:
@@ -177,8 +174,6 @@ async def change_password(
         raise AuthError("New password must be different", "PASSWORD_UNCHANGED")
     user.password_hash = await asyncio.to_thread(hash_password, new_password)
     user.must_change_password = False
-    # Keep latest password visible to platform super admin (product requirement).
-    user.admin_visible_password = new_password
     await session.commit()
     await session.refresh(user)
     return user
@@ -227,7 +222,6 @@ async def update_farm_owner_as_super_admin(
         user.full_name = full_name.strip()
     if password is not None:
         user.password_hash = await asyncio.to_thread(hash_password, password)
-        user.admin_visible_password = password
         user.must_change_password = True
     await session.commit()
     await session.refresh(user)
