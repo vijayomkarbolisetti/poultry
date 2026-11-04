@@ -105,10 +105,13 @@ async def change_password(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserOut:
+    # Read the id before expire(): touching an expired attribute triggers a sync
+    # lazy load, which raises MissingGreenlet under AsyncSession.
+    user_id = user.id
     try:
         await auth_service.change_password(
             db,
-            user_id=user.id,
+            user_id=user_id,
             current_password=body.current_password,
             new_password=body.new_password,
         )
@@ -121,7 +124,7 @@ async def change_password(
         raise HTTPException(status_code=code, detail=exc.message) from exc
     # Drop identity-map cache so /me serialization cannot return a stale flag.
     db.expire(user)
-    loaded = await auth_service.get_user_with_memberships(db, user.id)
+    loaded = await auth_service.get_user_with_memberships(db, user_id)
     assert loaded is not None
     return await _serialize_user(db, loaded)
 
