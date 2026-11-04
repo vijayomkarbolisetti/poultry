@@ -35,7 +35,6 @@ export function resolveApiBaseUrl(input: {
   const envUrl = (input.envUrl ?? "").trim();
   const lanUrl = (input.lanUrl ?? "").trim();
   const extraUrl = (input.extraUrl ?? "").trim();
-  const configured = envUrl || extraUrl;
   const onEmulator = input.platform === "android" && input.isDevice === false;
 
   const toEmulatorHost = (url: string) =>
@@ -43,11 +42,16 @@ export function resolveApiBaseUrl(input: {
 
   // Production / release APK: prefer configured public HTTPS URL; never use 10.0.2.2.
   if (!input.isDev) {
-    if (configured && !isEmulatorOnlyUrl(configured)) {
-      return stripTrailingSlash(configured);
+    const releaseUrl = envUrl || extraUrl;
+    if (releaseUrl && !isEmulatorOnlyUrl(releaseUrl)) {
+      return stripTrailingSlash(releaseUrl);
     }
     return PRODUCTION_API_URL;
   }
+
+  // Dev builds only reach production when EXPO_PUBLIC_API_URL says so explicitly;
+  // app.json `extra.apiUrl` is the release default and is ignored here.
+  const configured = envUrl;
 
   if (onEmulator) {
     if (configured) {
@@ -60,10 +64,8 @@ export function resolveApiBaseUrl(input: {
 
   if (lanUrl) return stripTrailingSlash(lanUrl);
   if (configured && !isEmulatorOnlyUrl(configured)) return stripTrailingSlash(configured);
-  // Physical device in dev without a LAN/public URL — do not silently use emulator loopback.
-  if (input.platform === "android" || input.platform === "ios") {
-    return PRODUCTION_API_URL;
-  }
+  // Physical device in dev without a LAN URL: use localhost (works with
+  // `adb reverse tcp:8001 tcp:8001`) rather than silently hitting production data.
   return stripTrailingSlash(configured || "http://localhost:8001");
 }
 

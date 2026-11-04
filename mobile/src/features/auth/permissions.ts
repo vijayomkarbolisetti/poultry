@@ -87,8 +87,14 @@ export const FARMER_CREATE_PERM_CATEGORIES: {
   {
     id: "vaccination",
     title: "Vaccination",
-    hint: "View schedules and record doses",
-    codes: ["vaccination.view", "vaccination.record", "schedule.view"],
+    hint: "View due doses and vaccine catalogues",
+    codes: ["vaccination.view", "schedule.view"],
+  },
+  {
+    id: "vaccination-record",
+    title: "Record doses",
+    hint: "Mark vaccinations as given",
+    codes: ["vaccination.record"],
   },
   {
     id: "lifecycle",
@@ -106,6 +112,11 @@ export const FARMER_CREATE_PERM_CATEGORIES: {
 
 /** All codes an owner may grant via the farmer create UI (includes vaccination.record). */
 export const ALL_GRANTABLE_FARMER_PERMS: FarmerPermCode[] = [...FARMER_PERM_OPTIONS];
+
+/** Create-farmer starting state: everything except vaccination.record, which the owner opts into. */
+export const CREATE_FARMER_INITIAL_PERMS: FarmerPermCode[] = FARMER_PERM_OPTIONS.filter(
+  (c) => c !== "vaccination.record",
+);
 
 /**
  * Safe role presets — only existing FARMER_PERM_OPTIONS codes.

@@ -58,8 +58,51 @@ assert(
     platform: "android",
     isDevice: true,
     isDev: true,
+  }) === "http://localhost:8001",
+  "dev physical device falls back to localhost (adb reverse), not 10.0.2.2 or production",
+);
+
+assert(
+  resolveApiBaseUrl({
+    envUrl: null,
+    extraUrl: PRODUCTION_API_URL,
+    platform: "android",
+    isDevice: true,
+    isDev: true,
+  }) !== PRODUCTION_API_URL,
+  "dev build ignores app.json extra.apiUrl (production) unless env opts in",
+);
+
+assert(
+  resolveApiBaseUrl({
+    envUrl: null,
+    extraUrl: PRODUCTION_API_URL,
+    platform: "android",
+    isDevice: false,
+    isDev: true,
+  }) === "http://10.0.2.2:8001",
+  "dev emulator ignores app.json extra.apiUrl",
+);
+
+assert(
+  resolveApiBaseUrl({
+    envUrl: PRODUCTION_API_URL,
+    platform: "android",
+    isDevice: true,
+    isDev: true,
   }) === PRODUCTION_API_URL,
-  "dev physical device must not fall back to 10.0.2.2",
+  "dev build may target production when EXPO_PUBLIC_API_URL opts in",
+);
+
+assert(
+  resolveApiBaseUrl({
+    envUrl: null,
+    extraUrl: "https://api.example.com/",
+    platform: "android",
+    isDevice: true,
+    isDev: false,
+  }) === "https://api.example.com",
+  "release uses app.json extra.apiUrl",
 );
 
 // --- describeApiError ---

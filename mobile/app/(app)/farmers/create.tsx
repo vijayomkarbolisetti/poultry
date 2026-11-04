@@ -23,6 +23,7 @@ import { MultiSelectField } from "../../../src/components/ui/MultiSelectField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import {
   ALL_GRANTABLE_FARMER_PERMS,
+  CREATE_FARMER_INITIAL_PERMS,
   DEFAULT_FARMER_PERMS,
   FARMER_CREATE_PERM_CATEGORIES,
   hasPermission,
@@ -61,7 +62,7 @@ export default function CreateFarmerScreen() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [selectedSheds, setSelectedSheds] = useState<string[]>([]);
-  const [perms, setPerms] = useState<string[]>([...ALL_GRANTABLE_FARMER_PERMS]);
+  const [perms, setPerms] = useState<string[]>([...CREATE_FARMER_INITIAL_PERMS]);
   const [loading, setLoading] = useState(false);
 
   const shedOptions = useMemo(
@@ -341,7 +342,7 @@ export default function CreateFarmerScreen() {
                   {allEnabled ? "All permissions enabled" : "Custom permissions"}
                 </Text>
                 <Text style={styles.allBannerSub}>
-                  Owner-granted access only. Vaccination recording is included when enabled below.
+                  Owner-granted access only. Turn on Record doses to let this farmer mark vaccinations.
                 </Text>
               </View>
               <Pressable onPress={allEnabled ? resetToDefault : enableAll} hitSlop={8}>
