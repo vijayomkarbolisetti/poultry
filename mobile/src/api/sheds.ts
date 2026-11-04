@@ -15,6 +15,8 @@ export type Shed = {
   capacity?: number | null;
   is_owner_managed: boolean;
   is_active: boolean;
+  /** Default true — when false, automatic vaccination schedules are suppressed for this shed. */
+  auto_vaccination_schedules_enabled?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -186,6 +188,7 @@ export async function createShed(input: {
   location_notes?: string;
   capacity?: number | null;
   is_owner_managed?: boolean;
+  auto_vaccination_schedules_enabled?: boolean;
   /** Required when is_owner_managed is false — farmer OwnerMembership id. */
   initial_farmer_membership_id?: string;
 }): Promise<Shed> {
@@ -202,6 +205,7 @@ export async function updateShed(
     capacity: number | null;
     is_owner_managed: boolean;
     is_active: boolean;
+    auto_vaccination_schedules_enabled: boolean;
     initial_farmer_membership_id: string;
   }>,
 ): Promise<Shed> {

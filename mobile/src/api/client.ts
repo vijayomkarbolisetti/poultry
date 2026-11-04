@@ -9,7 +9,8 @@ export { PRODUCTION_API_URL } from "./apiConfig";
 
 /**
  * Resolve API base URL for emulator vs physical device / release APK.
- * Release builds use EXPO_PUBLIC_API_URL or the production HTTPS host — never 10.0.2.2.
+ * Release builds use public HTTPS (EXPO_PUBLIC_API_URL / app.json extra) — never
+ * emulator loopback or private LAN http:// URLs from .env (Android blocks cleartext).
  */
 function resolveApiUrl(): string {
   const extra = Constants.expoConfig?.extra as { apiUrl?: string } | undefined;
@@ -20,6 +21,7 @@ function resolveApiUrl(): string {
     platform: Platform.OS,
     isDevice: Constants.isDevice !== false,
     isDev: typeof __DEV__ === "boolean" ? __DEV__ : false,
+    allowPrivateApi: (process.env.EXPO_PUBLIC_ALLOW_PRIVATE_API ?? "").trim() === "1",
   });
 }
 

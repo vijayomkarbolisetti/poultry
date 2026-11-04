@@ -152,7 +152,7 @@ function DoseCard({
       </View>
 
       <MetaRow icon="calendar-outline" text={dueLine} />
-      <MetaRow icon="home-outline" text={`${item.shed_name} · ${item.flock_label}`} />
+      <MetaRow icon="home-outline" text={item.shed_name} />
       <MetaRow icon="people-outline" text={`${coverageLine(item)} · ${remainingLine(item)}`} />
       {pop ? <Text style={styles.popHint}>{pop}</Text> : null}
 

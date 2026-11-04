@@ -23,6 +23,10 @@ class Shed(Base):
     capacity: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_owner_managed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    # When false, automatic schedule generation / open-dose tasks are suppressed for this shed.
+    auto_vaccination_schedules_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("true")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

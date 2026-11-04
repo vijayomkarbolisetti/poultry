@@ -36,6 +36,8 @@ from app.schemas.flock import (
     BirdSearchHitOut,
     BirdSearchOut,
     BirdUnbandedBatchOut,
+    DeadBirdHitOut,
+    DeadBirdListOut,
     SoldBirdHitOut,
     SoldBirdListOut,
 )
@@ -1738,13 +1740,21 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
             await assert_shed_access(db, ctx, bird.shed_id, permission_code="lifecycle.record")
             birds.append(bird)
 
+        shed_ids = {dest.shed_id} | {b.shed_id for b in birds}
+        shed_name_rows = await db.execute(select(Shed.id, Shed.name).where(Shed.id.in_(shed_ids)))
+        shed_names = {rid: name for rid, name in shed_name_rows.all()}
+        dest_shed_name = shed_names.get(dest.shed_id) or "destination shed"
+
         lock_ids = [dest.id] + [b.flock_id for b in birds]
         locked = await lock_flocks_ordered(db, ctx, lock_ids)
         dest = locked[dest.id]
         flock_cache: dict[UUID, Flock] = {}
+        source_shed_labels: list[str] = []
         for bird in birds:
             src = locked[bird.flock_id]
             flock_cache[bird.flock_id] = src
+            from_shed_name = shed_names.get(bird.shed_id) or "source shed"
+            source_shed_labels.append(from_shed_name)
             if src.banded_count > 0:
                 src.banded_count -= 1
             if src.current_count > 0:
@@ -1757,7 +1767,8 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
             dest.current_count += 1
             moved_ids.append(bird.id)
             qty += 1
-            note = data.reason or "Transferred to destination shed"
+            route = f"From {from_shed_name} to {dest_shed_name}"
+            note = f"{route} · {data.reason.strip()}" if (data.reason or "").strip() else route
             db.add(
                 LifecycleEvent(
                     owner_account_id=ctx.owner_account_id,
@@ -1773,6 +1784,18 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
                 )
             )
         # Parent idempotency marker (no bird_id) so retries short-circuit.
+        unique_sources = sorted(set(source_shed_labels))
+        from_summary = (
+            unique_sources[0]
+            if len(unique_sources) == 1
+            else ", ".join(unique_sources)
+        )
+        batch_route = f"Moved {qty} birds from {from_summary} to {dest_shed_name}"
+        batch_note = (
+            f"{batch_route} · {data.reason.strip()}"
+            if (data.reason or "").strip()
+            else batch_route
+        )
         db.add(
             LifecycleEvent(
                 owner_account_id=ctx.owner_account_id,
@@ -1782,7 +1805,7 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
                 event_type=LifecycleEventType.transfer,
                 effective_date=data.effective_date,
                 quantity=qty,
-                reason=f"[shed-move-batch] {data.reason or f'Moved {qty} birds to destination shed'}",
+                reason=f"[shed-move-batch] {batch_note}",
                 recorded_by_user_id=ctx.user.id,
                 idempotency_key=data.idempotency_key,
                 idempotency_payload_hash=req_hash,
@@ -1806,6 +1829,14 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
                 "Select individual birds; count-only transfer is not supported",
                 "SELECT_BIRDS",
             )
+        shed_name_rows = await db.execute(
+            select(Shed.id, Shed.name).where(
+                Shed.id.in_({source_flock.shed_id, dest.shed_id})
+            )
+        )
+        shed_names = {rid: name for rid, name in shed_name_rows.all()}
+        from_shed_name = shed_names.get(source_flock.shed_id) or "source shed"
+        dest_shed_name = shed_names.get(dest.shed_id) or "destination shed"
         locked = await lock_flocks_ordered(db, ctx, [source_flock.id, dest.id])
         source_flock = locked[source_flock.id]
         dest = locked[dest.id]
@@ -1821,7 +1852,8 @@ async def transfer_to_shed(db: AsyncSession, ctx: AuthContext, data) -> dict:
         await reconcile_flock_counts(db, source_flock)
         await reconcile_flock_counts(db, dest)
         source_flock_ids = [source_flock.id]
-        note = data.reason or f"Transferred {qty} unbanded to destination shed"
+        route = f"From {from_shed_name} to {dest_shed_name}"
+        note = f"{route} · {data.reason.strip()}" if (data.reason or "").strip() else route
         db.add(
             LifecycleEvent(
                 owner_account_id=ctx.owner_account_id,
@@ -2177,19 +2209,33 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
             .limit(50)
         )
     )
-    lifecycle = [
-        BirdProfileLifecycleOut(
-            id=e.id,
-            event_type=e.event_type,
-            effective_date=e.effective_date,
-            quantity=e.quantity,
-            reason=e.reason,
-            buyer_name=e.buyer_name,
-            buyer_mobile=e.buyer_mobile,
-            created_at=e.created_at,
+    life_shed_ids = {e.shed_id for e in life_rows if e.shed_id}
+    life_shed_names: dict[UUID, str] = {}
+    if life_shed_ids:
+        life_shed_rows = await db.execute(
+            select(Shed.id, Shed.name).where(Shed.id.in_(life_shed_ids))
         )
-        for e in life_rows
-    ]
+        life_shed_names = {rid: name for rid, name in life_shed_rows.all()}
+    from app.services.lifecycle_display import enrich_lifecycle_shed_names
+
+    lifecycle = enrich_lifecycle_shed_names(
+        [
+            BirdProfileLifecycleOut(
+                id=e.id,
+                event_type=e.event_type,
+                effective_date=e.effective_date,
+                quantity=e.quantity,
+                reason=e.reason,
+                buyer_name=e.buyer_name,
+                buyer_mobile=e.buyer_mobile,
+                created_at=e.created_at,
+                shed_id=e.shed_id,
+                to_shed_name=life_shed_names.get(e.shed_id) if e.shed_id else None,
+            )
+            for e in life_rows
+        ],
+        life_shed_names,
+    )
 
     sale_out: BirdSaleDetailsOut | None = None
     if bird.lifecycle_status == BirdLifecycleStatus.sold:
@@ -2262,10 +2308,12 @@ async def list_sold_birds(
     sold_to: date | None = None,
     limit: int = 20,
     offset: int = 0,
+    max_page_size: int = 50,
 ) -> SoldBirdListOut:
     """Tenant-scoped sold birds with latest sale details (searchable)."""
     assert ctx.owner_account_id is not None and ctx.membership is not None
-    limit = max(1, min(limit, 50))
+    cap = max(1, max_page_size)
+    limit = max(1, min(limit, cap))
     offset = max(0, offset)
     q = (query or "").strip()
     if len(q) > 64:
@@ -2376,6 +2424,211 @@ async def list_sold_birds(
             )
         )
     return SoldBirdListOut(total=total, limit=limit, offset=offset, items=items)
+
+
+async def list_dead_birds(
+    db: AsyncSession,
+    ctx: AuthContext,
+    *,
+    query: str | None = None,
+    died_from: date | None = None,
+    died_to: date | None = None,
+    limit: int = 20,
+    offset: int = 0,
+    max_page_size: int = 50,
+) -> DeadBirdListOut:
+    """Tenant-scoped dead (mortality) birds with latest mortality details (searchable)."""
+    assert ctx.owner_account_id is not None and ctx.membership is not None
+    cap = max(1, max_page_size)
+    limit = max(1, min(limit, cap))
+    offset = max(0, offset)
+    q = (query or "").strip()
+    if len(q) > 64:
+        raise FlockError("Search query is too long", "INVALID")
+
+    # Latest mortality event per bird via DISTINCT ON (PostgreSQL).
+    latest_mortality_subq = (
+        select(
+            LifecycleEvent.bird_id.label("bird_id"),
+            LifecycleEvent.effective_date.label("died_on"),
+            LifecycleEvent.reason.label("reason"),
+        )
+        .where(
+            LifecycleEvent.owner_account_id == ctx.owner_account_id,
+            LifecycleEvent.event_type == LifecycleEventType.mortality,
+            LifecycleEvent.bird_id.is_not(None),
+        )
+        .distinct(LifecycleEvent.bird_id)
+        .order_by(
+            LifecycleEvent.bird_id,
+            LifecycleEvent.effective_date.desc(),
+            LifecycleEvent.created_at.desc(),
+        )
+        .subquery()
+    )
+
+    filters = [
+        Bird.owner_account_id == ctx.owner_account_id,
+        Bird.lifecycle_status == BirdLifecycleStatus.dead,
+        Bird.is_active.is_(False),
+    ]
+    if ctx.membership.role == MembershipRole.farmer:
+        assigned = await list_assigned_shed_ids(db, ctx.membership.id)
+        if not assigned:
+            return DeadBirdListOut(total=0, limit=limit, offset=offset, items=[])
+        filters.append(Bird.shed_id.in_(assigned))
+    if died_from is not None:
+        filters.append(latest_mortality_subq.c.died_on >= died_from)
+    if died_to is not None:
+        filters.append(latest_mortality_subq.c.died_on <= died_to)
+    if q:
+        pattern = f"%{q}%"
+        filters.append(
+            or_(
+                Bird.band_id.ilike(pattern),
+                Bird.display_code.ilike(pattern),
+                Bird.breed.ilike(pattern),
+                Flock.breed.ilike(pattern),
+                Flock.batch_code.ilike(pattern),
+                Shed.name.ilike(pattern),
+                Shed.code.ilike(pattern),
+                latest_mortality_subq.c.reason.ilike(pattern),
+            )
+        )
+
+    total = int(
+        await db.scalar(
+            select(func.count())
+            .select_from(Bird)
+            .join(Shed, Shed.id == Bird.shed_id)
+            .join(Flock, Flock.id == Bird.flock_id)
+            .outerjoin(latest_mortality_subq, latest_mortality_subq.c.bird_id == Bird.id)
+            .where(*filters)
+        )
+        or 0
+    )
+
+    rows = list(
+        await db.execute(
+            select(
+                Bird,
+                Shed,
+                Flock,
+                latest_mortality_subq.c.died_on,
+                latest_mortality_subq.c.reason,
+            )
+            .join(Shed, Shed.id == Bird.shed_id)
+            .join(Flock, Flock.id == Bird.flock_id)
+            .outerjoin(latest_mortality_subq, latest_mortality_subq.c.bird_id == Bird.id)
+            .where(*filters)
+            .order_by(
+                latest_mortality_subq.c.died_on.desc().nullslast(),
+                Bird.band_id.asc().nullslast(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+    )
+
+    items: list[DeadBirdHitOut] = []
+    for bird, shed, flock, died_on, reason in rows:
+        items.append(
+            DeadBirdHitOut(
+                id=bird.id,
+                band_id=bird.band_id,
+                display_code=bird.display_code,
+                breed=bird.breed or flock.breed,
+                batch_code=flock.batch_code,
+                shed_id=shed.id,
+                shed_name=shed.name,
+                shed_code=shed.code,
+                died_on=died_on or date.today(),
+                reason=reason,
+                lifecycle_status=bird.lifecycle_status,
+                is_active=bird.is_active,
+            )
+        )
+    return DeadBirdListOut(total=total, limit=limit, offset=offset, items=items)
+
+
+async def list_sold_birds_for_export(
+    db: AsyncSession,
+    ctx: AuthContext,
+    *,
+    query: str | None = None,
+    sold_from: date | None = None,
+    sold_to: date | None = None,
+    max_rows: int,
+) -> list[SoldBirdHitOut]:
+    """All matching sold birds for export, or EXPORT_LIMIT if over max_rows."""
+    probe = await list_sold_birds(
+        db,
+        ctx,
+        query=query,
+        sold_from=sold_from,
+        sold_to=sold_to,
+        limit=1,
+        offset=0,
+    )
+    if probe.total > max_rows:
+        raise FlockError(
+            f"Export has {probe.total} rows; the maximum is {max_rows}. "
+            "Narrow the date range and try again.",
+            "EXPORT_LIMIT",
+        )
+    if probe.total == 0:
+        return []
+    full = await list_sold_birds(
+        db,
+        ctx,
+        query=query,
+        sold_from=sold_from,
+        sold_to=sold_to,
+        limit=probe.total,
+        offset=0,
+        max_page_size=max_rows,
+    )
+    return full.items
+
+
+async def list_dead_birds_for_export(
+    db: AsyncSession,
+    ctx: AuthContext,
+    *,
+    query: str | None = None,
+    died_from: date | None = None,
+    died_to: date | None = None,
+    max_rows: int,
+) -> list[DeadBirdHitOut]:
+    """All matching dead birds for export, or EXPORT_LIMIT if over max_rows."""
+    probe = await list_dead_birds(
+        db,
+        ctx,
+        query=query,
+        died_from=died_from,
+        died_to=died_to,
+        limit=1,
+        offset=0,
+    )
+    if probe.total > max_rows:
+        raise FlockError(
+            f"Export has {probe.total} rows; the maximum is {max_rows}. "
+            "Narrow the date range and try again.",
+            "EXPORT_LIMIT",
+        )
+    if probe.total == 0:
+        return []
+    full = await list_dead_birds(
+        db,
+        ctx,
+        query=query,
+        died_from=died_from,
+        died_to=died_to,
+        limit=probe.total,
+        offset=0,
+        max_page_size=max_rows,
+    )
+    return full.items
 
 
 async def band_from_unbanded_by_cohort(db: AsyncSession, ctx: AuthContext, data) -> dict:

@@ -6,7 +6,7 @@ Aligned with locked decisions **D6**, **D7**, **D8**, **D10** in `docs/open-deci
 
 | Role | Scope | Notes |
 |------|-------|-------|
-| `platform_super_admin` | Platform | User flag; **no** automatic farm data access (D10) |
+| `platform_super_admin` | Platform | User flag; may list/create farms and open a farm with `X-Owner-Account-Id` (D10 revised) |
 | `owner` | Entire `owner_account` | Implicit full permissions for that org |
 | `org_admin` | Entire `owner_account` where granted | **D6:** Enabled, but permissions are **explicitly assigned** — not automatic near-owner privileges |
 | `farmer` | Assigned sheds only | Explicit grants; multi-org via separate memberships (D8) |

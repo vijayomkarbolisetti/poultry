@@ -14,6 +14,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -93,11 +94,13 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
   const [catalogueId, setCatalogueId] = useState<string | null>(null);
   const [existingCode, setExistingCode] = useState<string | null>(null);
   const [ownerManaged, setOwnerManaged] = useState(true);
+  const [autoSchedulesEnabled, setAutoSchedulesEnabled] = useState(true);
   const [farmerId, setFarmerId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(mode === "create");
   const [cataloguePickerOpen, setCataloguePickerOpen] = useState(false);
   const [farmerPickerOpen, setFarmerPickerOpen] = useState(false);
   const [addFarmerOpen, setAddFarmerOpen] = useState(false);
+  const [disableSchedulesConfirmOpen, setDisableSchedulesConfirmOpen] = useState(false);
   const [ownerManagedConfirmOpen, setOwnerManagedConfirmOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -202,6 +205,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     );
     setExistingCode(shed.code);
     setOwnerManaged(shed.is_owner_managed);
+    setAutoSchedulesEnabled(shed.auto_vaccination_schedules_enabled !== false);
     if (shed.is_owner_managed) {
       setFarmerId(null);
     } else {
@@ -348,6 +352,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
       catalogueId,
       farmOwnerAccountId: farmId,
       is_owner_managed: ownerManaged,
+      auto_vaccination_schedules_enabled: autoSchedulesEnabled,
       initial_farmer_membership_id: ownerManaged ? null : farmerId,
       cataloguesLoading: catalogues.isLoading || assignment.isLoading,
       farmsAvailable: hasActiveFarm,
@@ -675,6 +680,35 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
             </Text>
           ) : null}
 
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.settingTitle}>Automatic vaccination schedules</Text>
+              <Text style={styles.settingDesc}>
+                Automatically generate vaccination schedules and reminders for birds in this shed.
+              </Text>
+              {!autoSchedulesEnabled ? (
+                <Text style={styles.settingWarn}>
+                  Open due/overdue tasks are deactivated while this is off. Completed records are kept.
+                  You can still record vaccinations manually.
+                </Text>
+              ) : null}
+            </View>
+            <Switch
+              value={autoSchedulesEnabled}
+              onValueChange={(next) => {
+                if (!next && autoSchedulesEnabled && mode === "edit") {
+                  setDisableSchedulesConfirmOpen(true);
+                  return;
+                }
+                setAutoSchedulesEnabled(next);
+              }}
+              disabled={loading}
+              trackColor={{ false: ui.cardBorder, true: ui.brandSoft }}
+              thumbColor={autoSchedulesEnabled ? ui.brand : ui.mutedSoft}
+              accessibilityLabel="Automatic vaccination schedules"
+            />
+          </View>
+
           <FieldLabel text="Capacity (Birds)" />
           <TextInput
             style={[styles.input, fieldErrors.capacity ? styles.inputError : null]}
@@ -780,6 +814,27 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
           onPress: () => {
             setOwnerManagedConfirmOpen(false);
             applyOwnerManaged();
+          },
+        }}
+      />
+
+      <AppDialog
+        visible={disableSchedulesConfirmOpen}
+        title="Turn off automatic schedules?"
+        description="Open vaccination tasks for this shed will be deactivated and will no longer appear as due or overdue. Completed vaccinations and history are kept. You can still record vaccinations manually. Re-enabling regenerates schedules from the catalogue without creating duplicate doses."
+        tone="warning"
+        onDismiss={() => setDisableSchedulesConfirmOpen(false)}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setDisableSchedulesConfirmOpen(false),
+        }}
+        primary={{
+          label: "Turn off",
+          variant: "primary",
+          onPress: () => {
+            setDisableSchedulesConfirmOpen(false);
+            setAutoSchedulesEnabled(false);
           },
         }}
       />
@@ -979,6 +1034,36 @@ const styles = StyleSheet.create({
   catalogueErrorBox: { gap: 6 },
   retryLink: { color: ui.brand, fontWeight: "700" },
   hint: { fontSize: typography.caption.fontSize, color: ui.muted, fontWeight: "600", lineHeight: 16 },
+  settingRow: {
+    marginTop: 14,
+    backgroundColor: ui.white,
+    borderWidth: 1,
+    borderColor: ui.cardBorder,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  settingTitle: {
+    fontSize: typography.label.fontSize,
+    fontWeight: "700",
+    color: ui.ink,
+  },
+  settingDesc: {
+    fontSize: typography.caption.fontSize,
+    color: ui.muted,
+    fontWeight: "600",
+    lineHeight: 16,
+  },
+  settingWarn: {
+    fontSize: typography.caption.fontSize,
+    color: "#B45309",
+    fontWeight: "600",
+    lineHeight: 16,
+    marginTop: 2,
+  },
   infoBanner: {
     marginTop: 16,
     backgroundColor: ui.infoBg,

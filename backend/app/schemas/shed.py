@@ -19,6 +19,8 @@ class ShedCreate(BaseModel):
     location_notes: str | None = None
     capacity: int | None = Field(default=None, ge=0, le=1_000_000)
     is_owner_managed: bool = True
+    # Default ON preserves existing automatic schedule behaviour for new sheds.
+    auto_vaccination_schedules_enabled: bool = True
     # Required when is_owner_managed is False — validated below and in the service.
     initial_farmer_membership_id: UUID | None = None
 
@@ -44,6 +46,7 @@ class ShedUpdate(BaseModel):
     capacity: int | None = Field(default=None, ge=0, le=1_000_000)
     is_owner_managed: bool | None = None
     is_active: bool | None = None
+    auto_vaccination_schedules_enabled: bool | None = None
     # When flipping to farmer-managed (or replacing manager), pass farmer membership id.
     initial_farmer_membership_id: UUID | None = None
 
@@ -75,6 +78,7 @@ class ShedOut(BaseModel):
     capacity: int | None = None
     is_owner_managed: bool
     is_active: bool
+    auto_vaccination_schedules_enabled: bool = True
     created_at: datetime
     updated_at: datetime
 

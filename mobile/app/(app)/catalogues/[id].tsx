@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useMemo, useRef, useState } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,7 +27,7 @@ import {
   type CatalogueSummary,
 } from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
-import { AppDialog } from "../../../src/components/ui/AppDialog";
+import { AppDialog, type AppDialogOption } from "../../../src/components/ui/AppDialog";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
@@ -48,6 +47,11 @@ import { typography } from "../../../src/theme/tokens";
 
 
 type TabKey = "schedule" | "details";
+type ChoiceDialog = {
+  title: string;
+  description?: string;
+  options: AppDialogOption[];
+};
 
 function dayTone(index: number) {
   const color = ui.dayPalette[index % ui.dayPalette.length];
@@ -73,6 +77,7 @@ export default function CatalogueDetailScreen() {
     preview: CataloguePreviewUpdate;
   } | null>(null);
   const [removeSaving, setRemoveSaving] = useState(false);
+  const [choice, setChoice] = useState<ChoiceDialog | null>(null);
 
   const query = useQuery({
     queryKey: ["catalogue", id],
@@ -151,26 +156,49 @@ export default function CatalogueDetailScreen() {
   const onPlatformAction = () => {
     if (!cat?.is_platform || !canManage) return;
     if (farmCopies.length === 1) {
-      Alert.alert(cat.name, "A farm copy of this schedule already exists.", [
-        { text: "Open existing copy", onPress: () => openExistingCopy(farmCopies[0]) },
-        { text: "Clone another copy", onPress: () => setShowCloneConfirm(true) },
-        { text: "Cancel", style: "cancel" },
-      ]);
+      setChoice({
+        title: cat.name,
+        description: "A farm copy of this schedule already exists.",
+        options: [
+          {
+            label: "Open existing copy",
+            onPress: () => {
+              setChoice(null);
+              openExistingCopy(farmCopies[0]);
+            },
+          },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setShowCloneConfirm(true);
+            },
+          },
+        ],
+      });
       return;
     }
     if (farmCopies.length > 1) {
-      Alert.alert(
-        cat.name,
-        "Multiple farm copies exist. Open one from My Catalogues, or clone another copy.",
-        [
+      setChoice({
+        title: cat.name,
+        description: "Multiple farm copies exist. Open one from My Catalogues, or clone another copy.",
+        options: [
           {
-            text: "Open first copy",
-            onPress: () => openExistingCopy(farmCopies[0]),
+            label: "Open first copy",
+            onPress: () => {
+              setChoice(null);
+              openExistingCopy(farmCopies[0]);
+            },
           },
-          { text: "Clone another copy", onPress: () => setShowCloneConfirm(true) },
-          { text: "Cancel", style: "cancel" },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setShowCloneConfirm(true);
+            },
+          },
         ],
-      );
+      });
       return;
     }
     setShowCloneConfirm(true);
@@ -266,24 +294,69 @@ export default function CatalogueDetailScreen() {
 
   const onMenu = () => {
     if (!cat || !editable) return;
-    const buttons: { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[] = [
-      { text: "Add vaccine", onPress: openAddVaccine },
-      { text: "Edit name & description", onPress: startDetailsEdit },
+    const options: AppDialogOption[] = [
+      {
+        label: "Add vaccine",
+        onPress: () => {
+          setChoice(null);
+          openAddVaccine();
+        },
+      },
+      {
+        label: "Edit name & description",
+        onPress: () => {
+          setChoice(null);
+          startDetailsEdit();
+        },
+      },
     ];
     const first = scheduleItems[0];
     if (first?.id) {
-      buttons.push({
-        text: "Edit first vaccine",
-        onPress: () => openItem(first),
+      options.push({
+        label: "Edit first vaccine",
+        onPress: () => {
+          setChoice(null);
+          openItem(first);
+        },
       });
-      buttons.push({
-        text: "Remove first vaccine",
-        style: "destructive",
-        onPress: () => void startRemoveItem(first),
+      options.push({
+        label: "Remove first vaccine",
+        tone: "destructive",
+        onPress: () => {
+          setChoice(null);
+          void startRemoveItem(first);
+        },
       });
     }
-    buttons.push({ text: "Cancel", style: "cancel" });
-    Alert.alert(cat.name, "Manage this farm catalogue.", buttons);
+    setChoice({
+      title: cat.name,
+      description: "Manage this farm catalogue.",
+      options,
+    });
+  };
+
+  const onItemMenu = (item: CatalogueItem) => {
+    if (!editable || !item.id) return;
+    setChoice({
+      title: item.name,
+      options: [
+        {
+          label: "Edit",
+          onPress: () => {
+            setChoice(null);
+            openItem(item);
+          },
+        },
+        {
+          label: "Remove",
+          tone: "destructive",
+          onPress: () => {
+            setChoice(null);
+            void startRemoveItem(item);
+          },
+        },
+      ],
+    });
   };
 
   return (
@@ -407,18 +480,7 @@ export default function CatalogueDetailScreen() {
                         disabled={!editable}
                         onPress={() => openItem(item)}
                         onLongPress={
-                          editable && item.id
-                            ? () =>
-                                Alert.alert(item.name, undefined, [
-                                  { text: "Edit", onPress: () => openItem(item) },
-                                  {
-                                    text: "Remove",
-                                    style: "destructive",
-                                    onPress: () => void startRemoveItem(item),
-                                  },
-                                  { text: "Cancel", style: "cancel" },
-                                ])
-                            : undefined
+                          editable && item.id ? () => onItemMenu(item) : undefined
                         }
                         accessibilityRole={editable ? "button" : undefined}
                         accessibilityLabel={item.name}
@@ -483,6 +545,21 @@ export default function CatalogueDetailScreen() {
           </ScrollView>
         </>
       ) : null}
+
+      <AppDialog
+        visible={Boolean(choice)}
+        title={choice?.title ?? ""}
+        description={choice?.description}
+        tone="info"
+        dismissible
+        onDismiss={() => setChoice(null)}
+        options={choice?.options}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setChoice(null),
+        }}
+      />
 
       <AppDialog
         visible={showCloneConfirm}

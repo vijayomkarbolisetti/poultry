@@ -23,6 +23,7 @@ from app.schemas.flock import (
     BirdProfileOut,
     BirdSearchOut,
     BirdUpdate,
+    DeadBirdListOut,
     RegisterBandedInShedIn,
     SoldBirdListOut,
 )
@@ -172,6 +173,127 @@ async def list_sold_birds(
     except flock_service.FlockError as exc:
         code = 400 if exc.code == "INVALID" else 404
         raise HTTPException(status_code=code, detail=exc.message) from exc
+
+
+@router.get("/sold/export")
+async def export_sold_birds(
+    q: str | None = Query(None, max_length=64, description="Band, breed, buyer name, or mobile"),
+    sold_from: date | None = Query(None),
+    sold_to: date | None = Query(None),
+    format: str = Query("csv", description="csv or xlsx"),
+    ctx: AuthContext = Depends(require_permission("bird.view")),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Download sold birds as CSV or Excel for the selected date range."""
+    from app.core.config import get_settings
+    from app.services.bird_list_export_service import (
+        BirdListExportError,
+        build_export_filename,
+        parse_export_format,
+        render_sold_export,
+    )
+
+    try:
+        fmt = parse_export_format(format)
+        if sold_from and sold_to and sold_from > sold_to:
+            raise BirdListExportError("sold_from must be on or before sold_to", "INVALID")
+        items = await flock_service.list_sold_birds_for_export(
+            db,
+            ctx,
+            query=q,
+            sold_from=sold_from,
+            sold_to=sold_to,
+            max_rows=get_settings().bird_list_export_max_rows,
+        )
+        content, media_type = render_sold_export(items, fmt)
+        filename = build_export_filename(
+            "sold-birds", fmt, date_from=sold_from, date_to=sold_to
+        )
+    except BirdListExportError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except flock_service.FlockError as exc:
+        code = 400 if exc.code in {"INVALID", "EXPORT_LIMIT"} else 404
+        raise HTTPException(status_code=code, detail=exc.message) from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/dead-birds", response_model=DeadBirdListOut)
+async def list_dead_birds(
+    q: str | None = Query(None, max_length=64, description="Band, breed, batch, shed, or reason"),
+    died_from: date | None = Query(None),
+    died_to: date | None = Query(None),
+    limit: int = Query(20, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    ctx: AuthContext = Depends(require_permission("bird.view")),
+    db: AsyncSession = Depends(get_db),
+) -> DeadBirdListOut:
+    """List dead (mortality) birds; tenant-scoped and searchable. Banded birds only.
+
+    Path is `/dead-birds` (not `/dead`) so it cannot be captured by `/{bird_id}`.
+    """
+    try:
+        return await flock_service.list_dead_birds(
+            db,
+            ctx,
+            query=q,
+            died_from=died_from,
+            died_to=died_to,
+            limit=limit,
+            offset=offset,
+        )
+    except flock_service.FlockError as exc:
+        code = 400 if exc.code == "INVALID" else 404
+        raise HTTPException(status_code=code, detail=exc.message) from exc
+
+
+@router.get("/dead-birds/export")
+async def export_dead_birds(
+    q: str | None = Query(None, max_length=64, description="Band, breed, batch, shed, or reason"),
+    died_from: date | None = Query(None),
+    died_to: date | None = Query(None),
+    format: str = Query("csv", description="csv or xlsx"),
+    ctx: AuthContext = Depends(require_permission("bird.view")),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Download dead birds as CSV or Excel for the selected date range."""
+    from app.core.config import get_settings
+    from app.services.bird_list_export_service import (
+        BirdListExportError,
+        build_export_filename,
+        parse_export_format,
+        render_dead_export,
+    )
+
+    try:
+        fmt = parse_export_format(format)
+        if died_from and died_to and died_from > died_to:
+            raise BirdListExportError("died_from must be on or before died_to", "INVALID")
+        items = await flock_service.list_dead_birds_for_export(
+            db,
+            ctx,
+            query=q,
+            died_from=died_from,
+            died_to=died_to,
+            max_rows=get_settings().bird_list_export_max_rows,
+        )
+        content, media_type = render_dead_export(items, fmt)
+        filename = build_export_filename(
+            "dead-birds", fmt, date_from=died_from, date_to=died_to
+        )
+    except BirdListExportError as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except flock_service.FlockError as exc:
+        code = 400 if exc.code in {"INVALID", "EXPORT_LIMIT"} else 404
+        raise HTTPException(status_code=code, detail=exc.message) from exc
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/in-shed", response_model=BirdListOut)

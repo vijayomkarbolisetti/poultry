@@ -28,9 +28,11 @@ class VaccinationEvent(Base):
     scheduled_dose_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("scheduled_doses.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    vaccine_definition_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("vaccine_definitions.id", ondelete="RESTRICT"), nullable=False
+    # Nullable when recording a custom/manual vaccine that is not in the catalogue.
+    vaccine_definition_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("vaccine_definitions.id", ondelete="RESTRICT"), nullable=True
     )
+    custom_vaccine_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     schedule_version_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("vaccine_schedule_versions.id", ondelete="SET NULL"), nullable=True
     )

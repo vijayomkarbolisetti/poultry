@@ -25,10 +25,13 @@ from app.schemas.flock import (
 )
 from app.services.bird_report_service import (
     build_bird_vaccination_pdf_bytes,
+    format_generated_at,
+    format_lifecycle_detail,
     format_lifecycle_label,
     lifecycle_badge_colors,
     sanitize_report_filename,
 )
+from app.services.lifecycle_display import enrich_lifecycle_shed_names
 
 
 async def _owner(client: AsyncClient, email: str, org: str) -> dict:
@@ -377,6 +380,66 @@ def test_lifecycle_labels_and_badge_colors() -> None:
     assert format_lifecycle_label(BirdLifecycleStatus.transferred_out) == "Transferred out"
     assert "BirdLifecycleStatus" not in format_lifecycle_label("weird_value")
 
+    shed_a = uuid4()
+    shed_b = uuid4()
+    move = BirdProfileLifecycleOut(
+        id=uuid4(),
+        event_type=LifecycleEventType.transfer,
+        effective_date=date(2026, 3, 1),
+        quantity=1,
+        reason="[shed-move] Transferred to destination shed",
+        buyer_name=None,
+        buyer_mobile=None,
+        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        shed_id=shed_b,
+        from_shed_name="North Shed",
+        to_shed_name="South Shed",
+    )
+    assert format_lifecycle_detail(move) == "From North Shed to South Shed"
+    assert "[shed-move]" not in format_lifecycle_detail(move)
+
+    legacy = BirdProfileLifecycleOut(
+        id=uuid4(),
+        event_type=LifecycleEventType.transfer,
+        effective_date=date(2026, 3, 2),
+        quantity=1,
+        reason="[shed-move] Transferred to destination shed",
+        buyer_name=None,
+        buyer_mobile=None,
+        created_at=datetime(2026, 3, 2, tzinfo=timezone.utc),
+        shed_id=shed_b,
+        to_shed_name="South Shed",
+    )
+    assert format_lifecycle_detail(legacy) == "Transferred to South Shed"
+
+    seeded = enrich_lifecycle_shed_names(
+        [
+            BirdProfileLifecycleOut(
+                id=uuid4(),
+                event_type=LifecycleEventType.count_adjustment,
+                effective_date=date(2026, 1, 1),
+                quantity=1,
+                reason="Banded in place",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                shed_id=shed_a,
+            ),
+            BirdProfileLifecycleOut(
+                id=uuid4(),
+                event_type=LifecycleEventType.transfer,
+                effective_date=date(2026, 2, 1),
+                quantity=1,
+                reason="[shed-move] Transferred to destination shed",
+                created_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+                shed_id=shed_b,
+                to_shed_name="South Shed",
+            ),
+        ],
+        {shed_a: "North Shed", shed_b: "South Shed"},
+    )
+    assert seeded[1].from_shed_name == "North Shed"
+    assert seeded[1].to_shed_name == "South Shed"
+    assert format_lifecycle_detail(seeded[1]) == "From North Shed to South Shed"
+
     bg, fg = lifecycle_badge_colors(BirdLifecycleStatus.active)
     assert bg is not None and fg is not None
     dead_bg, dead_fg = lifecycle_badge_colors(BirdLifecycleStatus.dead)
@@ -405,6 +468,31 @@ def test_pdf_omits_internal_fields_and_enums() -> None:
     assert "Not recorded" in text or "About 90 days" in text
     assert "compliance" not in text.lower()
     assert "Bird Profile & Health Record" in text or "Bird Profile &amp; Health Record" in text
+
+
+def test_format_generated_at_defaults_to_ist() -> None:
+    when = datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
+    # 12:00 UTC → 17:30 IST
+    display, label = format_generated_at(when, None)
+    assert display == "19 Mar 2026, 17:30"
+    assert label == "IST"
+    display_explicit, label_explicit = format_generated_at(when, "Asia/Kolkata")
+    assert display_explicit == "19 Mar 2026, 17:30"
+    assert label_explicit == "IST"
+    display_utc, label_utc = format_generated_at(when, "UTC")
+    assert display_utc == "19 Mar 2026, 12:00"
+    assert label_utc == "UTC"
+
+
+def test_pdf_generated_line_shows_ist_by_default() -> None:
+    pdf = build_bird_vaccination_pdf_bytes(
+        _minimal_profile(),
+        generated_at=datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc),
+    )
+    # pypdf may insert line breaks inside the meta line
+    compact = " ".join(_pdf_text(pdf).split())
+    assert "Generated 19 Mar 2026, 17:30 (IST)" in compact
+    assert "(UTC)" not in compact
 
 
 def test_pdf_status_styling_active_vs_dead() -> None:
@@ -576,6 +664,7 @@ def test_pdf_sale_and_lifecycle_sections() -> None:
     sale_id = uuid4()
     profile = _minimal_profile(
         band_id="SOLD-1",
+        display_code="ALIAS-CODE",
         lifecycle_status=BirdLifecycleStatus.sold,
         is_active=False,
         sale=BirdSaleDetailsOut(
@@ -588,6 +677,18 @@ def test_pdf_sale_and_lifecycle_sections() -> None:
         lifecycle_events=[
             BirdProfileLifecycleOut(
                 id=uuid4(),
+                event_type=LifecycleEventType.transfer,
+                effective_date=date(2026, 9, 1),
+                quantity=1,
+                reason="[shed-move] From North Shed to South Shed",
+                buyer_name=None,
+                buyer_mobile=None,
+                created_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+                from_shed_name="North Shed",
+                to_shed_name="South Shed",
+            ),
+            BirdProfileLifecycleOut(
+                id=uuid4(),
                 event_type=LifecycleEventType.sale,
                 effective_date=date(2026, 10, 28),
                 quantity=1,
@@ -595,7 +696,7 @@ def test_pdf_sale_and_lifecycle_sections() -> None:
                 buyer_name="Ramesh Kumar",
                 buyer_mobile="9876543210",
                 created_at=datetime(2026, 10, 28, tzinfo=timezone.utc),
-            )
+            ),
         ],
         batch_upcoming_doses=[],
     )
@@ -611,6 +712,12 @@ def test_pdf_sale_and_lifecycle_sections() -> None:
     assert "Sold" in text
     assert "Transfer" in text and "ownership" in text.lower()
     assert "Bird was sold" in text
+    assert "From North Shed to South Shed" in text
+    assert "[shed-move]" not in text
+    assert "Name / code" not in text
+    assert "ALIAS-CODE" not in text
+    # Identity Batch field removed; flock batch_code must not appear.
+    assert "BATCH-1" not in text
     assert str(sale_id) not in text
     assert "inactive" in text.lower() or "sold" in text.lower()
 

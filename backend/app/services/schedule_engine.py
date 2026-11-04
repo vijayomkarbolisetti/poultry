@@ -20,18 +20,25 @@ STATUS_NOT_APPLICABLE = "not_applicable"
 STATUS_NEEDS_REVIEW = "needs_review"
 STATUS_INACTIVE = "inactive"
 
+# Default farm/display timezone when OwnerAccount.timezone is unset.
+# Storage timestamps remain UTC; convert at the display / calendar boundary.
+DEFAULT_FARM_TIMEZONE = "Asia/Kolkata"
+
 
 def _tz(timezone_name: str | None):
-    """Resolve IANA TZ; use datetime.timezone.utc when unset (Windows-safe)."""
+    """Resolve IANA TZ; default Asia/Kolkata when unset (Windows-safe)."""
     from datetime import timezone as dt_timezone
 
-    if not timezone_name or timezone_name.upper() == "UTC":
+    label = (timezone_name or "").strip()
+    if not label:
+        return ZoneInfo(DEFAULT_FARM_TIMEZONE)
+    if label.upper() == "UTC":
         return dt_timezone.utc
-    return ZoneInfo(timezone_name)
+    return ZoneInfo(label)
 
 
 def farm_local_today(timezone_name: str | None, utc_now: datetime | None = None) -> date:
-    """D2: evaluate calendar days in farm-local TZ; fallback UTC if unset."""
+    """D2: evaluate calendar days in farm-local TZ; fallback Asia/Kolkata if unset."""
     from datetime import timezone as dt_timezone
 
     now = utc_now or datetime.now(dt_timezone.utc)

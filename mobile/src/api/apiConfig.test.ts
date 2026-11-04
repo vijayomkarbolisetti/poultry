@@ -24,6 +24,27 @@ assert(
 
 assert(
   resolveApiBaseUrl({
+    envUrl: "http://192.168.50.75:8002",
+    platform: "android",
+    isDevice: true,
+    isDev: false,
+  }) === PRODUCTION_API_URL,
+  "release APK must ignore private LAN env (cleartext blocked)",
+);
+
+assert(
+  resolveApiBaseUrl({
+    envUrl: "http://192.168.50.75:8001",
+    platform: "android",
+    isDevice: true,
+    isDev: false,
+    allowPrivateApi: true,
+  }) === "http://192.168.50.75:8001",
+  "local debug APK may use private LAN when explicitly allowed",
+);
+
+assert(
+  resolveApiBaseUrl({
     envUrl: "https://3.6.160.64.sslip.io",
     platform: "android",
     isDevice: true,

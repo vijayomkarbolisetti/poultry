@@ -423,8 +423,7 @@ export default function ShedsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Add Shed"
             >
-              <Ionicons name="add" size={22} color={ui.white} />
-              <Text style={styles.addBtnText}>Add Shed</Text>
+              <Ionicons name="add" size={24} color={ui.white} />
             </Pressable>
           ) : null}
         </View>
@@ -687,17 +686,14 @@ const styles = StyleSheet.create({
     borderColor: ui.filterBg,
   },
   addBtn: {
-    flexDirection: "row",
+    width: 56,
+    height: 56,
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
     flexShrink: 0,
-    minHeight: 56,
-    paddingHorizontal: 12,
     borderRadius: 18,
     backgroundColor: ui.deepGreen,
   },
-  addBtnText: { color: ui.white, fontSize: typography.button.fontSize, fontWeight: "800" },
   summary: {
     flexDirection: "row",
     alignItems: "center",

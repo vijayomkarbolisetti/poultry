@@ -15,6 +15,7 @@ export type UserMe = {
   full_name: string;
   is_active: boolean;
   is_platform_super_admin: boolean;
+  must_change_password?: boolean;
   created_at: string;
   memberships: Membership[];
 };
@@ -45,6 +46,19 @@ export async function login(input: { email: string; password: string }): Promise
 
 export async function fetchMe(): Promise<UserMe> {
   const { data } = await api.get<UserMe>("/auth/me");
+  return data;
+}
+
+export async function changePassword(input: {
+  current_password: string;
+  new_password: string;
+}): Promise<UserMe> {
+  const { data } = await api.post<UserMe>("/auth/change-password", input);
+  return data;
+}
+
+export async function updateProfile(input: { full_name: string }): Promise<UserMe> {
+  const { data } = await api.patch<UserMe>("/auth/me", input);
   return data;
 }
 

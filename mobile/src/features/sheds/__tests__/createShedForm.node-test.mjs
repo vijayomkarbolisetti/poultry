@@ -53,6 +53,7 @@ function createShedPayload(draft) {
     name: draft.name.trim(),
     code: draft.code.trim(),
     is_owner_managed: draft.is_owner_managed,
+    auto_vaccination_schedules_enabled: draft.auto_vaccination_schedules_enabled !== false,
     capacity: cap.value,
     location_notes: draft.location_notes?.trim() ? draft.location_notes.trim() : "",
   };
@@ -101,6 +102,7 @@ function updateShedPayload(draft) {
     location_notes: draft.location_notes?.trim() || "",
     capacity: cap.value,
     is_owner_managed: draft.is_owner_managed,
+    auto_vaccination_schedules_enabled: draft.auto_vaccination_schedules_enabled !== false,
   };
   if (!draft.is_owner_managed && draft.initial_farmer_membership_id) {
     payload.initial_farmer_membership_id = draft.initial_farmer_membership_id;
@@ -185,6 +187,7 @@ check("createShedPayload trims and includes capacity", () => {
     catalogueId: "c1",
     farmOwnerAccountId: "f1",
     is_owner_managed: true,
+    auto_vaccination_schedules_enabled: true,
     initial_farmer_membership_id: null,
   });
   assert.equal(p.name, "P1 Shed A");
@@ -192,7 +195,21 @@ check("createShedPayload trims and includes capacity", () => {
   assert.equal(p.location_notes, "note");
   assert.equal(p.capacity, 50);
   assert.equal(p.is_owner_managed, true);
+  assert.equal(p.auto_vaccination_schedules_enabled, true);
   assert.equal(p.initial_farmer_membership_id, undefined);
+});
+
+check("createShedPayload can disable automatic schedules", () => {
+  const p = createShedPayload({
+    name: "Holding Shed",
+    code: "HOLD1",
+    catalogueId: "c1",
+    farmOwnerAccountId: "f1",
+    is_owner_managed: true,
+    auto_vaccination_schedules_enabled: false,
+    initial_farmer_membership_id: null,
+  });
+  assert.equal(p.auto_vaccination_schedules_enabled, false);
 });
 
 check("suggestShedCode uses existing code when provided", () => {

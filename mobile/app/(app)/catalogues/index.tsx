@@ -3,7 +3,6 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -24,7 +23,7 @@ import {
 } from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
 import { BrandLogo } from "../../../src/components/brand/BrandLogo";
-import { AppDialog } from "../../../src/components/ui/AppDialog";
+import { AppDialog, type AppDialogOption } from "../../../src/components/ui/AppDialog";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -42,6 +41,11 @@ import { typography } from "../../../src/theme/tokens";
 
 type TabKey = "all" | "farm" | "platform";
 type ConfirmKind = "default" | "clone";
+type ChoiceDialog = {
+  title: string;
+  description?: string;
+  options: AppDialogOption[];
+};
 
 export default function CataloguesScreen() {
   const { user, ownerAccountId } = useAuth();
@@ -51,6 +55,7 @@ export default function CataloguesScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
   const [confirm, setConfirm] = useState<{ kind: ConfirmKind; cat: CatalogueSummary } | null>(null);
+  const [choice, setChoice] = useState<ChoiceDialog | null>(null);
 
   const catalogues = useQuery({
     queryKey: ["catalogues", ownerAccountId],
@@ -112,25 +117,49 @@ export default function CataloguesScreen() {
     if (!canManage) return;
     const copies = farmCopiesOf(cat.id, list);
     if (copies.length === 1) {
-      Alert.alert(cat.name, "A farm copy of this schedule already exists.", [
-        {
-          text: "Open existing copy",
-          onPress: () => router.push(`/(app)/catalogues/${copies[0].id}`),
-        },
-        { text: "Clone another copy", onPress: () => setConfirm({ kind: "clone", cat }) },
-        { text: "Cancel", style: "cancel" },
-      ]);
+      setChoice({
+        title: cat.name,
+        description: "A farm copy of this schedule already exists.",
+        options: [
+          {
+            label: "Open existing copy",
+            onPress: () => {
+              setChoice(null);
+              router.push(`/(app)/catalogues/${copies[0].id}`);
+            },
+          },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setConfirm({ kind: "clone", cat });
+            },
+          },
+        ],
+      });
       return;
     }
     if (copies.length > 1) {
-      Alert.alert(cat.name, "Multiple farm copies already exist.", [
-        {
-          text: "Open first copy",
-          onPress: () => router.push(`/(app)/catalogues/${copies[0].id}`),
-        },
-        { text: "Clone another copy", onPress: () => setConfirm({ kind: "clone", cat }) },
-        { text: "Cancel", style: "cancel" },
-      ]);
+      setChoice({
+        title: cat.name,
+        description: "Multiple farm copies already exist.",
+        options: [
+          {
+            label: "Open first copy",
+            onPress: () => {
+              setChoice(null);
+              router.push(`/(app)/catalogues/${copies[0].id}`);
+            },
+          },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setConfirm({ kind: "clone", cat });
+            },
+          },
+        ],
+      });
       return;
     }
     setConfirm({ kind: "clone", cat });
@@ -168,17 +197,34 @@ export default function CataloguesScreen() {
       return;
     }
     const isDefault = defaultId === cat.id;
-    const buttons: { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[] = [
-      { text: "Open", onPress: () => router.push(`/(app)/catalogues/${cat.id}`) },
+    const options: AppDialogOption[] = [
+      {
+        label: "Open",
+        onPress: () => {
+          setChoice(null);
+          router.push(`/(app)/catalogues/${cat.id}`);
+        },
+      },
     ];
     if (!isDefault) {
-      buttons.push({ text: "Set as default", onPress: () => onSetDefault(cat) });
+      options.push({
+        label: "Set as default",
+        onPress: () => {
+          setChoice(null);
+          onSetDefault(cat);
+        },
+      });
     }
     if (cat.is_platform) {
-      buttons.push({ text: "Clone to My Farm", onPress: () => onClone(cat) });
+      options.push({
+        label: "Clone to My Farm",
+        onPress: () => {
+          setChoice(null);
+          onClone(cat);
+        },
+      });
     }
-    buttons.push({ text: "Cancel", style: "cancel" });
-    Alert.alert(cat.name, undefined, buttons);
+    setChoice({ title: cat.name, options });
   };
 
   const onAdd = () => {
@@ -294,6 +340,21 @@ export default function CataloguesScreen() {
           renderItem={({ item, index }) => renderCard(item, index)}
         />
       )}
+
+      <AppDialog
+        visible={Boolean(choice)}
+        title={choice?.title ?? ""}
+        description={choice?.description}
+        tone="info"
+        dismissible
+        onDismiss={() => setChoice(null)}
+        options={choice?.options}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setChoice(null),
+        }}
+      />
 
       <AppDialog
         visible={Boolean(confirm)}

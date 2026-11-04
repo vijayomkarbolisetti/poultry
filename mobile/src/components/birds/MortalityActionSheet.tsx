@@ -1,15 +1,13 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useRef, useState } from "react";
 import {
-  Modal,
+  Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { describeApiError } from "../../api/client";
 import {
@@ -27,6 +25,7 @@ import {
 } from "../../features/birds/transferHelpers";
 import { birdUi } from "../../theme/birdManagementUi";
 import { Button } from "../ui/Button";
+import { FormBottomSheet } from "../ui/FormBottomSheet";
 import { AppDatePicker } from "../ui/AppDatePicker";
 import { todayIsoDate } from "../ui/selectUtils";
 import { typography } from "../../theme/tokens";
@@ -55,7 +54,6 @@ type Props = {
 };
 
 export function MortalityActionSheet({ visible, payload, onClose, onSuccess }: Props) {
-  const insets = useSafeAreaInsets();
   const [reason, setReason] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [effectiveDate, setEffectiveDate] = useState(() => todayIsoDate());
@@ -76,6 +74,12 @@ export function MortalityActionSheet({ visible, payload, onClose, onSuccess }: P
     lock.current = false;
     idem.current = newLifecycleIdempotencyKey("mortality-sheet");
   }, [visible, payload]);
+
+  const requestClose = () => {
+    if (busy) return;
+    Keyboard.dismiss();
+    onClose();
+  };
 
   const onConfirm = async () => {
     if (!payload || lock.current || done) return;
@@ -147,12 +151,13 @@ export function MortalityActionSheet({ visible, payload, onClose, onSuccess }: P
     payload.mode === "banded" ? payload.birdIds.length : Number(quantity) || 0;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close mortality">
-        <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}
-          onPress={(e) => e.stopPropagation()}
-        >
+    <FormBottomSheet
+      visible={visible}
+      onClose={requestClose}
+      dismissAccessibilityLabel="Close mortality"
+      sheetStyle={styles.sheetPad}
+      header={
+        <>
           <View style={styles.handle} />
           <View style={styles.titleRow}>
             <View style={[styles.iconCircle, { backgroundColor: birdUi.errorPale }]}>
@@ -166,86 +171,89 @@ export function MortalityActionSheet({ visible, payload, onClose, onSuccess }: P
                   : payload.label}
               </Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn} accessibilityLabel="Close">
+            <Pressable onPress={requestClose} hitSlop={12} style={styles.closeBtn} accessibilityLabel="Close">
               <Ionicons name="close" size={22} color={birdUi.muted} />
             </Pressable>
           </View>
-
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 360 }}>
-            {payload.mode === "banded" ? (
-              <View style={styles.listCard}>
-                {(payload.labels.length ? payload.labels : payload.birdIds).slice(0, 30).map((label, i) => (
-                  <Text key={`${label}-${i}`} style={styles.band}>
-                    {label}
-                  </Text>
-                ))}
-                {payload.birdIds.length > 30 ? (
-                  <Text style={styles.hint}>…and {payload.birdIds.length - 30} more</Text>
-                ) : null}
-              </View>
-            ) : (
-              <>
-                <Text style={styles.label}>Quantity (max {payload.unbandedCount})</Text>
-                <TextInput
-                  style={styles.input}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="number-pad"
-                  editable={!done}
-                  accessibilityLabel="Mortality quantity"
-                />
-              </>
-            )}
-
-            <AppDatePicker
-              label="Effective date"
-              required
-              value={effectiveDate}
-              maximumDate={todayIsoDate()}
-              onChange={(v) => setEffectiveDate(v ?? todayIsoDate())}
-              disabled={done}
-            />
-
-            <Text style={styles.label}>Reason (optional)</Text>
-            <TextInput
-              style={[styles.input, styles.reason]}
-              value={reason}
-              onChangeText={setReason}
-              placeholder="e.g. disease, predator, unknown"
-              editable={!done}
-              multiline
-            />
-
-            <Text style={styles.warn}>
-              This marks {titleCount || "selected"} bird
-              {(titleCount === 1 ? "" : "s")} as dead and removes them from the live population.
-              History is preserved.
-            </Text>
-
-            {msg ? <Text style={done ? styles.ok : styles.error}>{msg}</Text> : null}
-          </ScrollView>
-
-          {!done ? (
-            <View style={styles.actions}>
-              <View style={{ flex: 1 }}>
-                <Button label="Cancel" variant="secondary" onPress={onClose} disabled={busy} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Button
-                  label="Confirm mortality"
-                  variant="danger"
-                  onPress={() => void onConfirm()}
-                  loading={busy}
-                  disabled={busy}
-                />
-              </View>
+        </>
+      }
+      footer={
+        !done ? (
+          <View style={styles.actions}>
+            <View style={{ flex: 1 }}>
+              <Button label="Cancel" variant="secondary" onPress={requestClose} disabled={busy} />
             </View>
-          ) : (
-            <Button label="Done" onPress={onClose} />
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+            <View style={{ flex: 1 }}>
+              <Button
+                label="Confirm mortality"
+                variant="danger"
+                onPress={() => void onConfirm()}
+                loading={busy}
+                disabled={busy}
+              />
+            </View>
+          </View>
+        ) : (
+          <Button label="Done" onPress={requestClose} />
+        )
+      }
+    >
+      {payload.mode === "banded" ? (
+        <View style={styles.listCard}>
+          {(payload.labels.length ? payload.labels : payload.birdIds).slice(0, 30).map((label, i) => (
+            <Text key={`${label}-${i}`} style={styles.band}>
+              {label}
+            </Text>
+          ))}
+          {payload.birdIds.length > 30 ? (
+            <Text style={styles.hint}>…and {payload.birdIds.length - 30} more</Text>
+          ) : null}
+        </View>
+      ) : (
+        <>
+          <Text style={styles.label}>Quantity (max {payload.unbandedCount})</Text>
+          <TextInput
+            style={styles.input}
+            value={quantity}
+            onChangeText={setQuantity}
+            keyboardType="number-pad"
+            editable={!done}
+            accessibilityLabel="Mortality quantity"
+          />
+        </>
+      )}
+
+      <AppDatePicker
+        label="Effective date"
+        required
+        value={effectiveDate}
+        maximumDate={todayIsoDate()}
+        onChange={(v) => setEffectiveDate(v ?? todayIsoDate())}
+        disabled={done}
+      />
+
+      <Text style={styles.label}>Reason (optional)</Text>
+      <TextInput
+        style={[styles.input, styles.reason]}
+        value={reason}
+        onChangeText={setReason}
+        placeholder="e.g. disease, predator, unknown"
+        placeholderTextColor={birdUi.muted}
+        editable={!done}
+        multiline
+        textAlignVertical="top"
+        blurOnSubmit={false}
+        accessibilityLabel="Mortality reason"
+      />
+
+      <Text style={styles.warn}>
+        This marks {titleCount || "selected"} bird
+        {(titleCount === 1 ? "" : "s")} as dead and removes them from the live population.
+        History is preserved.
+      </Text>
+
+      {msg ? <Text style={done ? styles.ok : styles.error}>{msg}</Text> : null}
+    </FormBottomSheet>
   );
 }
 
@@ -274,18 +282,8 @@ export function unbandedMortalityPayload(opts: {
 }
 
 const styles = StyleSheet.create({
-  scrim: {
-    flex: 1,
-    backgroundColor: "rgba(2, 44, 34, 0.35)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: birdUi.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+  sheetPad: {
     paddingHorizontal: birdUi.horizontal,
-    paddingTop: 10,
-    gap: 10,
   },
   handle: {
     alignSelf: "center",
@@ -333,7 +331,7 @@ const styles = StyleSheet.create({
     color: birdUi.text,
     marginBottom: 10,
   },
-  reason: { minHeight: 64, textAlignVertical: "top" },
+  reason: { minHeight: 88, textAlignVertical: "top" },
   hint: { fontSize: typography.caption.fontSize, color: birdUi.muted },
   warn: {
     fontSize: typography.secondary.fontSize,

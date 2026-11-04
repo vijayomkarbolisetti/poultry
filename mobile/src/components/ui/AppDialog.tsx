@@ -24,6 +24,15 @@ export type AppDialogAction = {
   disabled?: boolean;
 };
 
+/** Stacked choices for themed menus (replaces system Alert.alert with 3+ buttons). */
+export type AppDialogOption = {
+  label: string;
+  onPress: () => void;
+  /** default = brand text; destructive = danger text. */
+  tone?: "default" | "destructive";
+  disabled?: boolean;
+};
+
 type Props = {
   visible: boolean;
   title: string;
@@ -31,6 +40,8 @@ type Props = {
   children?: ReactNode;
   tone?: AppDialogTone;
   icon?: keyof typeof Ionicons.glyphMap;
+  /** Multi-choice list (Open / Clone / etc.). Shown above primary/secondary. */
+  options?: AppDialogOption[];
   primary?: AppDialogAction;
   secondary?: AppDialogAction;
   /** When true, Android back / backdrop dismiss calls onDismiss (if provided). */
@@ -65,6 +76,7 @@ export function AppDialog({
   children,
   tone = "neutral",
   icon,
+  options,
   primary,
   secondary,
   dismissible = true,
@@ -73,6 +85,7 @@ export function AppDialog({
   const insets = useSafeAreaInsets();
   const iconName = icon ?? TONE_ICON[tone];
   const iconColor = TONE_COLOR[tone];
+  const hasOptions = Boolean(options && options.length > 0);
 
   useEffect(() => {
     if (!visible) return;
@@ -120,18 +133,53 @@ export function AppDialog({
           {description ? <Text style={styles.description}>{description}</Text> : null}
           {children}
 
-          <View style={styles.actions}>
-            {secondary ? (
-              <DialogButton
-                action={secondary}
-                busy={busy}
-                fallbackVariant="secondary"
-              />
-            ) : null}
-            {primary ? (
-              <DialogButton action={primary} busy={busy} fallbackVariant="primary" />
-            ) : null}
-          </View>
+          {hasOptions ? (
+            <View style={styles.options}>
+              {options!.map((opt) => {
+                const disabled = Boolean(opt.disabled || busy);
+                const destructive = opt.tone === "destructive";
+                return (
+                  <Pressable
+                    key={opt.label}
+                    accessibilityRole="button"
+                    accessibilityLabel={opt.label}
+                    accessibilityState={{ disabled }}
+                    disabled={disabled}
+                    onPress={opt.onPress}
+                    style={({ pressed }) => [
+                      styles.optionBtn,
+                      pressed && !disabled && styles.btnPressed,
+                      disabled && styles.btnDisabled,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.optionLabel,
+                        destructive && styles.optionLabelDestructive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {primary || secondary ? (
+            <View style={[styles.actions, hasOptions && styles.actionsAfterOptions]}>
+              {secondary ? (
+                <DialogButton
+                  action={secondary}
+                  busy={busy}
+                  fallbackVariant="secondary"
+                />
+              ) : null}
+              {primary ? (
+                <DialogButton action={primary} busy={busy} fallbackVariant="primary" />
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -239,9 +287,33 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontWeight: "500",
   },
+  options: {
+    marginTop: space.md,
+    gap: 8,
+    width: "100%",
+  },
+  optionBtn: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  optionLabel: {
+    fontSize: typography.button.fontSize,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  optionLabelDestructive: { color: colors.danger },
   actions: {
     marginTop: space.lg,
     gap: 10,
+  },
+  actionsAfterOptions: {
+    marginTop: space.sm,
   },
   btn: {
     minHeight: 48,

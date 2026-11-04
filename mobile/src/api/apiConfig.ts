@@ -5,6 +5,9 @@
 export const PRODUCTION_API_URL = "https://3.6.160.64.sslip.io";
 
 const LOOPBACK_RE = /:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i;
+/** RFC1918 / link-local hosts — fine for Metro/dev, unsafe to bake into release APKs. */
+const PRIVATE_HOST_RE =
+  /:\/\/((localhost|127\.0\.0\.1|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}|169\.254\.\d{1,3}\.\d{1,3}))(?::|\/|$)/i;
 
 export function isLoopbackUrl(url: string): boolean {
   return LOOPBACK_RE.test(url);
@@ -14,13 +17,18 @@ export function isEmulatorOnlyUrl(url: string): boolean {
   return /10\.0\.2\.2/i.test(url) || isLoopbackUrl(url);
 }
 
+/** True for LAN/private hosts that release APKs must not use (cleartext + unreachable off-LAN). */
+export function isPrivateLanUrl(url: string): boolean {
+  return isEmulatorOnlyUrl(url) || PRIVATE_HOST_RE.test(url);
+}
+
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
 /**
  * Resolve the API origin (no `/api/v1` suffix).
- * Release builds never fall back to emulator loopback addresses.
+ * Release builds never fall back to emulator loopback or private LAN addresses.
  */
 export function resolveApiBaseUrl(input: {
   envUrl?: string | null;
@@ -31,21 +39,29 @@ export function resolveApiBaseUrl(input: {
   isDevice: boolean;
   /** Expo/Metro `__DEV__` — false in release APKs. */
   isDev: boolean;
+  /**
+   * When true, allow baking a private LAN/cleartext URL into a non-Metro debug APK
+   * (local device testing). Never set for store/production builds.
+   */
+  allowPrivateApi?: boolean;
 }): string {
   const envUrl = (input.envUrl ?? "").trim();
   const lanUrl = (input.lanUrl ?? "").trim();
   const extraUrl = (input.extraUrl ?? "").trim();
   const onEmulator = input.platform === "android" && input.isDevice === false;
+  const allowPrivate = Boolean(input.allowPrivateApi);
 
   const toEmulatorHost = (url: string) =>
     url.replace("://localhost", "://10.0.2.2").replace("://127.0.0.1", "://10.0.2.2");
 
-  // Production / release APK: prefer configured public HTTPS URL; never use 10.0.2.2.
+  // Production / release APK: public HTTPS only — never 10.0.2.2 or RFC1918 LAN from .env
+  // unless explicitly opted in for local device APK testing.
   if (!input.isDev) {
     const releaseUrl = envUrl || extraUrl;
-    if (releaseUrl && !isEmulatorOnlyUrl(releaseUrl)) {
+    if (releaseUrl && (!isPrivateLanUrl(releaseUrl) || allowPrivate)) {
       return stripTrailingSlash(releaseUrl);
     }
+    if (lanUrl && allowPrivate) return stripTrailingSlash(lanUrl);
     return PRODUCTION_API_URL;
   }
 
