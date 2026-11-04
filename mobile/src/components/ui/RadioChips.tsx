@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 
 export type RadioChipOption = { value: string; label: string; hint?: string };
 
@@ -48,9 +48,9 @@ export function RadioChips({ label, value, options, onChange, helper, error, req
 
 const styles = StyleSheet.create({
   wrap: { gap: 6 },
-  label: { color: colors.ink, fontSize: 14, fontWeight: "700" },
+  label: { color: colors.ink, fontSize: typography.label.fontSize, fontWeight: "700" },
   required: { color: colors.danger },
-  helper: { color: colors.inkMuted, fontSize: 12, marginTop: -2 },
+  helper: { color: colors.inkMuted, fontSize: typography.caption.fontSize, marginTop: -2 },
   row: { gap: space.sm },
   chip: {
     borderWidth: 1,
@@ -63,6 +63,6 @@ const styles = StyleSheet.create({
   chipOn: { borderColor: colors.brand, backgroundColor: colors.brandSoft },
   chipText: { color: colors.ink, fontWeight: "600", textTransform: "capitalize" },
   chipTextOn: { color: colors.brand, fontWeight: "800" },
-  hint: { color: colors.inkMuted, fontSize: 12, marginTop: 2 },
-  error: { color: colors.danger, fontSize: 13 },
+  hint: { color: colors.inkMuted, fontSize: typography.caption.fontSize, marginTop: 2 },
+  error: { color: colors.danger, fontSize: typography.secondary.fontSize },
 });

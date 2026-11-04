@@ -8,7 +8,12 @@ type Props = {
   children: ReactNode;
   scroll?: boolean;
   style?: ViewStyle;
-  /** Navigation headers/tab bars already pad top/bottom; pass "top" only on header-less screens. */
+  /**
+   * Safe-area edges. Default omits top/bottom (stack headers / tab bars usually pad those).
+   * Include `"top"` on screens with a custom in-screen header and no stack nav bar
+   * (e.g. Bird Profile). Screens using ImmersiveHeroHeader should omit `"top"` here —
+   * the hero applies status-bar padding itself.
+   */
   edges?: Edge[];
 };
 

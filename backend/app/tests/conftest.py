@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DEBUG"] = "false"
 os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production")
+# Keep legacy self-register fixtures working; production/local default remains False.
+os.environ["ALLOW_PUBLIC_OWNER_REGISTRATION"] = "true"
 os.environ["DATABASE_URL"] = (
     "postgresql+asyncpg://poultry:poultry@localhost:5433/poultry_tracker_test"
 )
@@ -314,8 +316,8 @@ async def engine():
             )
         # Hard-check that migration chain is applied (fail loud if create_all sneaks back).
         ver = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        if ver != "0016_catalogue_item_is_active":
-            raise RuntimeError(f"Expected alembic 0016_catalogue_item_is_active, got {ver!r}")
+        if ver != "0019_drop_admin_visible_pw":
+            raise RuntimeError(f"Expected alembic 0019_drop_admin_visible_pw, got {ver!r}")
         idx = await conn.scalar(
             text(
                 """

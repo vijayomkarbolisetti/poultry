@@ -1,15 +1,13 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useEffect, useRef, useState } from "react";
 import {
-  Modal,
+  Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { describeApiError } from "../../api/client";
 import {
@@ -28,8 +26,11 @@ import {
 import { birdUi } from "../../theme/birdManagementUi";
 import { toast } from "../../ui/toast/toastStore";
 import { Button } from "../ui/Button";
+import { FormBottomSheet } from "../ui/FormBottomSheet";
 import { AppDatePicker } from "../ui/AppDatePicker";
 import { todayIsoDate } from "../ui/selectUtils";
+import { typography } from "../../theme/tokens";
+
 
 export type SaleBandedPayload = {
   mode: "banded";
@@ -74,7 +75,6 @@ function normalizeMobile(raw: string): string {
 }
 
 export function SaleActionSheet({ visible, payload, onClose, onSuccess }: Props) {
-  const insets = useSafeAreaInsets();
   const [soldDate, setSoldDate] = useState(() => todayIsoDate());
   const [buyerName, setBuyerName] = useState("");
   const [buyerMobile, setBuyerMobile] = useState("");
@@ -101,6 +101,12 @@ export function SaleActionSheet({ visible, payload, onClose, onSuccess }: Props)
   }, [visible, payload]);
 
   const multiBanded = payload?.mode === "banded" && payload.birdIds.length > 1;
+
+  const requestClose = () => {
+    if (busy) return;
+    Keyboard.dismiss();
+    onClose();
+  };
 
   const onConfirm = async () => {
     if (!payload || lock.current || done) return;
@@ -197,95 +203,36 @@ export function SaleActionSheet({ visible, payload, onClose, onSuccess }: Props)
   if (!payload) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.scrim} onPress={onClose} accessibilityLabel="Close sale">
-        <Pressable
-          style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}
-          onPress={(e) => e.stopPropagation()}
-        >
+    <FormBottomSheet
+      visible={visible}
+      onClose={requestClose}
+      dismissAccessibilityLabel="Close sale"
+      sheetStyle={styles.sheetPad}
+      header={
+        <>
           <View style={styles.handle} />
           <View style={styles.titleRow}>
             <View style={[styles.iconCircle, { backgroundColor: birdUi.orangePale }]}>
               <Ionicons name="pricetag-outline" size={20} color={birdUi.orange} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Sell bird{payload.mode === "banded" && payload.birdIds.length > 1 ? "s" : ""}</Text>
+              <Text style={styles.title}>
+                Sell bird{payload.mode === "banded" && payload.birdIds.length > 1 ? "s" : ""}
+              </Text>
               <Text style={styles.sub}>
                 {payload.mode === "banded"
                   ? `${payload.birdIds.length} banded bird${payload.birdIds.length === 1 ? "" : "s"} selected`
                   : payload.label}
               </Text>
             </View>
-            <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn} accessibilityLabel="Close">
+            <Pressable onPress={requestClose} hitSlop={12} style={styles.closeBtn} accessibilityLabel="Close">
               <Ionicons name="close" size={22} color={birdUi.muted} />
             </Pressable>
           </View>
-
-          <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 420 }}>
-            {payload.mode === "banded" ? (
-              <View style={styles.listCard}>
-                {(payload.labels.length ? payload.labels : payload.birdIds).slice(0, 30).map((label, i) => (
-                  <Text key={`${label}-${i}`} style={styles.band}>
-                    {label}
-                  </Text>
-                ))}
-                {payload.birdIds.length > 30 ? (
-                  <Text style={styles.hint}>…and {payload.birdIds.length - 30} more</Text>
-                ) : null}
-              </View>
-            ) : (
-              <>
-                <Text style={styles.label}>Quantity (max {payload.unbandedCount})</Text>
-                <TextInput
-                  style={styles.input}
-                  value={quantity}
-                  onChangeText={setQuantity}
-                  keyboardType="number-pad"
-                  editable={!done}
-                  accessibilityLabel="Sale quantity"
-                />
-              </>
-            )}
-
-            <AppDatePicker
-              label="Sold date"
-              required
-              value={soldDate}
-              maximumDate={todayIsoDate()}
-              onChange={(v) => setSoldDate(v ?? todayIsoDate())}
-              disabled={done}
-            />
-
-            <Text style={styles.label}>Person name *</Text>
-            <TextInput
-              style={styles.input}
-              value={buyerName}
-              onChangeText={setBuyerName}
-              placeholder="Buyer / person name"
-              editable={!done}
-              autoCapitalize="words"
-              accessibilityLabel="Person name"
-            />
-
-            <Text style={styles.label}>Person mobile *</Text>
-            <TextInput
-              style={styles.input}
-              value={buyerMobile}
-              onChangeText={setBuyerMobile}
-              placeholder="+91 98765 43210"
-              editable={!done}
-              keyboardType="phone-pad"
-              accessibilityLabel="Person mobile number"
-            />
-
-            <Text style={styles.warn}>
-              This marks the bird(s) as sold and removes them from active management and future
-              vaccination tracking. Identity and history are preserved. Sale cannot be undone in-app.
-            </Text>
-
-            {msg ? <Text style={done ? styles.ok : styles.error}>{msg}</Text> : null}
-          </ScrollView>
-
+        </>
+      }
+      footer={
+        <>
           {multiBanded && !done ? (
             <Pressable
               onPress={() => setConfirmBulk((v) => !v)}
@@ -304,11 +251,10 @@ export function SaleActionSheet({ visible, payload, onClose, onSuccess }: Props)
               </Text>
             </Pressable>
           ) : null}
-
           {!done ? (
             <View style={styles.actions}>
               <View style={{ flex: 1 }}>
-                <Button label="Cancel" variant="secondary" onPress={onClose} disabled={busy} />
+                <Button label="Cancel" variant="secondary" onPress={requestClose} disabled={busy} />
               </View>
               <View style={{ flex: 1 }}>
                 <Button
@@ -320,11 +266,76 @@ export function SaleActionSheet({ visible, payload, onClose, onSuccess }: Props)
               </View>
             </View>
           ) : (
-            <Button label="Done" onPress={onClose} />
+            <Button label="Done" onPress={requestClose} />
           )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </>
+      }
+    >
+      {payload.mode === "banded" ? (
+        <View style={styles.listCard}>
+          {(payload.labels.length ? payload.labels : payload.birdIds).slice(0, 30).map((label, i) => (
+            <Text key={`${label}-${i}`} style={styles.band}>
+              {label}
+            </Text>
+          ))}
+          {payload.birdIds.length > 30 ? (
+            <Text style={styles.hint}>…and {payload.birdIds.length - 30} more</Text>
+          ) : null}
+        </View>
+      ) : (
+        <>
+          <Text style={styles.label}>Quantity (max {payload.unbandedCount})</Text>
+          <TextInput
+            style={styles.input}
+            value={quantity}
+            onChangeText={setQuantity}
+            keyboardType="number-pad"
+            editable={!done}
+            accessibilityLabel="Sale quantity"
+          />
+        </>
+      )}
+
+      <AppDatePicker
+        label="Sold date"
+        required
+        value={soldDate}
+        maximumDate={todayIsoDate()}
+        onChange={(v) => setSoldDate(v ?? todayIsoDate())}
+        disabled={done}
+      />
+
+      <Text style={styles.label}>Person name *</Text>
+      <TextInput
+        style={styles.input}
+        value={buyerName}
+        onChangeText={setBuyerName}
+        placeholder="Buyer / person name"
+        placeholderTextColor={birdUi.muted}
+        editable={!done}
+        autoCapitalize="words"
+        accessibilityLabel="Person name"
+      />
+
+      <Text style={styles.label}>Person mobile *</Text>
+      <TextInput
+        style={styles.input}
+        value={buyerMobile}
+        onChangeText={setBuyerMobile}
+        placeholder="+91 98765 43210"
+        placeholderTextColor={birdUi.muted}
+        editable={!done}
+        keyboardType="phone-pad"
+        accessibilityLabel="Person mobile number"
+      />
+
+      <Text style={styles.warn}>
+        This marks the bird(s) as sold and removes them from active management and future
+        vaccination tracking. Identity and history are preserved. Sale cannot be undone in-app.
+      </Text>
+
+      {msg ? <Text style={done ? styles.ok : styles.error}>{msg}</Text> : null}
+    </FormBottomSheet>
   );
 }
 
@@ -352,18 +363,8 @@ export function unbandedSalePayload(opts: {
 }
 
 const styles = StyleSheet.create({
-  scrim: {
-    flex: 1,
-    backgroundColor: "rgba(2, 44, 34, 0.35)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    backgroundColor: birdUi.white,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+  sheetPad: {
     paddingHorizontal: birdUi.horizontal,
-    paddingTop: 10,
-    gap: 10,
   },
   handle: {
     alignSelf: "center",
@@ -381,8 +382,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 18, fontWeight: "800", color: birdUi.text },
-  sub: { fontSize: 13, color: birdUi.muted, marginTop: 2 },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text },
+  sub: { fontSize: typography.secondary.fontSize, color: birdUi.muted, marginTop: 2 },
   closeBtn: {
     width: 36,
     height: 36,
@@ -398,20 +399,20 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: 8,
   },
-  band: { fontSize: 14, fontWeight: "700", color: birdUi.text },
-  label: { fontSize: 13, fontWeight: "700", color: birdUi.muted, marginBottom: 6 },
+  band: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.text },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.muted, marginBottom: 6 },
   input: {
     borderWidth: 1,
     borderColor: birdUi.border,
     borderRadius: 14,
     padding: 12,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     fontWeight: "600",
     backgroundColor: birdUi.white,
     color: birdUi.text,
     marginBottom: 10,
   },
-  hint: { fontSize: 12, color: birdUi.muted },
+  hint: { fontSize: typography.caption.fontSize, color: birdUi.muted },
   confirmRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -419,9 +420,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginBottom: 4,
   },
-  confirmText: { flex: 1, fontSize: 14, fontWeight: "600", color: birdUi.text, lineHeight: 20 },
+  confirmText: { flex: 1, fontSize: typography.label.fontSize, fontWeight: "600", color: birdUi.text, lineHeight: 20 },
   warn: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     color: birdUi.orange,
     backgroundColor: birdUi.orangePale,
     padding: 10,

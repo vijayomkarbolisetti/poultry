@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 
 export type AppDialogTone = "neutral" | "success" | "warning" | "danger" | "info";
 
@@ -24,6 +24,15 @@ export type AppDialogAction = {
   disabled?: boolean;
 };
 
+/** Stacked choices for themed menus (replaces system Alert.alert with 3+ buttons). */
+export type AppDialogOption = {
+  label: string;
+  onPress: () => void;
+  /** default = brand text; destructive = danger text. */
+  tone?: "default" | "destructive";
+  disabled?: boolean;
+};
+
 type Props = {
   visible: boolean;
   title: string;
@@ -31,6 +40,8 @@ type Props = {
   children?: ReactNode;
   tone?: AppDialogTone;
   icon?: keyof typeof Ionicons.glyphMap;
+  /** Multi-choice list (Open / Clone / etc.). Shown above primary/secondary. */
+  options?: AppDialogOption[];
   primary?: AppDialogAction;
   secondary?: AppDialogAction;
   /** When true, Android back / backdrop dismiss calls onDismiss (if provided). */
@@ -65,6 +76,7 @@ export function AppDialog({
   children,
   tone = "neutral",
   icon,
+  options,
   primary,
   secondary,
   dismissible = true,
@@ -73,6 +85,7 @@ export function AppDialog({
   const insets = useSafeAreaInsets();
   const iconName = icon ?? TONE_ICON[tone];
   const iconColor = TONE_COLOR[tone];
+  const hasOptions = Boolean(options && options.length > 0);
 
   useEffect(() => {
     if (!visible) return;
@@ -120,18 +133,53 @@ export function AppDialog({
           {description ? <Text style={styles.description}>{description}</Text> : null}
           {children}
 
-          <View style={styles.actions}>
-            {secondary ? (
-              <DialogButton
-                action={secondary}
-                busy={busy}
-                fallbackVariant="secondary"
-              />
-            ) : null}
-            {primary ? (
-              <DialogButton action={primary} busy={busy} fallbackVariant="primary" />
-            ) : null}
-          </View>
+          {hasOptions ? (
+            <View style={styles.options}>
+              {options!.map((opt) => {
+                const disabled = Boolean(opt.disabled || busy);
+                const destructive = opt.tone === "destructive";
+                return (
+                  <Pressable
+                    key={opt.label}
+                    accessibilityRole="button"
+                    accessibilityLabel={opt.label}
+                    accessibilityState={{ disabled }}
+                    disabled={disabled}
+                    onPress={opt.onPress}
+                    style={({ pressed }) => [
+                      styles.optionBtn,
+                      pressed && !disabled && styles.btnPressed,
+                      disabled && styles.btnDisabled,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.optionLabel,
+                        destructive && styles.optionLabelDestructive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
+          {primary || secondary ? (
+            <View style={[styles.actions, hasOptions && styles.actionsAfterOptions]}>
+              {secondary ? (
+                <DialogButton
+                  action={secondary}
+                  busy={busy}
+                  fallbackVariant="secondary"
+                />
+              ) : null}
+              {primary ? (
+                <DialogButton action={primary} busy={busy} fallbackVariant="primary" />
+              ) : null}
+            </View>
+          ) : null}
         </View>
       </View>
     </Modal>
@@ -225,7 +273,7 @@ const styles = StyleSheet.create({
     marginBottom: space.sm,
   },
   title: {
-    fontSize: 20,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "800",
     color: colors.ink,
     textAlign: "center",
@@ -233,15 +281,39 @@ const styles = StyleSheet.create({
   },
   description: {
     marginTop: 8,
-    fontSize: 15,
+    fontSize: typography.secondary.fontSize,
     lineHeight: 22,
     color: colors.inkMuted,
     textAlign: "center",
     fontWeight: "500",
   },
+  options: {
+    marginTop: space.md,
+    gap: 8,
+    width: "100%",
+  },
+  optionBtn: {
+    minHeight: 48,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: space.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  optionLabel: {
+    fontSize: typography.button.fontSize,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  optionLabelDestructive: { color: colors.danger },
   actions: {
     marginTop: space.lg,
     gap: 10,
+  },
+  actionsAfterOptions: {
+    marginTop: space.sm,
   },
   btn: {
     minHeight: 48,
@@ -259,7 +331,7 @@ const styles = StyleSheet.create({
   btnDestructive: { backgroundColor: colors.danger },
   btnPressed: { opacity: 0.9 },
   btnDisabled: { opacity: 0.55 },
-  btnLabel: { fontSize: 16, fontWeight: "700" },
+  btnLabel: { fontSize: typography.button.fontSize, fontWeight: "700" },
   btnLabelOnFill: { color: colors.textOnPrimary },
   btnLabelSecondary: { color: colors.primary },
 });

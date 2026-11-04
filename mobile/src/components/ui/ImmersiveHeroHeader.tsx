@@ -26,7 +26,8 @@ type Props = {
   curveFill?: string;
   /**
    * Minimum header height before safe-area padding.
-   * Defaults to Home's 188 — pass only when a screen truly needs a shorter hero.
+   * Standard is Home's 188 (`IMMERSIVE_HERO_MIN_HEIGHT`). Keep the default so
+   * Vaccination / Shed birds / Sold birds match Direct ImageBackground fill.
    */
   minHeight?: number;
   style?: ViewStyle;
@@ -42,6 +43,7 @@ const SCREEN_W = Dimensions.get("window").width;
  *
  * Do not set `width` on the outer style — RN proxies it onto the inner Image and that
  * conflicts with paddingHorizontal (right-edge mint strip).
+ * Do not absolute-position `imageStyle` either — same mint-strip failure mode.
  */
 export function ImmersiveHeroHeader({
   source,

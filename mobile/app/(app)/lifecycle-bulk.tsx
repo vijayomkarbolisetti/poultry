@@ -13,7 +13,7 @@ import { hasPermission } from "../../src/features/auth/permissions";
 import { BIRD_LIFECYCLE_ACTIONS } from "../../src/features/birds/birdListHelpers";
 import { newLifecycleIdempotencyKey } from "../../src/features/birds/birdSelectionHelpers";
 import { safeBack } from "../../src/navigation/safeBack";
-import { colors, radius, space } from "../../src/theme/tokens";
+import { colors, radius, space, typography } from "../../src/theme/tokens";
 
 type EventValue = "mortality" | "sale" | "transfer";
 
@@ -207,9 +207,9 @@ export default function BulkLifecycleScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand, marginBottom: space.xs },
-  meta: { color: colors.inkMuted, fontSize: 14, lineHeight: 20, marginBottom: space.sm },
-  section: { fontSize: 13, fontWeight: "700", color: colors.inkMuted, marginBottom: space.xs },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand, marginBottom: space.xs },
+  meta: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, lineHeight: 20, marginBottom: space.sm },
+  section: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: colors.inkMuted, marginBottom: space.xs },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.md,
@@ -219,8 +219,8 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: space.md,
   },
-  band: { fontWeight: "700", color: colors.ink, fontSize: 15 },
-  label: { fontSize: 13, fontWeight: "700", color: colors.inkMuted, marginBottom: 4 },
+  band: { fontWeight: "700", color: colors.ink, fontSize: typography.body.fontSize },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: colors.inkMuted, marginBottom: 4 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: colors.bgElevated,
     color: colors.ink,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     marginBottom: space.md,
   },
   error: { color: colors.danger, marginBottom: space.sm },

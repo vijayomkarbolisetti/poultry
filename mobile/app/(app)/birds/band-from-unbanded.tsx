@@ -19,6 +19,8 @@ import { cohortAgePayload, cohortKeyFromAge } from "../../../src/features/birds/
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { typography } from "../../../src/theme/tokens";
+
 
 export default function BandFromUnbandedScreen() {
   const params = useLocalSearchParams<{
@@ -178,7 +180,7 @@ export default function BandFromUnbandedScreen() {
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
-  title: { fontSize: 22, fontWeight: "700", color: birdUi.text },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "700", color: birdUi.text },
   sub: { color: birdUi.muted, marginBottom: 8, lineHeight: 20 },
   meta: { color: birdUi.text, fontWeight: "600", marginBottom: 16 },
   label: { fontWeight: "600", color: birdUi.text, marginBottom: 6 },

@@ -16,6 +16,7 @@ export default function Index() {
     );
   }
 
+  if (user?.must_change_password) return <Redirect href="/(auth)/change-password" />;
   if (user) return <Redirect href="/(app)/home" />;
   return <Redirect href="/(auth)/login" />;
 }

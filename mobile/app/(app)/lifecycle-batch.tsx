@@ -20,7 +20,7 @@ import {
 } from "../../src/features/birds/birdSelectionHelpers";
 import { cohortAgePayload, cohortKeyFromAge } from "../../src/features/birds/transferHelpers";
 import { safeBack } from "../../src/navigation/safeBack";
-import { colors, radius, space } from "../../src/theme/tokens";
+import { colors, radius, space, typography } from "../../src/theme/tokens";
 
 type EventValue = "mortality" | "sale" | "transfer";
 
@@ -241,8 +241,8 @@ export default function BatchLifecycleScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand, marginBottom: space.xs },
-  meta: { color: colors.inkMuted, fontSize: 14, lineHeight: 20, marginBottom: space.sm },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand, marginBottom: space.xs },
+  meta: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, lineHeight: 20, marginBottom: space.sm },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.md,
@@ -252,8 +252,8 @@ const styles = StyleSheet.create({
     gap: 4,
     marginBottom: space.md,
   },
-  band: { fontWeight: "800", fontSize: 17, color: colors.ink },
-  label: { fontSize: 13, fontWeight: "700", color: colors.inkMuted, marginBottom: 4 },
+  band: { fontWeight: "800", fontSize: typography.button.fontSize, color: colors.ink },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: colors.inkMuted, marginBottom: 4 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: colors.bgElevated,
     color: colors.ink,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     marginBottom: space.md,
   },
   error: { color: colors.danger, marginBottom: space.sm },

@@ -63,6 +63,62 @@ export const FARMER_PERM_GROUPS: { title: string; codes: FarmerPermCode[] }[] = 
 ];
 
 /**
+ * Compact create-farmer categories matching the onboarding reference
+ * (Sheds / Birds / Vaccination / Lifecycle / Reports).
+ */
+export const FARMER_CREATE_PERM_CATEGORIES: {
+  id: string;
+  title: string;
+  hint: string;
+  codes: FarmerPermCode[];
+}[] = [
+  {
+    id: "sheds",
+    title: "Sheds",
+    hint: "View and manage assigned sheds",
+    codes: ["shed.view", "shed.update", "flock.view", "flock.create", "flock.update"],
+  },
+  {
+    id: "birds",
+    title: "Birds",
+    hint: "View and register birds",
+    codes: ["bird.view", "bird.create"],
+  },
+  {
+    id: "vaccination",
+    title: "Vaccination",
+    hint: "View due doses and vaccine catalogues",
+    codes: ["vaccination.view", "schedule.view"],
+  },
+  {
+    id: "vaccination-record",
+    title: "Record doses",
+    hint: "Mark vaccinations as given",
+    codes: ["vaccination.record"],
+  },
+  {
+    id: "lifecycle",
+    title: "Lifecycle",
+    hint: "Record mortality, sale, and transfer",
+    codes: ["lifecycle.record"],
+  },
+  {
+    id: "reports",
+    title: "Reports",
+    hint: "View dashboard and compliance",
+    codes: ["report.view"],
+  },
+];
+
+/** All codes an owner may grant via the farmer create UI (includes vaccination.record). */
+export const ALL_GRANTABLE_FARMER_PERMS: FarmerPermCode[] = [...FARMER_PERM_OPTIONS];
+
+/** Create-farmer starting state: everything except vaccination.record, which the owner opts into. */
+export const CREATE_FARMER_INITIAL_PERMS: FarmerPermCode[] = FARMER_PERM_OPTIONS.filter(
+  (c) => c !== "vaccination.record",
+);
+
+/**
  * Safe role presets — only existing FARMER_PERM_OPTIONS codes.
  * Never includes vaccination.record (must be granted explicitly by owner/admin).
  */

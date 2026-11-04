@@ -21,23 +21,33 @@ export const dashboardArt = {
 };
 
 /**
- * Home card watermark illustrations — subject weighted right; left clear for copy.
- * Overview KPIs use the three themed scenes; quick actions reuse matching art.
+ * Home card watermark illustrations — subject weighted right/bottom; left clear for copy.
+ * Overview KPIs use the three portrait themed assets; quick actions use dedicated local art.
  */
 export const homeCardArt = {
-  liveBirds: require("../../assets/Pastel Live Birds Farm Scene.png"),
-  activeSheds: require("../../assets/Pastel Blue Farmstead Landscape.png"),
-  farmers: require("../../assets/Warm Sunset Farm Silhouette.png"),
-  manageSheds: require("../../assets/Pastel Blue Farmstead Landscape.png"),
-  manageBirds: require("../../assets/Pastel Live Birds Farm Scene.png"),
-  vaccination: require("../../assets/Pastel Veterinary Farm Vaccination Landscape.png"),
-  catalogues: require("../../assets/Pastel Farm Catalogue Landscape.png"),
+  liveBirds: require("../../assets/live-birds.png"),
+  activeSheds: require("../../assets/active-sheds.png"),
+  farmers: require("../../assets/farmers.png"),
+  manageSheds: require("../../assets/quick-actions-sheds.png"),
+  manageBirds: require("../../assets/quick-actions-birds.png"),
+  vaccination: require("../../assets/quick-actions-Vaccine.png"),
+  catalogues: require("../../assets/quick-actions-catologe.png"),
 } as const;
 
 /** Shed / bird-management header — left clear space for text; art weighted right. */
 export const shedHeaderArt = require("../../assets/Pastel Farm Shed and Rooster Header.png");
 
-/** Create Farmer header — pastoral farmer + chick; art weighted right, left clear for copy. */
+/** Local bird / parent avatars for profile, band change, and lists. */
+export const birdIcons = {
+  bird: require("../../assets/Bird-icon.png"),
+  male: require("../../assets/Male-Icon.png"),
+  female: require("../../assets/Female-Icon.png"),
+} as const;
+
+/**
+ * Pastoral farmer + chick (local).
+ * Used for Create Farmer header and Farmers empty-state illustration.
+ */
 export const farmerHeaderArt = require("../../assets/farmer-header.png");
 
 /**
@@ -46,6 +56,7 @@ export const farmerHeaderArt = require("../../assets/farmer-header.png");
  */
 export const heroArt = {
   home: require("../../assets/home-farm-hero.png"),
+  /** Multi-shed panorama — left clear for copy; use with ImmersiveHeroHeader cover. */
   sheds: require("../../assets/sheds-farm-hero.png"),
   /** Exact asset: mobile/assets/vaccination-hero.png */
   vaccination: require("../../assets/vaccination-hero.png"),

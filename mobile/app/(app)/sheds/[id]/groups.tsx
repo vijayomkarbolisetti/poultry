@@ -16,6 +16,8 @@ import { firstRouteParam } from "../../../../src/navigation/routeParams";
 import { safeBack } from "../../../../src/navigation/safeBack";
 import { media } from "../../../../src/theme/media";
 import { birdUi } from "../../../../src/theme/birdManagementUi";
+import { typography } from "../../../../src/theme/tokens";
+
 
 export default function ShedGroupsScreen() {
   const params = useLocalSearchParams<{ id: string | string[] }>();
@@ -139,8 +141,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 22, fontWeight: "800", color: birdUi.text },
-  sub: { fontSize: 13, color: birdUi.muted },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text },
+  sub: { fontSize: typography.secondary.fontSize, color: birdUi.muted },
   card: {
     backgroundColor: birdUi.white,
     borderRadius: 16,
@@ -150,9 +152,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  code: { fontSize: 17, fontWeight: "800", color: birdUi.text },
+  code: { fontSize: typography.button.fontSize, fontWeight: "800", color: birdUi.text },
   status: {
-    fontSize: 11,
+    fontSize: typography.overline.fontSize,
     fontWeight: "700",
     color: birdUi.primary,
     backgroundColor: birdUi.paleMint,
@@ -162,7 +164,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     textTransform: "capitalize",
   },
-  meta: { fontSize: 13, color: birdUi.muted },
-  count: { fontSize: 15, fontWeight: "700", color: birdUi.text, marginTop: 4 },
+  meta: { fontSize: typography.secondary.fontSize, color: birdUi.muted },
+  count: { fontSize: typography.body.fontSize, fontWeight: "700", color: birdUi.text, marginTop: 4 },
   error: { color: birdUi.error, fontWeight: "600" },
 });

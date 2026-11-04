@@ -26,6 +26,8 @@ import {
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 const ROUTE_OPTIONS = ["Oral", "Injection", "Wing web", "Eye drop", "Spray", "Other"] as const;
 
@@ -325,14 +327,14 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 4,
   },
-  headerTitle: { flex: 1, fontSize: 18, fontWeight: "800", color: ui.ink },
+  headerTitle: { flex: 1, fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink },
   headerSave: {
     backgroundColor: ui.brand,
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  headerSaveText: { color: ui.white, fontWeight: "800", fontSize: 14 },
+  headerSaveText: { color: ui.white, fontWeight: "800", fontSize: typography.label.fontSize },
   content: {
     paddingLeft: ui.horizontal,
     paddingRight: Math.max(ui.horizontal, 52),
@@ -348,10 +350,10 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 8,
   },
-  sectionTitle: { fontSize: 15, fontWeight: "800", color: ui.ink, marginBottom: 2 },
-  sectionHint: { fontSize: 12, color: ui.muted, lineHeight: 17, fontWeight: "500", marginBottom: 4 },
+  sectionTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: ui.ink, marginBottom: 2 },
+  sectionHint: { fontSize: typography.caption.fontSize, color: ui.muted, lineHeight: 17, fontWeight: "500", marginBottom: 4 },
   field: { gap: 6 },
-  label: { fontSize: 12, fontWeight: "700", color: ui.muted },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: ui.muted },
   required: { color: "#DC2626" },
   input: {
     backgroundColor: "#F8FAF9",
@@ -360,12 +362,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 11,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     fontWeight: "600",
     color: ui.ink,
   },
   inputMulti: { minHeight: 72, textAlignVertical: "top" },
-  meta: { fontSize: 11, color: ui.mutedSoft, fontWeight: "500", marginTop: -2, marginBottom: 2 },
+  meta: { fontSize: typography.overline.fontSize, color: ui.mutedSoft, fontWeight: "500", marginTop: -2, marginBottom: 2 },
   routeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   routeChip: {
     borderRadius: 999,
@@ -376,9 +378,9 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAF9",
   },
   routeChipOn: { backgroundColor: ui.brandSoft, borderColor: ui.brand },
-  routeText: { fontSize: 13, fontWeight: "700", color: ui.ink },
+  routeText: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: ui.ink },
   routeTextOn: { color: ui.brand },
-  error: { color: "#B91C1C", fontWeight: "600", fontSize: 13 },
+  error: { color: "#B91C1C", fontWeight: "600", fontSize: typography.secondary.fontSize },
   saveBtn: {
     backgroundColor: ui.brand,
     borderRadius: 12,
@@ -386,5 +388,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   saveBtnDisabled: { opacity: 0.7 },
-  saveBtnText: { color: ui.white, fontWeight: "800", fontSize: 15 },
+  saveBtnText: { color: ui.white, fontWeight: "800", fontSize: typography.bodyStrong.fontSize },
 });

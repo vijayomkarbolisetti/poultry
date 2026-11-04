@@ -1,8 +1,11 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,9 +13,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { getCatalogue, getCatalogueAssignment } from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
 import { listBirds } from "../../../src/api/flocks";
 import {
@@ -21,11 +23,9 @@ import {
   newIdempotencyKey,
   recordVaccination,
   recordVaccinationBatch,
-  type ScheduledDose,
 } from "../../../src/api/vaccines";
 import { VaccinationBirdSelector } from "../../../src/components/vaccination/VaccinationBirdSelector";
 import { AppDialog } from "../../../src/components/ui/AppDialog";
-import { Button } from "../../../src/components/ui/Button";
 import { AppDatePicker } from "../../../src/components/ui/AppDatePicker";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { todayIsoDate } from "../../../src/components/ui/selectUtils";
@@ -33,20 +33,21 @@ import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { pruneIneligibleSelection } from "../../../src/features/vaccination/birdSelectionHelpers";
 import {
-  coverageLine,
   daysPastDue,
   formatDueDateLabel,
-  populationHint,
   remainingCount,
   statusBadgeLabel,
   bucketForDose,
 } from "../../../src/features/vaccination/dashboardHelpers";
-import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
+import { shedHeaderArt } from "../../../src/theme/media";
+import { birdUi } from "../../../src/theme/birdManagementUi";
+import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 type CoverageMode = "all" | "partial" | "birds";
-type TabKey = "overview" | "details";
 
 type PendingRecord = {
   effectiveMode: CoverageMode;
@@ -62,9 +63,8 @@ export default function VaccinationDetailScreen() {
   const { user, ownerAccountId } = useAuth();
   const canView = hasPermission(user, ownerAccountId, "vaccination.view");
   const canRecord = hasPermission(user, ownerAccountId, "vaccination.record");
-  const canCatalogue = hasPermission(user, ownerAccountId, "schedule.view");
   const qc = useQueryClient();
-  const [tab, setTab] = useState<TabKey>("overview");
+  const insets = useSafeAreaInsets();
 
   const doseQuery = useQuery({
     queryKey: ["vaccination-dose", id, ownerAccountId],
@@ -74,18 +74,6 @@ export default function VaccinationDetailScreen() {
 
   const dose = doseQuery.data;
 
-  const guidanceQuery = useQuery({
-    queryKey: ["vaccination-guidance", dose?.vaccine_name, ownerAccountId],
-    enabled: Boolean(dose?.vaccine_name) && canCatalogue,
-    queryFn: async () => {
-      const assignment = await getCatalogueAssignment();
-      if (!assignment?.catalogue_id) return null;
-      const cat = await getCatalogue(assignment.catalogue_id);
-      const name = (dose?.vaccine_name ?? "").trim().toLowerCase();
-      const item = cat.items.find((i) => (i.name ?? "").trim().toLowerCase() === name) ?? null;
-      return { catalogueId: cat.id, catalogueName: cat.name, item };
-    },
-  });
   const remaining = dose
     ? dose.remaining_count != null
       ? Math.max(0, dose.remaining_count)
@@ -110,19 +98,19 @@ export default function VaccinationDetailScreen() {
   const [birdPickerOpen, setBirdPickerOpen] = useState(false);
   const [adminDate, setAdminDate] = useState(todayIsoDate());
   const [productExpiry, setProductExpiry] = useState<string | null>(null);
-  const [route, setRoute] = useState("");
-  const [doseAmount, setDoseAmount] = useState("");
   const [brand, setBrand] = useState("");
   const [lot, setLot] = useState("");
-  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
-  // Must rotate when dose id changes — Expo Router often reuses this screen instance,
-  // and reusing a batch idempotency key silently replays a *different* prior dose.
   const [idemKey, setIdemKey] = useState(() => newIdempotencyKey("vax"));
   const [pendingRecord, setPendingRecord] = useState<PendingRecord | null>(null);
   const [infoDialog, setInfoDialog] = useState<InfoDialog | null>(null);
 
-  useEffect(() => {
+  const doseId = dose?.id ?? id ?? "";
+
+  // Remount-friendly reset when navigating between doses (Expo often reuses the route).
+  const [formKey, setFormKey] = useState(doseId);
+  if (doseId && formKey !== doseId) {
+    setFormKey(doseId);
     setIdemKey(newIdempotencyKey("vax"));
     setMode("all");
     setPartialCount("");
@@ -131,57 +119,44 @@ export default function VaccinationDetailScreen() {
     setBusy(false);
     setPendingRecord(null);
     setInfoDialog(null);
-  }, [id]);
+    setAdminDate(todayIsoDate());
+    setProductExpiry(null);
+    setBrand("");
+    setLot("");
+  }
 
   const activeBirds = useMemo(
     () => (birdsQuery.data ?? []).filter((b) => b.is_active && b.band_id),
     [birdsQuery.data],
   );
 
-  /** Birds already recorded against this scheduled dose (per-bird events only). */
   const alreadyVaccinatedIds = useMemo(() => {
     const set = new Set<string>();
-    if (!dose?.id) return set;
+    if (!dose) return set;
     for (const ev of eventsQuery.data ?? []) {
       if (ev.is_void || !ev.bird_id) continue;
       if (ev.scheduled_dose_id !== dose.id) continue;
       set.add(ev.bird_id);
     }
     return set;
-  }, [eventsQuery.data, dose?.id]);
+  }, [eventsQuery.data, dose]);
 
-  useEffect(() => {
-    if (!alreadyVaccinatedIds.size) return;
-    setSelectedBirds((prev) => {
-      const next = pruneIneligibleSelection(prev, alreadyVaccinatedIds);
-      return next.size === prev.size ? prev : next;
-    });
-  }, [alreadyVaccinatedIds]);
+  const eligibleSelectedBirds = useMemo(
+    () => pruneIneligibleSelection(selectedBirds, alreadyVaccinatedIds),
+    [selectedBirds, alreadyVaccinatedIds],
+  );
 
-  /** Unbanded-only populations cannot use per-bird selection; hide that mode. */
-  const showSelectBirdsMode =
-    (dose?.banded_count ?? 0) > 0 || activeBirds.length > 0;
+  const showSelectBirdsMode = (dose?.banded_count ?? 0) > 0 || activeBirds.length > 0;
   const coverageMode = mode === "birds" && !showSelectBirdsMode ? "all" : mode;
 
   if (!canView) return <Redirect href="/(app)/home" />;
 
   const bucket = dose ? bucketForDose(dose) : null;
-  const badge =
-    bucket === "overdue"
-      ? { bg: ui.overdueBg, fg: ui.overdueText }
-      : bucket === "due_today"
-        ? { bg: ui.dueBg, fg: ui.dueText }
-        : bucket === "needs_review"
-          ? { bg: ui.reviewBg, fg: ui.reviewText }
-          : { bg: ui.upcomingBg, fg: ui.upcomingText };
-
   const pastDue = dose ? daysPastDue(dose.due_date) : null;
-  const overdueBanner =
-    bucket === "overdue" && pastDue != null && pastDue > 0
-      ? `Overdue by ${pastDue} day${pastDue === 1 ? "" : "s"} · due ${formatDueDateLabel(dose!.due_date)}`
-      : bucket === "overdue"
-        ? `Overdue · due ${formatDueDateLabel(dose!.due_date)}`
-        : null;
+  const population =
+    (dose?.banded_count ?? 0) + (dose?.unbanded_count ?? 0) || dose?.eligible_count || 0;
+  const alreadyVaccinated = dose?.completed_count ?? 0;
+  const scheduleAgeHint = dose?.flock_label?.trim() || null;
 
   const onRecord = () => {
     if (!dose || !canRecord) return;
@@ -195,8 +170,8 @@ export default function VaccinationDetailScreen() {
 
     let birdsCovered = remaining;
     let birdIds: string[] = [];
-
     const effectiveMode = mode === "birds" && !showSelectBirdsMode ? "all" : mode;
+
     if (effectiveMode === "partial") {
       const n = Number(partialCount);
       if (!Number.isInteger(n) || n < 1) {
@@ -215,7 +190,7 @@ export default function VaccinationDetailScreen() {
       }
       birdsCovered = n;
     } else if (effectiveMode === "birds") {
-      birdIds = [...selectedBirds].filter((birdId) => !alreadyVaccinatedIds.has(birdId));
+      birdIds = [...eligibleSelectedBirds];
       if (!birdIds.length) {
         setInfoDialog({
           title: "Select birds",
@@ -238,9 +213,12 @@ export default function VaccinationDetailScreen() {
       effectiveMode === "birds"
         ? `${birdIds.length} selected bird${birdIds.length === 1 ? "" : "s"}`
         : `${birdsCovered} bird${birdsCovered === 1 ? "" : "s"}`;
-    const confirmBody = `${vaccineLabel}\n${shedLabel}\nRecord for ${countLabel}?`;
-
-    setPendingRecord({ effectiveMode, birdsCovered, birdIds, confirmBody });
+    setPendingRecord({
+      effectiveMode,
+      birdsCovered,
+      birdIds,
+      confirmBody: `${vaccineLabel}\n${shedLabel}\nRecord for ${countLabel}?`,
+    });
   };
 
   const submitPendingRecord = async () => {
@@ -251,11 +229,11 @@ export default function VaccinationDetailScreen() {
       const shared = {
         administration_date: adminDate,
         product_expiry: productExpiry,
-        route: route.trim() || null,
-        dose_amount: doseAmount.trim() || null,
         manufacturer_or_brand: brand.trim() || null,
         lot_number: lot.trim() || null,
-        notes: notes.trim() || null,
+        route: null as string | null,
+        dose_amount: null as string | null,
+        notes: null as string | null,
       };
       if (effectiveMode === "birds") {
         for (let i = 0; i < birdIds.length; i += 1) {
@@ -274,7 +252,6 @@ export default function VaccinationDetailScreen() {
           ...shared,
         });
       }
-      // Refresh vaccination queues and shed/home summaries that cache overdue counts.
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["vaccination"] }),
         qc.invalidateQueries({ queryKey: ["vaccination-dose", id] }),
@@ -283,21 +260,20 @@ export default function VaccinationDetailScreen() {
         qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] }),
       ]);
       const stillOpen =
-        effectiveMode === "partial" || effectiveMode === "birds"
-          ? effectiveMode === "partial"
-            ? Number(partialCount) < remaining
-            : birdIds.length < remaining
-          : false;
-      const savedMsg = stillOpen
-        ? "Vaccination recorded. Dose stays open until remaining birds are covered."
-        : "Vaccination recorded";
+        effectiveMode === "partial"
+          ? Number(partialCount) < remaining
+          : effectiveMode === "birds"
+            ? birdIds.length < remaining
+            : false;
+      toast.success(
+        stillOpen
+          ? "Vaccination recorded. Dose stays open until remaining birds are covered."
+          : "Vaccination recorded",
+      );
       setIdemKey(newIdempotencyKey("vax"));
       setPendingRecord(null);
-      toast.success(savedMsg);
       router.replace("/(app)/vaccination");
     } catch (e) {
-      // Rotate key after hard failures so a prior successful sibling dose key
-      // cannot poison retries; true in-flight retries keep the same key until success.
       const msg = describeApiError(e, "record vaccination");
       if (/idempotency|already used|conflict/i.test(msg)) {
         setIdemKey(newIdempotencyKey("vax"));
@@ -309,270 +285,212 @@ export default function VaccinationDetailScreen() {
     }
   };
 
-  const guidance = guidanceQuery.data?.item;
+  const statusLabel = bucket ? statusBadgeLabel(bucket) : null;
+  const isOverdue = bucket === "overdue";
+  const dueSince =
+    isOverdue && pastDue != null && pastDue > 0
+      ? `Due since ${pastDue} day${pastDue === 1 ? "" : "s"}`
+      : bucket === "due_today"
+        ? "Due today"
+        : dose
+          ? `Due ${formatDueDateLabel(dose.due_date)}`
+          : null;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => safeBack()} hitSlop={12}>
-          <Ionicons name="arrow-back" size={24} color={ui.brand} />
-        </Pressable>
-        <Text style={styles.title} numberOfLines={1}>
-          {dose?.vaccine_name?.trim() || "Vaccination"}
-        </Text>
-        {bucket ? (
-          <View style={[styles.headerBadge, { backgroundColor: badge.bg }]}>
-            <Text style={[styles.headerBadgeText, { color: badge.fg }]}>{statusBadgeLabel(bucket)}</Text>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={styles.hero}>
+          <Image source={shedHeaderArt} style={styles.heroArt} resizeMode="cover" />
+          <View style={styles.heroRow}>
+            <Pressable onPress={() => safeBack("/(app)/vaccination")} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={22} color={birdUi.primary} />
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.heroTitle}>Record Vaccination</Text>
+              <Text style={styles.heroSub} numberOfLines={1}>
+                {dose?.shed_name?.trim() || "Shed"} · {dose?.vaccine_name?.trim() || "Vaccine"}
+              </Text>
+            </View>
           </View>
-        ) : null}
-      </View>
+        </View>
 
-      {doseQuery.isLoading && !dose ? (
-        <View style={styles.center}>
-          <HenLoader label="Loading…" />
-        </View>
-      ) : doseQuery.error ? (
-        <View style={styles.centerPad}>
-          <Text style={styles.muted}>{describeApiError(doseQuery.error, "load dose")}</Text>
-        </View>
-      ) : !dose ? (
-        <View style={styles.centerPad}>
-          <Text style={styles.muted}>This vaccination was not found or is no longer open.</Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.tabs}>
-            {(
-              [
-                ["overview", "Overview"],
-                ["details", "Vaccine Details"],
-              ] as const
-            ).map(([key, label]) => {
-              const on = tab === key;
-              return (
-                <Pressable key={key} style={styles.tabBtn} onPress={() => setTab(key)}>
-                  <Text style={[styles.tabText, on && styles.tabTextOn]}>{label}</Text>
-                  {on ? <View style={styles.tabUnderline} /> : <View style={styles.tabUnderlineOff} />}
-                </Pressable>
-              );
-            })}
+        {doseQuery.isLoading && !dose ? (
+          <View style={styles.center}>
+            <HenLoader label="Loading…" />
           </View>
-
-          {tab === "overview" ? (
-            <>
-              {overdueBanner ? (
-                <View style={styles.alertBanner}>
-                  <Ionicons name="alert-circle" size={18} color={ui.overdueText} />
-                  <Text style={styles.alertText}>{overdueBanner}</Text>
+        ) : doseQuery.error ? (
+          <View style={styles.centerPad}>
+            <Text style={styles.muted}>{describeApiError(doseQuery.error, "load dose")}</Text>
+          </View>
+        ) : !dose ? (
+          <View style={styles.centerPad}>
+            <Text style={styles.muted}>This vaccination was not found or is no longer open.</Text>
+          </View>
+        ) : (
+          <>
+            <ScrollView
+              style={styles.flex}
+              contentContainerStyle={[
+                styles.content,
+                { paddingBottom: Math.max(insets.bottom, 12) + (canRecord && remaining > 0 ? 88 : 24) },
+              ]}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={[styles.statusCard, isOverdue && styles.statusCardOverdue]}>
+                <View style={styles.statusTop}>
+                  <Text style={styles.vaccineName} numberOfLines={1}>
+                    {dose.vaccine_name?.trim() || "Vaccine"}
+                  </Text>
+                  {statusLabel ? (
+                    <View style={[styles.badge, isOverdue ? styles.badgeOverdue : styles.badgeDue]}>
+                      <Text style={[styles.badgeText, isOverdue && { color: ui.overdueText }]}>
+                        {statusLabel}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
-              ) : null}
-
-              <View style={styles.card}>
-                <MetricRow icon="home-outline" label="Shed" value={dose.shed_name ?? "—"} />
-                <MetricRow icon="layers-outline" label="Flock / Batch" value={dose.flock_label ?? "—"} />
-                <MetricRow
-                  icon="people-outline"
-                  label="Eligible birds"
-                  value={String(dose.eligible_count ?? 0)}
-                />
-                <MetricRow
-                  icon="checkmark-circle-outline"
-                  label="Vaccinated"
-                  value={coverageLine(asCard(dose))}
-                />
-                <MetricRow icon="hourglass-outline" label="Remaining" value={String(remaining)} />
-                {populationHint(asCard(dose)) ? (
-                  <Text style={styles.pop}>{populationHint(asCard(dose))}</Text>
+                {scheduleAgeHint ? (
+                  <Text style={styles.scheduleLine}>Scheduled · {scheduleAgeHint}</Text>
+                ) : (
+                  <Text style={styles.scheduleLine}>Due {formatDueDateLabel(dose.due_date)}</Text>
+                )}
+                {dueSince ? (
+                  <View style={styles.dueRow}>
+                    <Ionicons
+                      name="time-outline"
+                      size={14}
+                      color={isOverdue ? ui.overdueText : birdUi.orange}
+                    />
+                    <Text style={[styles.dueText, isOverdue && { color: ui.overdueText }]}>
+                      {dueSince}
+                    </Text>
+                  </View>
                 ) : null}
               </View>
 
-              {canCatalogue && guidanceQuery.data?.catalogueId ? (
-                <Pressable
-                  style={styles.catalogueLink}
-                  onPress={() => router.push(`/(app)/catalogues/${guidanceQuery.data!.catalogueId}`)}
-                >
-                  <Ionicons name="book-outline" size={16} color={ui.brand} />
-                  <Text style={styles.catalogueLinkText}>
-                    {guidance
-                      ? `View “${guidance.name}” in catalogue`
-                      : `View ${guidanceQuery.data.catalogueName}`}
+              <View style={styles.card}>
+                <View style={styles.metaRow}>
+                  <Text style={styles.metaLabel}>
+                    Shed: <Text style={styles.metaValue}>{dose.shed_name ?? "—"}</Text>
                   </Text>
-                  <Ionicons name="chevron-forward" size={16} color={ui.brand} />
-                </Pressable>
-              ) : null}
-
-              {canRecord && remaining > 0 ? (
-                <View style={styles.card}>
-                  <Text style={styles.section}>Record vaccination</Text>
-                  <Text style={styles.guidanceNote}>
-                    Record this vaccine for the selected birds. Product guidance (dose, route, diluent)
-                    remains on Vaccine Details.
+                  <Text style={styles.metaLabel}>
+                    Eligible birds: <Text style={styles.metaValue}>{remaining}</Text>
                   </Text>
-                  <View style={styles.modeRow}>
-                    {(
-                      [
-                        ["all", "All remaining"] as const,
-                        ["partial", "Partial group"] as const,
-                        ...(showSelectBirdsMode
-                          ? ([["birds", "Select birds"]] as Array<["birds", string]>)
-                          : []),
-                      ] as Array<[CoverageMode, string]>
-                    ).map(([value, label]) => (
-                      <Pressable
-                        key={value}
-                        style={[styles.modeChip, coverageMode === value && styles.modeChipOn]}
-                        onPress={() => {
-                          setMode(value);
-                          if (value === "birds") setBirdPickerOpen(true);
-                        }}
-                      >
-                        <Text style={[styles.modeText, coverageMode === value && styles.modeTextOn]}>
-                          {label}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-
-                  {coverageMode === "all" ? (
-                    <Text style={styles.hint}>Recording for all {remaining} remaining birds.</Text>
-                  ) : null}
-                  {coverageMode === "partial" ? (
-                    <TextInput
-                      style={styles.input}
-                      keyboardType="number-pad"
-                      placeholder={`Number vaccinated (max ${remaining})`}
-                      value={partialCount}
-                      onChangeText={setPartialCount}
-                    />
-                  ) : null}
-                  {coverageMode === "birds" ? (
-                    <View style={styles.birdSummary}>
-                      {birdsQuery.isLoading ? (
-                        <Text style={styles.hint}>Loading banded birds…</Text>
-                      ) : activeBirds.length === 0 ? (
-                        <Text style={styles.hint}>
-                          No active banded birds in this population. Use all remaining or partial group.
-                        </Text>
-                      ) : selectedBirds.size === 0 ? (
-                        <>
-                          <Text style={styles.hint}>
-                            Choose banded birds with the searchable selector.
-                          </Text>
-                          <Pressable
-                            style={styles.birdSummaryBtn}
-                            onPress={() => setBirdPickerOpen(true)}
-                            accessibilityRole="button"
-                            accessibilityLabel="Open bird selector"
-                          >
-                            <Ionicons name="checkbox-outline" size={18} color={ui.white} />
-                            <Text style={styles.birdSummaryBtnText}>Select birds</Text>
-                          </Pressable>
-                        </>
-                      ) : (
-                        <>
-                          <Text style={styles.birdSummaryCount}>
-                            {selectedBirds.size} bird{selectedBirds.size === 1 ? "" : "s"} selected
-                          </Text>
-                          <Text style={styles.hint} numberOfLines={2}>
-                            {activeBirds
-                              .filter((b) => selectedBirds.has(b.id))
-                              .slice(0, 6)
-                              .map((b) => b.band_id)
-                              .join(", ")}
-                            {selectedBirds.size > 6 ? ` +${selectedBirds.size - 6} more` : ""}
-                          </Text>
-                          <View style={styles.birdSummaryActions}>
-                            <Pressable
-                              onPress={() => setBirdPickerOpen(true)}
-                              accessibilityRole="button"
-                              accessibilityLabel="Change bird selection"
-                            >
-                              <Text style={styles.birdSummaryLink}>Change selection</Text>
-                            </Pressable>
-                            <Pressable
-                              onPress={() => setSelectedBirds(new Set())}
-                              accessibilityRole="button"
-                              accessibilityLabel="Clear bird selection"
-                            >
-                              <Text style={styles.birdSummaryClear}>Clear</Text>
-                            </Pressable>
-                          </View>
-                        </>
-                      )}
-                    </View>
-                  ) : null}
-
-                  <AppDatePicker
-                    label="Administration date"
-                    value={adminDate}
-                    onChange={(v) => setAdminDate(v ?? todayIsoDate())}
-                    maximumDate={todayIsoDate()}
-                  />
-
-                  <View style={styles.optionalGrid}>
-                    <View style={styles.optionalHalf}>
-                      <AppDatePicker
-                        label="Product expiry (optional)"
-                        value={productExpiry}
-                        onChange={setProductExpiry}
-                        minimumDate={todayIsoDate()}
-                        clearable
-                      />
-                    </View>
-                    <View style={styles.optionalHalf}>
-                      <Text style={styles.fieldLabel}>Route (optional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={route}
-                        onChangeText={setRoute}
-                        placeholder="e.g. IM, oral, drinking water"
-                      />
-                    </View>
-                    <View style={styles.optionalHalf}>
-                      <Text style={styles.fieldLabel}>Dose amount (optional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={doseAmount}
-                        onChangeText={setDoseAmount}
-                        placeholder="e.g. 0.5 ml, 1 dose"
-                      />
-                    </View>
-                    <View style={styles.optionalHalf}>
-                      <Text style={styles.fieldLabel}>Manufacturer / brand (optional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={brand}
-                        onChangeText={setBrand}
-                        placeholder="e.g. Zoetis, Merck"
-                      />
-                    </View>
-                    <View style={styles.optionalFull}>
-                      <Text style={styles.fieldLabel}>Batch / lot (optional)</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={lot}
-                        onChangeText={setLot}
-                        placeholder="e.g. LOT123, B2026-01"
-                      />
-                    </View>
-                    <View style={styles.optionalFull}>
-                      <Text style={styles.fieldLabel}>Notes (optional)</Text>
-                      <TextInput
-                        style={[styles.input, styles.inputMulti]}
-                        value={notes}
-                        onChangeText={setNotes}
-                        placeholder="Optional"
-                        multiline
-                      />
-                    </View>
-                  </View>
-
-                  <Button
-                    label={busy ? "Saving…" : "Record vaccination"}
-                    onPress={onRecord}
-                    disabled={busy}
+                </View>
+                <Text style={styles.popLine}>
+                  Population: {population} · Already vaccinated: {alreadyVaccinated}
+                </Text>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      {
+                        width: `${
+                          population > 0
+                            ? Math.min(100, Math.round((alreadyVaccinated / population) * 100))
+                            : 0
+                        }%`,
+                      },
+                    ]}
                   />
                 </View>
+              </View>
+
+              {canRecord && remaining > 0 ? (
+                <>
+                  <View style={styles.card}>
+                    <Text style={styles.section}>Birds to Vaccinate</Text>
+
+                    <RadioRow
+                      selected={coverageMode === "all"}
+                      title={`All remaining eligible birds (${remaining})`}
+                      subtitle="Recommended"
+                      subtitleTone="ok"
+                      onPress={() => setMode("all")}
+                    />
+                    {showSelectBirdsMode ? (
+                      <RadioRow
+                        selected={coverageMode === "birds"}
+                        title="Select specific birds"
+                        subtitle={
+                          eligibleSelectedBirds.size > 0
+                            ? `${eligibleSelectedBirds.size} selected`
+                            : "Choose banded birds"
+                        }
+                        onPress={() => {
+                          setMode("birds");
+                          setBirdPickerOpen(true);
+                        }}
+                      />
+                    ) : null}
+                    <RadioRow
+                      selected={coverageMode === "partial"}
+                      title="Record for unbanded birds (batch)"
+                      subtitle="Enter number of birds"
+                      onPress={() => setMode("partial")}
+                    />
+                    {coverageMode === "partial" ? (
+                      <TextInput
+                        style={styles.input}
+                        keyboardType="number-pad"
+                        placeholder={`Number vaccinated (max ${remaining})`}
+                        placeholderTextColor={ui.muted}
+                        value={partialCount}
+                        onChangeText={setPartialCount}
+                      />
+                    ) : null}
+                    {coverageMode === "birds" && eligibleSelectedBirds.size > 0 ? (
+                      <Pressable onPress={() => setBirdPickerOpen(true)}>
+                        <Text style={styles.link}>Change selection</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.card}>
+                    <Text style={styles.section}>Vaccination Details</Text>
+                    <AppDatePicker
+                      label="Administered date"
+                      value={adminDate}
+                      onChange={(v) => setAdminDate(v ?? todayIsoDate())}
+                      maximumDate={todayIsoDate()}
+                      placeholder="Today"
+                    />
+                    <Text style={styles.fieldLabel}>Brand / Manufacturer</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={brand}
+                      onChangeText={setBrand}
+                      placeholder="e.g. Venkeys"
+                      placeholderTextColor={ui.muted}
+                      autoCapitalize="words"
+                    />
+                    <View style={styles.row2}>
+                      <View style={styles.half}>
+                        <Text style={styles.fieldLabel}>Batch / Lot no.</Text>
+                        <TextInput
+                          style={styles.input}
+                          value={lot}
+                          onChangeText={setLot}
+                          placeholder="Lot"
+                          placeholderTextColor={ui.muted}
+                        />
+                      </View>
+                      <View style={styles.half}>
+                        <AppDatePicker
+                          label="Expiry date"
+                          value={productExpiry}
+                          onChange={setProductExpiry}
+                          minimumDate={todayIsoDate()}
+                          clearable
+                          placeholder="Select"
+                        />
+                      </View>
+                    </View>
+                  </View>
+                </>
               ) : null}
 
               {canRecord && remaining <= 0 ? (
@@ -583,62 +501,39 @@ export default function VaccinationDetailScreen() {
 
               {!canRecord ? (
                 <View style={styles.card}>
-                  <Text style={styles.hint}>You can view this dose but do not have permission to record.</Text>
+                  <Text style={styles.hint}>
+                    You can view this dose but do not have permission to record.
+                  </Text>
                 </View>
               ) : null}
-            </>
-          ) : (
-            <View style={styles.card}>
-              <Text style={styles.section}>Product guidance</Text>
-              <Text style={styles.guidanceNote}>
-                Catalogue guidance only — not what was administered on this dose.
-              </Text>
-              {guidance ? (
-                <>
-                  <GuidanceRow label="Vaccine name" value={guidance.name} />
-                  <GuidanceRow label="Disease targeted" value={guidance.disease_label} />
-                  <GuidanceRow
-                    label="Recommended age"
-                    value={
-                      (guidance.rules ?? [])
-                        .filter((r) => r.target_age_days != null)
-                        .map((r) => `Day ${r.target_age_days}`)
-                        .join(", ") || guidance.rules?.[0]?.display_day_label
-                    }
-                  />
-                  <GuidanceRow label="Dose / concentration" value={guidance.recommended_dose_text} />
-                  <GuidanceRow label="Route" value={guidance.route} />
-                  <GuidanceRow label="Diluent / reconstitution" value={guidance.diluent_instructions} />
-                  <GuidanceRow label="Notes" value={guidance.instructions} />
-                </>
-              ) : (
-                <Text style={styles.hint}>
-                  {canCatalogue
-                    ? "No matching catalogue item for this vaccine name. Open Catalogues to review product guidance."
-                    : "Product guidance is not available for your role."}
-                </Text>
-              )}
-              {canCatalogue && guidanceQuery.data?.catalogueId ? (
+            </ScrollView>
+
+            {canRecord && remaining > 0 ? (
+              <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) }]}>
                 <Pressable
-                  style={styles.catalogueLink}
-                  onPress={() => router.push(`/(app)/catalogues/${guidanceQuery.data!.catalogueId}`)}
+                  style={[styles.recordBtn, busy && { opacity: 0.55 }]}
+                  disabled={busy}
+                  onPress={onRecord}
+                  accessibilityRole="button"
+                  accessibilityLabel="Record vaccination"
                 >
-                  <Ionicons name="book-outline" size={16} color={ui.brand} />
-                  <Text style={styles.catalogueLinkText}>Open catalogue</Text>
-                  <Ionicons name="chevron-forward" size={16} color={ui.brand} />
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.recordBtnText}>
+                    {busy ? "Saving…" : "Record Vaccination"}
+                  </Text>
                 </Pressable>
-              ) : null}
-            </View>
-          )}
-        </ScrollView>
-      )}
+              </View>
+            ) : null}
+          </>
+        )}
+      </KeyboardAvoidingView>
 
       <VaccinationBirdSelector
         visible={birdPickerOpen && coverageMode === "birds"}
         birds={birdsQuery.data ?? []}
         alreadyVaccinatedIds={alreadyVaccinatedIds}
         remaining={remaining}
-        selectedIds={selectedBirds}
+        selectedIds={eligibleSelectedBirds}
         onChange={setSelectedBirds}
         loading={birdsQuery.isLoading || eventsQuery.isLoading}
         onContinue={() => setBirdPickerOpen(false)}
@@ -685,180 +580,185 @@ export default function VaccinationDetailScreen() {
   );
 }
 
-function MetricRow({
-  icon,
-  label,
-  value,
+function RadioRow({
+  selected,
+  title,
+  subtitle,
+  subtitleTone,
+  onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: string;
+  selected: boolean;
+  title: string;
+  subtitle?: string;
+  subtitleTone?: "ok" | "muted";
+  onPress: () => void;
 }) {
   return (
-    <View style={styles.metricRow}>
-      <Ionicons name={icon} size={18} color={ui.brand} />
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue} numberOfLines={2}>
-        {value}
-      </Text>
-    </View>
+    <Pressable
+      style={[styles.radioRow, selected && styles.radioRowOn]}
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+    >
+      <View style={[styles.radioOuter, selected && styles.radioOuterOn]}>
+        {selected ? <View style={styles.radioInner} /> : null}
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.radioTitle}>{title}</Text>
+        {subtitle ? (
+          <Text
+            style={[
+              styles.radioSub,
+              subtitleTone === "ok" ? styles.radioSubOk : null,
+            ]}
+          >
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+    </Pressable>
   );
-}
-
-function GuidanceRow({ label, value }: { label: string; value: string | null | undefined }) {
-  const text = value?.trim() || "Unspecified";
-  const missing = !value?.trim();
-  return (
-    <View style={styles.guidanceRow}>
-      <Text style={styles.guidanceLabel}>{label}</Text>
-      <Text style={[styles.guidanceValue, missing && styles.fieldMissing]}>{text}</Text>
-    </View>
-  );
-}
-
-function asCard(dose: ScheduledDose) {
-  const remaining =
-    dose.remaining_count != null
-      ? Math.max(0, dose.remaining_count)
-      : remainingCount(dose.eligible_count, dose.completed_count);
-  const bucket = bucketForDose(dose) ?? "upcoming";
-  return {
-    ...dose,
-    vaccine_name: dose.vaccine_name?.trim() || "Vaccine name unavailable",
-    shed_name: dose.shed_name?.trim() || "Shed",
-    flock_label: dose.flock_label?.trim() || "Population",
-    remaining_count: remaining,
-    coverage_pct: 0,
-    bucket,
-    banded_count: dose.banded_count ?? null,
-    unbanded_count: dose.unbanded_count ?? null,
-  };
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: ui.bg },
-  header: {
+  safe: { flex: 1, backgroundColor: birdUi.bg },
+  flex: { flex: 1 },
+  hero: {
+    minHeight: 88,
+    overflow: "hidden",
+    backgroundColor: birdUi.paleMint,
+  },
+  heroArt: { ...StyleSheet.absoluteFill, opacity: 0.4 },
+  heroRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingHorizontal: ui.horizontal,
-    paddingTop: 8,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
-  title: { flex: 1, fontSize: 18, fontWeight: "800", color: ui.ink },
-  headerBadge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  headerBadgeText: { fontSize: 10, fontWeight: "800" },
-  content: { padding: ui.horizontal, gap: 12, paddingBottom: 40 },
-  optionalGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  optionalHalf: {
-    flexGrow: 1,
-    flexBasis: "46%",
-    minWidth: 140,
-    gap: 4,
-  },
-  optionalFull: {
-    flexGrow: 1,
-    flexBasis: "100%",
-    gap: 4,
-  },
-  tabs: { flexDirection: "row", gap: 18, marginBottom: 4 },
-  tabBtn: { paddingBottom: 6 },
-  tabText: { fontSize: 15, fontWeight: "700", color: ui.muted },
-  tabTextOn: { color: ui.brand },
-  tabUnderline: { marginTop: 6, height: 3, borderRadius: 2, backgroundColor: ui.brand },
-  tabUnderlineOff: { marginTop: 6, height: 3 },
-  alertBanner: {
-    flexDirection: "row",
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#fff",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: ui.overdueBg,
-    borderRadius: 12,
-    padding: 12,
+    justifyContent: "center",
   },
-  alertText: { flex: 1, fontSize: 13, fontWeight: "700", color: ui.overdueText, lineHeight: 18 },
-  card: {
-    backgroundColor: ui.white,
-    borderRadius: ui.cardRadius,
+  heroTitle: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.deepGreen },
+  heroSub: { fontSize: typography.caption.fontSize, fontWeight: "600", color: birdUi.muted, marginTop: 2 },
+  content: { paddingHorizontal: 16, gap: 12, paddingTop: 12 },
+  statusCard: {
+    backgroundColor: "#FFF6E5",
+    borderRadius: 16,
+    padding: 14,
+    gap: 6,
     borderWidth: 1,
-    borderColor: ui.cardBorder,
+    borderColor: "#F5D9A8",
+  },
+  statusCardOverdue: {
+    backgroundColor: ui.overdueBg,
+    borderColor: "#F5C2C0",
+  },
+  statusTop: { flexDirection: "row", alignItems: "center", gap: 8 },
+  vaccineName: { flex: 1, fontSize: typography.overline.fontSize, fontWeight: "800", color: birdUi.text },
+  badge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    backgroundColor: ui.dueBg,
+  },
+  badgeOverdue: { backgroundColor: "#FAD4D4" },
+  badgeDue: { backgroundColor: "#FFE8C7" },
+  badgeText: { fontSize: typography.overline.fontSize, fontWeight: "800", color: ui.dueText },
+  scheduleLine: { fontSize: typography.secondary.fontSize, fontWeight: "600", color: birdUi.muted },
+  dueRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  dueText: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: birdUi.orange },
+  card: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: birdUi.border,
     padding: 14,
     gap: 10,
   },
-  metricRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  metricLabel: { width: 110, fontSize: 13, fontWeight: "700", color: ui.muted },
-  metricValue: { flex: 1, fontSize: 14, fontWeight: "700", color: ui.ink, textAlign: "right" },
-  pop: { fontSize: 12, color: ui.muted, fontWeight: "600" },
-  guidanceNote: {
-    fontSize: 12,
-    color: ui.brand,
-    fontWeight: "600",
-    backgroundColor: ui.brandSoft,
-    padding: 10,
-    borderRadius: 10,
-    lineHeight: 16,
-  },
-  catalogueLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-  },
-  catalogueLinkText: { flex: 1, fontSize: 14, fontWeight: "700", color: ui.brand },
-  section: { fontSize: 15, fontWeight: "800", color: ui.ink },
-  modeRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  modeChip: {
+  metaRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  metaLabel: { fontSize: typography.secondary.fontSize, fontWeight: "600", color: birdUi.muted },
+  metaValue: { fontWeight: "800", color: birdUi.text },
+  popLine: { fontSize: typography.caption.fontSize, fontWeight: "600", color: birdUi.muted },
+  progressTrack: {
+    height: 8,
     borderRadius: 999,
-    borderWidth: 1,
-    borderColor: ui.cardBorder,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: ui.progressTrack,
+    overflow: "hidden",
   },
-  modeChipOn: { backgroundColor: ui.brand, borderColor: ui.brand },
-  modeText: { fontSize: 13, fontWeight: "700", color: ui.ink },
-  modeTextOn: { color: ui.white },
-  hint: { fontSize: 13, color: ui.muted, fontWeight: "600", lineHeight: 18 },
-  fieldLabel: { fontSize: 12, fontWeight: "700", color: ui.muted, marginTop: 4 },
-  input: {
-    backgroundColor: ui.bg,
-    borderWidth: 1,
-    borderColor: ui.cardBorder,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    fontWeight: "600",
-    color: ui.ink,
-  },
-  inputMulti: { minHeight: 72, textAlignVertical: "top" },
-  birdSummary: {
-    gap: 8,
-    backgroundColor: ui.brandSoft,
-    borderRadius: 12,
-    padding: 12,
-  },
-  birdSummaryCount: { fontSize: 15, fontWeight: "800", color: ui.ink },
-  birdSummaryActions: { flexDirection: "row", alignItems: "center", gap: 16 },
-  birdSummaryLink: { fontSize: 13, fontWeight: "800", color: ui.brand },
-  birdSummaryClear: { fontSize: 13, fontWeight: "700", color: ui.muted },
-  birdSummaryBtn: {
-    alignSelf: "flex-start",
+  progressFill: { height: "100%", backgroundColor: birdUi.primary },
+  section: { fontSize: typography.body.fontSize, fontWeight: "800", color: birdUi.deepGreen },
+  radioRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: ui.brand,
+    gap: 12,
+    minHeight: 56,
     borderRadius: 12,
-    paddingHorizontal: 14,
+    borderWidth: 1.5,
+    borderColor: birdUi.border,
+    paddingHorizontal: 12,
     paddingVertical: 10,
+    backgroundColor: birdUi.bg,
   },
-  birdSummaryBtnText: { color: ui.white, fontWeight: "800", fontSize: 14 },
-  guidanceRow: { gap: 2 },
-  guidanceLabel: { fontSize: 12, fontWeight: "700", color: ui.muted },
-  guidanceValue: { fontSize: 14, fontWeight: "600", color: ui.ink },
-  fieldMissing: { color: ui.muted, fontStyle: "italic" },
+  radioRowOn: { borderColor: birdUi.primary, backgroundColor: birdUi.paleMint },
+  radioOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: birdUi.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioOuterOn: { borderColor: birdUi.primary },
+  radioInner: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: birdUi.primary,
+  },
+  radioTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: birdUi.text },
+  radioSub: { fontSize: typography.caption.fontSize, fontWeight: "600", color: birdUi.muted, marginTop: 2 },
+  radioSubOk: { color: birdUi.successText },
+  fieldLabel: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.muted },
+  input: {
+    backgroundColor: birdUi.bg,
+    borderWidth: 1,
+    borderColor: birdUi.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: typography.body.fontSize,
+    fontWeight: "600",
+    color: birdUi.text,
+    minHeight: 48,
+  },
+  row2: { flexDirection: "row", gap: 10 },
+  half: { flex: 1, gap: 4 },
+  link: { fontSize: typography.secondary.fontSize, fontWeight: "800", color: birdUi.primary },
+  hint: { fontSize: typography.secondary.fontSize, color: birdUi.muted, fontWeight: "600", lineHeight: 18 },
+  footer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: birdUi.border,
+    backgroundColor: birdUi.bg,
+  },
+  recordBtn: {
+    minHeight: 54,
+    borderRadius: 14,
+    backgroundColor: birdUi.primary,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  recordBtnText: { fontSize: typography.bodyStrong.fontSize, fontWeight: "800", color: "#fff" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerPad: { padding: 20 },
   muted: { color: ui.muted, fontWeight: "600" },

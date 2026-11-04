@@ -37,6 +37,8 @@ import {
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 const ROUTE_OPTIONS = ["Oral", "Injection", "Wing web", "Eye drop", "Spray", "Other"] as const;
 
@@ -466,14 +468,14 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 4,
   },
-  title: { flex: 1, fontSize: 18, fontWeight: "800", color: ui.ink },
+  title: { flex: 1, fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink },
   saveBtn: {
     backgroundColor: ui.brand,
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
   },
-  saveBtnText: { color: ui.white, fontWeight: "800", fontSize: 14 },
+  saveBtnText: { color: ui.white, fontWeight: "800", fontSize: typography.label.fontSize },
   content: {
     paddingLeft: ui.horizontal,
     paddingRight: Math.max(ui.horizontal, 52),
@@ -481,7 +483,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 10,
   },
-  note: { fontSize: 12, color: ui.muted, lineHeight: 17, fontWeight: "500" },
+  note: { fontSize: typography.caption.fontSize, color: ui.muted, lineHeight: 17, fontWeight: "500" },
   card: {
     backgroundColor: ui.white,
     borderRadius: 14,
@@ -491,7 +493,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: "700", color: ui.ink },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: ui.ink },
   required: { color: "#DC2626" },
   input: {
     backgroundColor: "#F8FAF9",
@@ -500,7 +502,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 11,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     color: ui.ink,
     fontWeight: "600",
   },
@@ -515,14 +517,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#F8FAF9",
   },
   routeChipOn: { backgroundColor: ui.brandSoft, borderColor: ui.brand },
-  routeText: { fontSize: 13, fontWeight: "700", color: ui.ink },
+  routeText: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: ui.ink },
   routeTextOn: { color: ui.brand },
   removeBtn: {
     alignSelf: "flex-start",
     paddingVertical: 10,
     paddingHorizontal: 4,
   },
-  removeBtnText: { color: "#B91C1C", fontWeight: "800", fontSize: 14 },
+  removeBtnText: { color: "#B91C1C", fontWeight: "800", fontSize: typography.label.fontSize },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerPad: { padding: 20 },
   muted: { color: ui.muted, fontWeight: "600", lineHeight: 20 },

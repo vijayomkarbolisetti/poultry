@@ -3,7 +3,6 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -24,7 +23,7 @@ import {
 } from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
 import { BrandLogo } from "../../../src/components/brand/BrandLogo";
-import { AppDialog } from "../../../src/components/ui/AppDialog";
+import { AppDialog, type AppDialogOption } from "../../../src/components/ui/AppDialog";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
@@ -37,9 +36,16 @@ import { media } from "../../../src/theme/media";
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 type TabKey = "all" | "farm" | "platform";
 type ConfirmKind = "default" | "clone";
+type ChoiceDialog = {
+  title: string;
+  description?: string;
+  options: AppDialogOption[];
+};
 
 export default function CataloguesScreen() {
   const { user, ownerAccountId } = useAuth();
@@ -49,6 +55,7 @@ export default function CataloguesScreen() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
   const [confirm, setConfirm] = useState<{ kind: ConfirmKind; cat: CatalogueSummary } | null>(null);
+  const [choice, setChoice] = useState<ChoiceDialog | null>(null);
 
   const catalogues = useQuery({
     queryKey: ["catalogues", ownerAccountId],
@@ -110,25 +117,49 @@ export default function CataloguesScreen() {
     if (!canManage) return;
     const copies = farmCopiesOf(cat.id, list);
     if (copies.length === 1) {
-      Alert.alert(cat.name, "A farm copy of this schedule already exists.", [
-        {
-          text: "Open existing copy",
-          onPress: () => router.push(`/(app)/catalogues/${copies[0].id}`),
-        },
-        { text: "Clone another copy", onPress: () => setConfirm({ kind: "clone", cat }) },
-        { text: "Cancel", style: "cancel" },
-      ]);
+      setChoice({
+        title: cat.name,
+        description: "A farm copy of this schedule already exists.",
+        options: [
+          {
+            label: "Open existing copy",
+            onPress: () => {
+              setChoice(null);
+              router.push(`/(app)/catalogues/${copies[0].id}`);
+            },
+          },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setConfirm({ kind: "clone", cat });
+            },
+          },
+        ],
+      });
       return;
     }
     if (copies.length > 1) {
-      Alert.alert(cat.name, "Multiple farm copies already exist.", [
-        {
-          text: "Open first copy",
-          onPress: () => router.push(`/(app)/catalogues/${copies[0].id}`),
-        },
-        { text: "Clone another copy", onPress: () => setConfirm({ kind: "clone", cat }) },
-        { text: "Cancel", style: "cancel" },
-      ]);
+      setChoice({
+        title: cat.name,
+        description: "Multiple farm copies already exist.",
+        options: [
+          {
+            label: "Open first copy",
+            onPress: () => {
+              setChoice(null);
+              router.push(`/(app)/catalogues/${copies[0].id}`);
+            },
+          },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setConfirm({ kind: "clone", cat });
+            },
+          },
+        ],
+      });
       return;
     }
     setConfirm({ kind: "clone", cat });
@@ -166,17 +197,34 @@ export default function CataloguesScreen() {
       return;
     }
     const isDefault = defaultId === cat.id;
-    const buttons: { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[] = [
-      { text: "Open", onPress: () => router.push(`/(app)/catalogues/${cat.id}`) },
+    const options: AppDialogOption[] = [
+      {
+        label: "Open",
+        onPress: () => {
+          setChoice(null);
+          router.push(`/(app)/catalogues/${cat.id}`);
+        },
+      },
     ];
     if (!isDefault) {
-      buttons.push({ text: "Set as default", onPress: () => onSetDefault(cat) });
+      options.push({
+        label: "Set as default",
+        onPress: () => {
+          setChoice(null);
+          onSetDefault(cat);
+        },
+      });
     }
     if (cat.is_platform) {
-      buttons.push({ text: "Clone to My Farm", onPress: () => onClone(cat) });
+      options.push({
+        label: "Clone to My Farm",
+        onPress: () => {
+          setChoice(null);
+          onClone(cat);
+        },
+      });
     }
-    buttons.push({ text: "Cancel", style: "cancel" });
-    Alert.alert(cat.name, undefined, buttons);
+    setChoice({ title: cat.name, options });
   };
 
   const onAdd = () => {
@@ -204,7 +252,7 @@ export default function CataloguesScreen() {
         accessibilityLabel={`${cat.name}. ${meta}${isDefault ? ". Default" : ""}`}
       >
         <View style={[styles.iconBox, { backgroundColor: softBg, borderColor }]}>
-          <BrandLogo size={28} accessibilityLabel="PoultryTrack" />
+          <BrandLogo size={28} />
         </View>
         <View style={styles.cardBody}>
           <Text style={styles.cardTitle} numberOfLines={2}>
@@ -294,6 +342,21 @@ export default function CataloguesScreen() {
       )}
 
       <AppDialog
+        visible={Boolean(choice)}
+        title={choice?.title ?? ""}
+        description={choice?.description}
+        tone="info"
+        dismissible
+        onDismiss={() => setChoice(null)}
+        options={choice?.options}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setChoice(null),
+        }}
+      />
+
+      <AppDialog
         visible={Boolean(confirm)}
         title={confirm?.kind === "clone" ? "Clone catalogue?" : "Set farm default?"}
         description={
@@ -338,7 +401,7 @@ const styles = StyleSheet.create({
     paddingRight: 52,
   },
   backBtn: { paddingVertical: 4, paddingRight: 2 },
-  title: { flex: 1, fontSize: 20, fontWeight: "800", color: ui.ink },
+  title: { flex: 1, fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink },
   addBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -348,7 +411,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
-  addBtnText: { color: ui.white, fontWeight: "800", fontSize: 13 },
+  addBtnText: { color: ui.white, fontWeight: "800", fontSize: typography.button.fontSize },
   addPlaceholder: { width: 56 },
   tabs: {
     flexDirection: "row",
@@ -364,7 +427,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#EEF2F0",
   },
   tabOn: { backgroundColor: ui.brand },
-  tabText: { fontSize: 12, fontWeight: "700", color: ui.muted },
+  tabText: { fontSize: typography.caption.fontSize, fontWeight: "700", color: ui.muted },
   tabTextOn: { color: ui.white },
   list: {
     paddingLeft: ui.horizontal,
@@ -400,7 +463,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   cardBody: { flex: 1, gap: 3, minWidth: 0 },
-  cardTitle: { fontSize: 15, fontWeight: "800", color: ui.ink, paddingRight: 4 },
+  cardTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: ui.ink, paddingRight: 4 },
   defaultBadge: {
     alignSelf: "flex-start",
     backgroundColor: ui.brandSoft,
@@ -408,13 +471,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  defaultBadgeText: { fontSize: 10, fontWeight: "800", color: ui.brand },
-  meta: { fontSize: 12, fontWeight: "600", color: ui.muted },
+  defaultBadgeText: { fontSize: typography.overline.fontSize, fontWeight: "800", color: ui.brand },
+  meta: { fontSize: typography.caption.fontSize, fontWeight: "600", color: ui.muted },
   chevron: { marginLeft: 2 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerPad: { flex: 1, padding: 20, justifyContent: "center", gap: 8 },
-  errorTitle: { fontSize: 17, fontWeight: "800", color: ui.ink },
-  errorBody: { fontSize: 14, color: ui.muted, lineHeight: 20 },
+  errorTitle: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink },
+  errorBody: { fontSize: typography.label.fontSize, color: ui.muted, lineHeight: 20 },
   retry: {
     alignSelf: "flex-start",
     backgroundColor: ui.brand,

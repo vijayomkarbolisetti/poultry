@@ -91,6 +91,7 @@ async def record_vaccination(
             )
 
     dose: ScheduledDose | None = None
+    custom_vaccine_name: str | None = None
     if data.scheduled_dose_id:
         stmt = select(ScheduledDose).where(
             ScheduledDose.id == data.scheduled_dose_id,
@@ -117,8 +118,24 @@ async def record_vaccination(
         shed_id = flock.shed_id
         vaccine_id = data.vaccine_definition_id
         version_id = data.schedule_version_id
-        if not vaccine_id:
-            raise VaccinationError("vaccine_definition_id required", "INVALID")
+        custom_raw = getattr(data, "custom_vaccine_name", None)
+        custom_vaccine_name = custom_raw.strip() if isinstance(custom_raw, str) and custom_raw.strip() else None
+        if vaccine_id is None and not custom_vaccine_name:
+            raise VaccinationError(
+                "vaccine_definition_id or custom_vaccine_name is required",
+                "INVALID",
+            )
+        if vaccine_id is not None:
+            from app.models.vaccine import VaccineDefinition
+
+            definition = await db.scalar(
+                select(VaccineDefinition).where(
+                    VaccineDefinition.id == vaccine_id,
+                    VaccineDefinition.owner_account_id == ctx.owner_account_id,
+                )
+            )
+            if definition is None:
+                raise VaccinationError("Vaccine definition not found", "NOT_FOUND")
 
     owner = await db.get(OwnerAccount, ctx.owner_account_id)
     admin_at = data.administered_at or datetime.now(timezone.utc)
@@ -168,6 +185,7 @@ async def record_vaccination(
         bird_id=data.bird_id,
         scheduled_dose_id=dose.id if dose else None,
         vaccine_definition_id=vaccine_id,
+        custom_vaccine_name=custom_vaccine_name,
         schedule_version_id=version_id,
         administered_at=admin_at,
         administration_date=admin_date,
@@ -241,6 +259,7 @@ async def record_vaccination_batch(db: AsyncSession, ctx: AuthContext, data) -> 
             flock_id=None,
             bird_id=None,
             vaccine_definition_id=None,
+            custom_vaccine_name=None,
             schedule_version_id=None,
             administered_at=None,
             administration_date=data.administration_date,
@@ -269,6 +288,194 @@ async def record_vaccination_batch(db: AsyncSession, ctx: AuthContext, data) -> 
     for event in events:
         await db.refresh(event)
     return events
+
+
+def serialize_vaccination_event(
+    event: VaccinationEvent,
+    *,
+    vaccine_name: str | None = None,
+) -> dict:
+    """Build API payload with resolved vaccine name and scheduled vs manual kind."""
+    resolved = vaccine_name or event.custom_vaccine_name
+    return {
+        "id": event.id,
+        "shed_id": event.shed_id,
+        "flock_id": event.flock_id,
+        "bird_id": event.bird_id,
+        "scheduled_dose_id": event.scheduled_dose_id,
+        "vaccine_definition_id": event.vaccine_definition_id,
+        "custom_vaccine_name": event.custom_vaccine_name,
+        "vaccine_name": resolved,
+        "recording_kind": "scheduled" if event.scheduled_dose_id else "manual",
+        "administration_date": event.administration_date,
+        "birds_covered": event.birds_covered,
+        "lot_number": event.lot_number,
+        "product_expiry": event.product_expiry,
+        "manufacturer_or_brand": event.manufacturer_or_brand,
+        "vaccine_type_or_strain": event.vaccine_type_or_strain,
+        "dose_amount": event.dose_amount,
+        "route": event.route,
+        "notes": event.notes,
+        "verification_status": event.verification_status,
+        "timing_status": event.timing_status,
+        "is_void": event.is_void,
+        "created_at": event.created_at,
+    }
+
+
+async def enrich_vaccination_events(
+    db: AsyncSession, events: list[VaccinationEvent]
+) -> list[dict]:
+    from app.models.vaccine import VaccineDefinition
+
+    def_ids = {e.vaccine_definition_id for e in events if e.vaccine_definition_id}
+    names: dict[UUID, str] = {}
+    if def_ids:
+        rows = await db.execute(
+            select(VaccineDefinition.id, VaccineDefinition.name).where(
+                VaccineDefinition.id.in_(def_ids)
+            )
+        )
+        names = {row[0]: row[1] for row in rows}
+    return [
+        serialize_vaccination_event(
+            event,
+            vaccine_name=names.get(event.vaccine_definition_id) if event.vaccine_definition_id else None,
+        )
+        for event in events
+    ]
+
+
+async def record_manual_vaccination_batch(db: AsyncSession, ctx: AuthContext, data):
+    """Record one individual vaccination event per selected bird (ad-hoc / manual)."""
+    from types import SimpleNamespace
+
+    from app.models.enums import BirdLifecycleStatus
+    from app.models.flock import Bird
+    from app.schemas.vaccine import ManualVaccinationBatchOut, ManualVaccinationBirdResultOut
+
+    assert ctx.owner_account_id
+    batch_key = data.idempotency_key.strip()
+    bird_ids: list[UUID] = list(dict.fromkeys(data.bird_ids))
+
+    prior = list(
+        await db.scalars(
+            select(VaccinationEvent).where(
+                VaccinationEvent.owner_account_id == ctx.owner_account_id,
+                VaccinationEvent.idempotency_key.like(f"{batch_key}:%"),
+            )
+        )
+    )
+    if prior:
+        prior_bird_ids = {event.bird_id for event in prior}
+        if len(prior) != len(bird_ids) or prior_bird_ids != set(bird_ids):
+            raise VaccinationError(
+                "Idempotency key was already used with a different batch payload.",
+                "IDEMPOTENCY_CONFLICT",
+            )
+        results = [
+            ManualVaccinationBirdResultOut(
+                bird_id=event.bird_id,  # type: ignore[arg-type]
+                status="success",
+                event_id=event.id,
+                message="Replayed from idempotency key",
+            )
+            for event in prior
+            if event.bird_id is not None
+        ]
+        return ManualVaccinationBatchOut(
+            results=results,
+            success_count=len(results),
+            skipped_count=0,
+            failed_count=0,
+        )
+
+    birds = list(
+        await db.scalars(
+            select(Bird).where(
+                Bird.id.in_(bird_ids),
+                Bird.owner_account_id == ctx.owner_account_id,
+            )
+        )
+    )
+    by_id = {b.id: b for b in birds}
+    results: list[ManualVaccinationBirdResultOut] = []
+    success = skipped = failed = 0
+
+    for bird_id in bird_ids:
+        bird = by_id.get(bird_id)
+        if bird is None:
+            results.append(
+                ManualVaccinationBirdResultOut(
+                    bird_id=bird_id, status="failed", message="Bird not found"
+                )
+            )
+            failed += 1
+            continue
+        if not bird.is_active or bird.lifecycle_status != BirdLifecycleStatus.active:
+            results.append(
+                ManualVaccinationBirdResultOut(
+                    bird_id=bird_id,
+                    status="skipped",
+                    message="Bird is not active",
+                )
+            )
+            skipped += 1
+            continue
+        flock_id = data.flock_id or bird.flock_id
+        try:
+            event = await record_vaccination(
+                db,
+                ctx,
+                SimpleNamespace(
+                    scheduled_dose_id=None,
+                    flock_id=flock_id,
+                    bird_id=bird.id,
+                    vaccine_definition_id=data.vaccine_definition_id,
+                    custom_vaccine_name=data.custom_vaccine_name,
+                    schedule_version_id=None,
+                    administered_at=data.administered_at,
+                    administration_date=data.administration_date,
+                    birds_covered=1,
+                    lot_number=data.lot_number,
+                    product_expiry=data.product_expiry,
+                    manufacturer_or_brand=data.manufacturer_or_brand,
+                    vaccine_type_or_strain=data.vaccine_type_or_strain,
+                    dose_amount=data.dose_amount,
+                    route=data.route,
+                    notes=data.notes,
+                    verification_status=data.verification_status or "verified",
+                    idempotency_key=f"{batch_key}:{bird.id}",
+                ),
+                commit=False,
+            )
+            results.append(
+                ManualVaccinationBirdResultOut(
+                    bird_id=bird.id,
+                    status="success",
+                    event_id=event.id,
+                )
+            )
+            success += 1
+        except VaccinationError as exc:
+            results.append(
+                ManualVaccinationBirdResultOut(
+                    bird_id=bird_id, status="failed", message=exc.message
+                )
+            )
+            failed += 1
+
+    if success == 0 and failed > 0 and skipped == 0:
+        await db.rollback()
+        raise VaccinationError("No vaccinations were recorded", "ALL_FAILED")
+
+    await db.commit()
+    return ManualVaccinationBatchOut(
+        results=results,
+        success_count=success,
+        skipped_count=skipped,
+        failed_count=failed,
+    )
 
 
 async def void_or_correct(db: AsyncSession, ctx: AuthContext, event_id: UUID, data) -> VaccinationEvent:

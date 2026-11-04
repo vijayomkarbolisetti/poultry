@@ -1,9 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { type BirdParentInput } from "../../api/birds";
 import { birdUi } from "../../theme/birdManagementUi";
+import { birdIcons } from "../../theme/media";
+import { typography } from "../../theme/tokens";
+
 
 export type ParentDraft = {
   /** Preserved when loaded from a linked farm bird; cleared if the user edits fields. */
@@ -66,6 +69,11 @@ export function ParentageFields({ role, value, onChange }: Props) {
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
       >
+        <Image
+          source={role === "sire" ? birdIcons.male : birdIcons.female}
+          style={styles.roleIcon}
+          resizeMode="cover"
+        />
         <Text style={styles.title}>{title}</Text>
         <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={birdUi.muted} />
       </Pressable>
@@ -109,13 +117,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  title: { fontSize: 15, fontWeight: "800", color: birdUi.text },
+  roleIcon: { width: 28, height: 28, borderRadius: 14 },
+  title: { flex: 1, fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: birdUi.text },
   body: { paddingHorizontal: 14, paddingBottom: 12, gap: 6 },
-  label: { fontSize: 13, fontWeight: "700", color: birdUi.muted, marginTop: 4 },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.muted, marginTop: 4 },
   input: {
     borderWidth: 1,
     borderColor: birdUi.border,
@@ -124,7 +133,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     backgroundColor: birdUi.white,
     color: birdUi.text,
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     fontWeight: "600",
     minHeight: 48,
   },

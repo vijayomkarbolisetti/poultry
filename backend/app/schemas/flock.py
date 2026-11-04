@@ -457,7 +457,8 @@ class BirdProfileVaccinationEventOut(BaseModel):
     """
 
     id: UUID
-    vaccine_definition_id: UUID
+    vaccine_definition_id: UUID | None = None
+    custom_vaccine_name: str | None = None
     vaccine_name: str | None
     administration_date: date
     birds_covered: int
@@ -471,6 +472,7 @@ class BirdProfileVaccinationEventOut(BaseModel):
     verification_status: str
     notes: str | None
     scheduled_dose_id: UUID | None
+    recording_kind: str = "manual"  # scheduled | manual
     created_at: datetime
     coverage_scope: str = "individual"
 
@@ -501,6 +503,10 @@ class BirdProfileLifecycleOut(BaseModel):
     buyer_name: str | None = None
     buyer_mobile: str | None = None
     created_at: datetime
+    # Shed-move enrichment (optional; buyer-facing reports use from → to labels).
+    shed_id: UUID | None = None
+    from_shed_name: str | None = None
+    to_shed_name: str | None = None
 
 
 class BirdSaleDetailsOut(BaseModel):
@@ -569,6 +575,28 @@ class SoldBirdListOut(BaseModel):
     limit: int
     offset: int
     items: list[SoldBirdHitOut]
+
+
+class DeadBirdHitOut(BaseModel):
+    id: UUID
+    band_id: str | None
+    display_code: str | None
+    breed: str | None
+    batch_code: str
+    shed_id: UUID
+    shed_name: str | None
+    shed_code: str | None
+    died_on: date
+    reason: str | None
+    lifecycle_status: BirdLifecycleStatus
+    is_active: bool
+
+
+class DeadBirdListOut(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: list[DeadBirdHitOut]
 
 
 class LifecycleCreate(BaseModel):

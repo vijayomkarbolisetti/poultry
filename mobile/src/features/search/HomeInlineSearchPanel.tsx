@@ -6,7 +6,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { ComponentProps, useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, type ImageSourcePropType } from "react-native";
 
 import { describeApiError } from "../../api/client";
 import {
@@ -16,6 +16,7 @@ import {
 } from "../../api/search";
 import { Button } from "../../components/ui/Button";
 import { HenLoader } from "../../components/ui/HenLoader";
+import { birdIcons } from "../../theme/media";
 import { useAuth } from "../auth/AuthContext";
 import { hasPermission } from "../auth/permissions";
 import {
@@ -27,6 +28,8 @@ import {
   shedSubtitle,
 } from "./globalSearchHelpers";
 import { setHomeSearchDraft } from "./homeSearchSession";
+import { typography } from "../../theme/tokens";
+
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -160,6 +163,7 @@ export function HomeInlineSearchPanel({ draft, colors: c }: Props) {
             <ResultRow
               key={`bird-${hit.id}`}
               icon="egg-outline"
+              iconImage={birdIcons.bird}
               title={hit.band_id ?? hit.display_code ?? "Bird"}
               subtitle={birdSubtitle(hit)}
               tag={hit.match_kind === "exact" ? "Exact" : "Partial"}
@@ -183,7 +187,7 @@ export function HomeInlineSearchPanel({ draft, colors: c }: Props) {
               key={`shed-${hit.id}`}
               icon="business-outline"
               title={hit.name}
-              subtitle={shedSubtitle(hit)}
+              subtitle={shedSubtitle(hit, { includeFarm: true })}
               tag={hit.match_kind === "exact" ? "Exact" : "Partial"}
               onPress={() => openShed(hit)}
               c={c}
@@ -202,6 +206,7 @@ export function HomeInlineSearchPanel({ draft, colors: c }: Props) {
 
 function ResultRow({
   icon,
+  iconImage,
   title,
   subtitle,
   tag,
@@ -209,6 +214,7 @@ function ResultRow({
   c,
 }: {
   icon: IconName;
+  iconImage?: ImageSourcePropType;
   title: string;
   subtitle: string;
   tag: string;
@@ -227,7 +233,11 @@ function ResultRow({
       ]}
     >
       <View style={[styles.iconWrap, { backgroundColor: "#E8F8F0" }]}>
-        <Ionicons name={icon} size={18} color={c.accentGreen} />
+        {iconImage != null ? (
+          <Image source={iconImage} style={styles.iconImg} resizeMode="cover" />
+        ) : (
+          <Ionicons name={icon} size={18} color={c.accentGreen} />
+        )}
       </View>
       <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
         <Text style={[styles.name, { color: c.primaryText }]} numberOfLines={1}>
@@ -247,7 +257,7 @@ const styles = StyleSheet.create({
   wrap: { gap: 12, marginBottom: 8 },
   section: { gap: 8 },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: typography.sectionTitle.fontSize,
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 0.4,
@@ -273,12 +283,14 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
-  name: { fontWeight: "800", fontSize: 15 },
-  meta: { fontSize: 13, lineHeight: 18 },
-  tag: { fontSize: 11, fontWeight: "700", marginTop: 2 },
-  emptyTitle: { fontSize: 16, fontWeight: "800", textAlign: "center" },
+  iconImg: { width: 36, height: 36, borderRadius: 18 },
+  name: { fontWeight: "800", fontSize: typography.body.fontSize },
+  meta: { fontSize: typography.secondary.fontSize, lineHeight: 18 },
+  tag: { fontSize: typography.overline.fontSize, fontWeight: "700", marginTop: 2 },
+  emptyTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", textAlign: "center" },
   warnCard: { backgroundColor: "#FFF4E5", borderColor: "#E0C98A" },
-  warnText: { color: "#B45309", fontWeight: "600", fontSize: 13 },
+  warnText: { color: "#B45309", fontWeight: "600", fontSize: typography.secondary.fontSize },
   error: { color: "#DC2626", fontWeight: "600" },
 });

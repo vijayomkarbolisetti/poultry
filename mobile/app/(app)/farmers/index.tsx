@@ -19,8 +19,8 @@ import { MediaCard } from "../../../src/components/ui/MediaCard";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { safeBack } from "../../../src/navigation/safeBack";
-import { media } from "../../../src/theme/media";
-import { colors, radius, shadow, space } from "../../../src/theme/tokens";
+import { farmerHeaderArt } from "../../../src/theme/media";
+import { colors, radius, shadow, space, typography } from "../../../src/theme/tokens";
 
 const ui = {
   mint: "#EFFFEB",
@@ -69,14 +69,14 @@ export default function FarmersScreen() {
         >
           <Ionicons name="arrow-back" size={22} color={ui.deep} />
         </Pressable>
-        <View style={{ flex: 1 }}>
+        <View style={styles.topBarCopy}>
           <Text style={styles.title}>Farmers</Text>
           <Text style={styles.sub}>Invite teammates and control shed access</Text>
         </View>
         {!hasFarmers && !farmers.isLoading ? (
           <Pressable
             onPress={goCreate}
-            style={styles.addChip}
+            style={styles.addChipHeader}
             accessibilityRole="button"
             accessibilityLabel="Add farmer"
           >
@@ -143,9 +143,10 @@ export default function FarmersScreen() {
             </View>
           ) : (
             <EmptyState
+              variant="compact"
               title="No farmers yet"
-              body="Add a farmer, assign sheds, and pick only the permissions they need."
-              imageUri={media.farmMorning}
+              body="Add a farmer, assign sheds, and choose the permissions they need."
+              imageSource={farmerHeaderArt}
               actionLabel="Add farmer"
               onAction={goCreate}
             />
@@ -191,8 +192,14 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: space.sm,
+  },
+  topBarCopy: {
+    flex: 1,
+    paddingTop: 2,
+    minHeight: 40,
+    justifyContent: "center",
   },
   backBtn: {
     width: 40,
@@ -202,8 +209,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 22, fontWeight: "800", color: ui.deep },
-  sub: { fontSize: 13, color: colors.inkMuted, marginTop: 2 },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.deep },
+  sub: { fontSize: typography.secondary.fontSize, color: colors.inkMuted, marginTop: 2 },
+  addChipHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: ui.deep,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: radius.pill,
+    marginTop: 2,
+    minHeight: 40,
+  },
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -218,7 +236,7 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     color: colors.ink,
     paddingVertical: 10,
   },
@@ -229,7 +247,7 @@ const styles = StyleSheet.create({
     gap: space.sm,
   },
   countLabel: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "600",
     color: colors.inkMuted,
   },
@@ -245,7 +263,7 @@ const styles = StyleSheet.create({
   addChipText: {
     color: "#fff",
     fontWeight: "800",
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
   },
   error: { color: colors.danger },
   noMatch: {
@@ -253,8 +271,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
-  noMatchTitle: { fontWeight: "800", color: colors.ink, fontSize: 16 },
-  noMatchBody: { color: colors.inkMuted, fontSize: 14 },
+  noMatchTitle: { fontWeight: "800", color: colors.ink, fontSize: typography.sectionTitle.fontSize },
+  noMatchBody: { color: colors.inkMuted, fontSize: typography.label.fontSize },
   cardFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -262,5 +280,5 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   dot: { width: 7, height: 7, borderRadius: 4 },
-  footerText: { fontSize: 11, color: colors.inkMuted, fontWeight: "600" },
+  footerText: { fontSize: typography.overline.fontSize, color: colors.inkMuted, fontWeight: "600" },
 });

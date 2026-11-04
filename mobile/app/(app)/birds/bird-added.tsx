@@ -6,6 +6,8 @@ import { Button } from "../../../src/components/ui/Button";
 import { Screen } from "../../../src/components/ui/Screen";
 import { firstRouteParam } from "../../../src/navigation/routeParams";
 import { birdUi } from "../../../src/theme/birdManagementUi";
+import { typography } from "../../../src/theme/tokens";
+
 
 export default function BirdAddedScreen() {
   const params = useLocalSearchParams<{
@@ -70,9 +72,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 8,
   },
-  title: { fontSize: 28, fontWeight: "800", color: birdUi.text, letterSpacing: -0.4 },
+  title: { fontSize: typography.display.fontSize, fontWeight: "800", color: birdUi.text, letterSpacing: -0.4 },
   band: {
-    fontSize: 20,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "800",
     color: birdUi.primary,
     backgroundColor: birdUi.paleMint,
@@ -81,6 +83,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
   },
-  meta: { fontSize: 15, color: birdUi.muted },
+  meta: { fontSize: typography.secondary.fontSize, color: birdUi.muted },
   actions: { width: "100%", gap: 10, marginTop: 20 },
 });

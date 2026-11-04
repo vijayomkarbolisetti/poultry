@@ -14,7 +14,7 @@ import { SelectField } from "../../../src/components/ui/SelectField";
 import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
-import { colors, radius, space } from "../../../src/theme/tokens";
+import { colors, radius, space, typography } from "../../../src/theme/tokens";
 
 /** Bird-level lifecycle events supported by the API for active hens. */
 const BIRD_EVENT_OPTIONS = [
@@ -303,8 +303,8 @@ export default function FlockDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand },
-  section: { marginTop: space.sm, fontSize: 13, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase" },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand },
+  section: { marginTop: space.sm, fontSize: typography.secondary.fontSize, fontWeight: "700", color: colors.inkMuted, textTransform: "uppercase" },
   card: {
     backgroundColor: colors.bgElevated,
     borderRadius: radius.md,
@@ -314,9 +314,9 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   name: { fontWeight: "700", color: colors.ink },
-  link: { color: colors.brand, fontSize: 13, fontWeight: "700", marginTop: 2 },
-  meta: { color: colors.inkMuted, fontSize: 14 },
-  label: { fontSize: 13, fontWeight: "700", color: colors.inkMuted, marginTop: 4 },
+  link: { color: colors.brand, fontSize: typography.secondary.fontSize, fontWeight: "700", marginTop: 2 },
+  meta: { color: colors.inkMuted, fontSize: typography.secondary.fontSize },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: colors.inkMuted, marginTop: 4 },
   unbandedCard: {
     backgroundColor: "#FFF4E5",
     borderRadius: radius.md,

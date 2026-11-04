@@ -130,15 +130,29 @@ const birdSub = birdSubtitle({
 assert(birdSub.includes("Vax Shed A"), `shed in subtitle: ${birdSub}`);
 assert(birdSub.toLowerCase().includes("sold"), `lifecycle in subtitle: ${birdSub}`);
 
-const shedSub = shedSubtitle({
+const shedSub = shedSubtitle(
+  {
+    organization_name: "Vax QA Farm",
+    code: "VAX-A",
+    manager_names: [],
+    total_live_birds: 12,
+    is_active: true,
+  },
+  { includeFarm: true },
+);
+assert(shedSub.includes("Vax QA Farm"), `farm in shed: ${shedSub}`);
+assert(!shedSub.includes("VAX-A"), `no shed code in subtitle: ${shedSub}`);
+assert(shedSub.includes("Active"), `status in shed: ${shedSub}`);
+
+const shedSubPlain = shedSubtitle({
   organization_name: "Vax QA Farm",
   code: "VAX-A",
   manager_names: [],
   total_live_birds: 12,
   is_active: true,
 });
-assert(shedSub.includes("Vax QA Farm"), `farm in shed: ${shedSub}`);
-assert(shedSub.includes("Active"), `status in shed: ${shedSub}`);
+assert(!shedSubPlain.includes("Vax QA Farm"), `farm omitted outside Home: ${shedSubPlain}`);
+assert(!shedSubPlain.includes("VAX-A"), `no shed code outside Home: ${shedSubPlain}`);
 
 clearHomeSearchDraft();
 assert(getHomeSearchDraft() === "", "cleared");

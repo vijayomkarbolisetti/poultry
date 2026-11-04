@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
+  Image,
   Linking,
   Pressable,
   StyleSheet,
@@ -14,6 +15,7 @@ import {
 
 import { listSoldBirds, type SoldBirdHit } from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
+import { BirdListExportSheet } from "../../../src/components/birds/BirdListExportSheet";
 import { Button } from "../../../src/components/ui/Button";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { ImmersiveHeroHeader } from "../../../src/components/ui/ImmersiveHeroHeader";
@@ -23,7 +25,9 @@ import { hasPermission } from "../../../src/features/auth/permissions";
 import { formatDisplayDate } from "../../../src/components/ui/selectUtils";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
-import { heroArt } from "../../../src/theme/media";
+import { birdIcons, heroArt } from "../../../src/theme/media";
+import { typography } from "../../../src/theme/tokens";
+
 
 type PeriodKey = "all" | "month" | "quarter" | "custom";
 
@@ -46,6 +50,7 @@ export default function SoldBirdsScreen() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [period, setPeriod] = useState<PeriodKey>("all");
+  const [exportOpen, setExportOpen] = useState(false);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -104,17 +109,26 @@ export default function SoldBirdsScreen() {
             <ImmersiveHeroHeader
               source={heroArt.home}
               curveFill={birdUi.bg}
-              minHeight={140}
               accessibilityLabel="Sold birds farm illustration"
               contentStyle={styles.heroCopy}
             >
-              <Pressable
-                onPress={() => safeBack("/(app)/settings")}
-                style={styles.backBtn}
-                accessibilityLabel="Back"
-              >
-                <Ionicons name="arrow-back" size={22} color={birdUi.text} />
-              </Pressable>
+              <View style={styles.heroTopRow}>
+                <Pressable
+                  onPress={() => safeBack("/(app)/settings")}
+                  style={styles.backBtn}
+                  accessibilityLabel="Back"
+                >
+                  <Ionicons name="arrow-back" size={22} color={birdUi.text} />
+                </Pressable>
+                <Pressable
+                  onPress={() => setExportOpen(true)}
+                  style={styles.downloadBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download sold birds export"
+                >
+                  <Ionicons name="download-outline" size={20} color={birdUi.primary} />
+                </Pressable>
+              </View>
               <View style={styles.heroTitles}>
                 <Text style={styles.title}>Sold Birds</Text>
                 <Text style={styles.subtitle}>Birds that have been sold</Text>
@@ -122,6 +136,19 @@ export default function SoldBirdsScreen() {
             </ImmersiveHeroHeader>
 
             <View style={styles.headerBody}>
+              <View style={styles.countCard} accessibilityLabel={`${total} sold birds`}>
+                <View style={[styles.countIcon, { backgroundColor: birdUi.orangePale }]}>
+                  <Ionicons name="pricetag-outline" size={18} color={birdUi.orange} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.countValue}>{total}</Text>
+                  <Text style={styles.countLabel}>
+                    {total === 1 ? "sold bird" : "sold birds"}
+                    {period !== "all" && period !== "custom" ? " in this period" : ""}
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.searchRow}>
                 <View style={styles.searchBox}>
                   <Ionicons name="search" size={18} color={birdUi.muted} />
@@ -129,7 +156,7 @@ export default function SoldBirdsScreen() {
                     style={styles.searchInput}
                     value={q}
                     onChangeText={setQ}
-                    placeholder="Search by band no., breed, batch, buyer name or mobile…"
+                    placeholder="Search by Band no or id"
                     placeholderTextColor={birdUi.muted}
                     accessibilityLabel="Search sold birds"
                   />
@@ -139,7 +166,7 @@ export default function SoldBirdsScreen() {
               <View style={styles.chips}>
                 {(
                   [
-                    ["all", `All (${total})`],
+                    ["all", "All"],
                     ["month", "This Month"],
                     ["quarter", "Last 3 Months"],
                   ] as const
@@ -177,6 +204,11 @@ export default function SoldBirdsScreen() {
         }
         renderItem={({ item }) => <SoldCard item={item} />}
       />
+      <BirdListExportSheet
+        visible={exportOpen}
+        kind="sold"
+        onClose={() => setExportOpen(false)}
+      />
     </Screen>
   );
 }
@@ -197,7 +229,7 @@ function SoldCard({ item }: { item: SoldBirdHit }) {
     >
       <View style={styles.cardLeft}>
         <View style={styles.avatar}>
-          <Ionicons name="egg-outline" size={22} color={birdUi.primary} />
+          <Image source={birdIcons.bird} style={styles.avatarImg} resizeMode="cover" />
         </View>
         <View style={{ flex: 1, gap: 4 }}>
           <Text style={styles.band}>{title}</Text>
@@ -254,13 +286,18 @@ function InfoRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap;
 
 const styles = StyleSheet.create({
   list: { paddingBottom: 28, gap: 10 },
-  heroCopy: { gap: 10, justifyContent: "space-between", minHeight: 100 },
+  heroCopy: { flexGrow: 1, gap: 10, justifyContent: "space-between" },
   heroTitles: { gap: 2, paddingBottom: 2 },
   headerBody: {
     paddingHorizontal: birdUi.horizontal,
     gap: 8,
     marginBottom: 8,
     marginTop: -4,
+  },
+  heroTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   backBtn: {
     width: 40,
@@ -270,8 +307,41 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 26, fontWeight: "800", color: birdUi.text, letterSpacing: -0.3 },
-  subtitle: { fontSize: 14, color: birdUi.muted },
+  downloadBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text, letterSpacing: -0.3 },
+  subtitle: { fontSize: typography.sectionTitle.fontSize, color: birdUi.muted },
+  countCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: birdUi.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: birdUi.border,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  countIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  countValue: {
+    fontSize: typography.screenTitle.fontSize,
+    fontWeight: "800",
+    color: birdUi.text,
+    lineHeight: 26,
+  },
+  countLabel: { fontSize: typography.caption.fontSize, fontWeight: "600", color: birdUi.muted },
   searchRow: { marginTop: 4 },
   searchBox: {
     flexDirection: "row",
@@ -284,7 +354,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     minHeight: 48,
   },
-  searchInput: { flex: 1, fontSize: 15, color: birdUi.text, fontWeight: "600", paddingVertical: 10 },
+  searchInput: { flex: 1, fontSize: typography.body.fontSize, color: birdUi.text, fontWeight: "600", paddingVertical: 10 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   chip: {
     paddingHorizontal: 12,
@@ -295,11 +365,11 @@ const styles = StyleSheet.create({
     borderColor: birdUi.border,
   },
   chipOn: { backgroundColor: birdUi.primary, borderColor: birdUi.primary },
-  chipText: { fontSize: 13, fontWeight: "700", color: birdUi.text },
+  chipText: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: birdUi.text },
   chipTextOn: { color: "#fff" },
   emptyBox: { padding: 24, alignItems: "center", gap: 8 },
-  emptyTitle: { fontSize: 17, fontWeight: "800", color: birdUi.text },
-  emptyBody: { fontSize: 14, color: birdUi.muted, textAlign: "center", lineHeight: 20 },
+  emptyTitle: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text },
+  emptyBody: { fontSize: typography.label.fontSize, color: birdUi.muted, textAlign: "center", lineHeight: 20 },
   error: { color: birdUi.error, fontWeight: "600", textAlign: "center" },
   card: {
     marginHorizontal: birdUi.horizontal,
@@ -320,8 +390,10 @@ const styles = StyleSheet.create({
     backgroundColor: birdUi.iconCircle,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
-  band: { fontSize: 17, fontWeight: "800", color: birdUi.text },
+  avatarImg: { width: "100%", height: "100%" },
+  band: { fontSize: typography.button.fontSize, fontWeight: "800", color: birdUi.text },
   breedPill: {
     alignSelf: "flex-start",
     backgroundColor: "#EEF1F0",
@@ -329,8 +401,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  breedText: { fontSize: 11, fontWeight: "700", color: birdUi.muted },
-  meta: { fontSize: 12, color: birdUi.muted },
+  breedText: { fontSize: typography.overline.fontSize, fontWeight: "700", color: birdUi.muted },
+  meta: { fontSize: typography.caption.fontSize, color: birdUi.muted },
   soldPill: {
     alignSelf: "flex-start",
     flexDirection: "row",
@@ -342,11 +414,11 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     marginTop: 2,
   },
-  soldPillText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  soldPillText: { color: "#fff", fontSize: typography.overline.fontSize, fontWeight: "800" },
   cardMid: { flex: 1.2, gap: 4 },
   infoRow: { flexDirection: "row", alignItems: "center", gap: 4 },
-  infoLabel: { fontSize: 11, color: birdUi.muted, width: 52 },
-  infoValue: { flex: 1, fontSize: 12, fontWeight: "700", color: birdUi.text },
+  infoLabel: { fontSize: typography.overline.fontSize, color: birdUi.muted, width: 52 },
+  infoValue: { flex: 1, fontSize: typography.caption.fontSize, fontWeight: "700", color: birdUi.text },
   cardRight: { alignItems: "center", gap: 10 },
   callBtn: {
     width: 40,

@@ -12,7 +12,7 @@ import { MultiSelectField } from "../../../src/components/ui/MultiSelectField";
 import { Screen } from "../../../src/components/ui/Screen";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { FARMER_PERM_OPTIONS, PERMISSION_LABELS, hasPermission } from "../../../src/features/auth/permissions";
-import { colors, radius, shadow, space } from "../../../src/theme/tokens";
+import { colors, radius, shadow, space, typography } from "../../../src/theme/tokens";
 
 export default function FarmerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -40,7 +40,7 @@ export default function FarmerDetailScreen() {
     () =>
       (sheds.data ?? [])
         .filter((s) => s.is_active)
-        .map((s) => ({ value: s.id, label: s.name, hint: s.code })),
+        .map((s) => ({ value: s.id, label: s.name })),
     [sheds.data],
   );
 
@@ -189,16 +189,16 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: "hidden",
   },
-  title: { fontSize: 22, fontWeight: "800", color: colors.brand, padding: space.md, paddingBottom: 4 },
-  meta: { color: colors.inkMuted, fontSize: 14, paddingHorizontal: space.md, paddingBottom: space.sm },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand, padding: space.md, paddingBottom: 4 },
+  meta: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, paddingHorizontal: space.md, paddingBottom: space.sm },
   section: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "800",
     color: colors.inkMuted,
     textTransform: "uppercase",
     marginTop: space.sm,
   },
-  hint: { color: colors.inkMuted, fontSize: 13, marginTop: -space.sm },
+  hint: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, marginTop: -space.sm },
   row: {
     flexDirection: "row",
     gap: space.md,
@@ -218,9 +218,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   checkOn: { backgroundColor: colors.brand, borderColor: colors.brand },
-  checkMark: { color: "#fff", fontWeight: "800", fontSize: 13 },
-  rowTitle: { fontWeight: "700", color: colors.ink, fontSize: 15 },
-  rowHint: { color: colors.inkMuted, fontSize: 12, marginTop: 2 },
+  checkMark: { color: "#fff", fontWeight: "800", fontSize: typography.secondary.fontSize },
+  rowTitle: { fontWeight: "700", color: colors.ink, fontSize: typography.sectionTitle.fontSize },
+  rowHint: { color: colors.inkMuted, fontSize: typography.caption.fontSize, marginTop: 2 },
   ok: { color: colors.success, fontWeight: "700" },
   error: { color: colors.danger },
 });

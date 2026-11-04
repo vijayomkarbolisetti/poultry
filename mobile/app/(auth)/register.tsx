@@ -1,105 +1,31 @@
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, router } from "expo-router";
-import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { Link } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
-import { z } from "zod";
 
-import { registerOwner, warmApi } from "../../src/api/auth";
-import { describeApiError } from "../../src/api/client";
 import { BrandLogo } from "../../src/components/brand/BrandLogo";
-import { Button } from "../../src/components/ui/Button";
 import { Screen } from "../../src/components/ui/Screen";
-import { TextField } from "../../src/components/ui/TextField";
-import { useAuth } from "../../src/features/auth/AuthContext";
+import { APP_BRAND_NAME } from "../../src/config/appConfig";
 import { colors, radius, shadows, space, typography } from "../../src/theme/tokens";
 
-const schema = z.object({
-  full_name: z.string().min(1, "Required"),
-  organization_name: z.string().min(1, "Required"),
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(8, "At least 8 characters"),
-});
-
-type FormValues = z.infer<typeof schema>;
-
+/**
+ * Public self-serve farm signup is disabled (D10 revised).
+ * Kept as a route so old deep links land on a clear message.
+ */
 export default function RegisterScreen() {
-  const { acceptSession } = useAuth();
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { control, handleSubmit } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { full_name: "", organization_name: "", email: "", password: "" },
-  });
-
-  useEffect(() => {
-    warmApi();
-  }, []);
-
-  const onSubmit = handleSubmit(async (values) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const session = await registerOwner(values);
-      if (session.user) {
-        await acceptSession(session.user);
-      } else {
-        const { fetchMe } = await import("../../src/api/auth");
-        await acceptSession(await fetchMe());
-      }
-      router.replace("/(app)/home");
-    } catch (e: unknown) {
-      setError(describeApiError(e, "register"));
-    } finally {
-      setLoading(false);
-    }
-  });
-
   return (
     <Screen scroll edges={["top", "left", "right"]}>
       <View style={styles.hero}>
         <BrandLogo size={56} />
-        <Text style={styles.brand}>Create your farm</Text>
-        <Text style={styles.sub}>You’ll be the owner of this PoultryTrack organization.</Text>
+        <Text style={styles.brand}>Account by invitation</Text>
+        <Text style={styles.sub}>
+          {APP_BRAND_NAME} farm accounts are created by a platform admin. Ask your admin for login
+          details.
+        </Text>
       </View>
 
       <View style={[styles.card, shadows.soft]}>
-        <TextField
-          control={control}
-          name="full_name"
-          label="Your name"
-          placeholder="Alex Farmer"
-          autoCapitalize="words"
-          leftIcon="person-outline"
-        />
-        <TextField
-          control={control}
-          name="organization_name"
-          label="Farm / organization"
-          placeholder="Green Valley Poultry"
-          autoCapitalize="words"
-          leftIcon="leaf-outline"
-        />
-        <TextField
-          control={control}
-          name="email"
-          label="Email"
-          placeholder="you@farm.com"
-          keyboardType="email-address"
-          leftIcon="mail-outline"
-        />
-        <TextField
-          control={control}
-          name="password"
-          label="Password"
-          placeholder="••••••••"
-          secureTextEntry
-          leftIcon="lock-closed-outline"
-        />
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <Button label="Create account" onPress={onSubmit} loading={loading} />
+        <Text style={styles.body}>
+          If you already received credentials, sign in with your email and password.
+        </Text>
       </View>
 
       <Text style={styles.footer}>
@@ -124,7 +50,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  error: { color: colors.error, fontSize: 14 },
-  footer: { color: colors.textSecondary, fontSize: 15, textAlign: "center", marginTop: space.sm },
+  body: { ...typography.body, color: colors.ink, textAlign: "center" },
+  footer: {
+    color: colors.textSecondary,
+    fontSize: typography.body.fontSize,
+    textAlign: "center",
+    marginTop: space.sm,
+  },
   link: { color: colors.primary, fontWeight: "700" },
 });

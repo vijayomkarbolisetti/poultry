@@ -52,7 +52,7 @@ export function birdSubtitle(hit: {
 }): string {
   const parts = [
     hit.breed || null,
-    hit.shed_name ?? hit.shed_code ?? null,
+    hit.shed_name || null,
     hit.is_active ? "Active" : hit.lifecycle_status.replace(/_/g, " "),
   ].filter(Boolean);
   return parts.join(" · ");
@@ -65,21 +65,25 @@ export function batchSubtitle(hit: {
   status: string;
   breed: string | null;
 }): string {
-  const shed = hit.shed_name ?? hit.shed_code ?? "Shed";
+  const shed = hit.shed_name || "Shed";
   const status = hit.status === "active" ? "Active" : hit.status.replace(/_/g, " ");
   const breed = hit.breed ? `${hit.breed} · ` : "";
   return `${breed}${shed} · ${hit.current_count} birds · ${status}`;
 }
 
-export function shedSubtitle(hit: {
-  organization_name: string | null;
-  code: string;
-  manager_names: string[];
-  total_live_birds: number;
-  is_active: boolean;
-}): string {
+export function shedSubtitle(
+  hit: {
+    organization_name: string | null;
+    code: string;
+    manager_names: string[];
+    total_live_birds: number;
+    is_active: boolean;
+  },
+  opts?: { includeFarm?: boolean },
+): string {
   const mgr = hit.manager_names[0] ? ` · ${hit.manager_names[0]}` : "";
-  const farm = hit.organization_name ? `${hit.organization_name} · ` : "";
+  const farm =
+    opts?.includeFarm && hit.organization_name ? `${hit.organization_name} · ` : "";
   const status = hit.is_active ? "Active" : "Inactive";
-  return `${farm}${hit.code}${mgr} · ${hit.total_live_birds} birds · ${status}`;
+  return `${farm}${hit.total_live_birds} birds · ${status}${mgr}`;
 }

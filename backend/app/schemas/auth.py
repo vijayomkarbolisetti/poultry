@@ -42,8 +42,18 @@ class UserOut(BaseModel):
     full_name: str
     is_active: bool
     is_platform_super_admin: bool
+    must_change_password: bool = False
     created_at: datetime
     memberships: list[MembershipOut] = []
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name: str = Field(min_length=1, max_length=255)
 
 
 class TokenResponse(BaseModel):
@@ -61,6 +71,47 @@ class OwnerAccountOut(BaseModel):
     name: str
     is_active: bool
     created_at: datetime
+
+
+class OwnerAccountListItem(OwnerAccountOut):
+    """Farm row for platform super-admin listing."""
+
+    owner_user_id: UUID | None = None
+    owner_email: str | None = None
+    owner_full_name: str | None = None
+    owner_must_change_password: bool = False
+
+
+class CreateOwnerAccountRequest(BaseModel):
+    """Platform super admin creates a farm + its owner login."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+    full_name: str = Field(min_length=1, max_length=255)
+    organization_name: str = Field(min_length=1, max_length=255)
+
+
+class OwnerUserSummary(BaseModel):
+    id: UUID
+    email: EmailStr
+    full_name: str
+    is_active: bool
+    must_change_password: bool = False
+    # Temporary password just set by the super admin, echoed once so it can be handed
+    # to the owner. Never stored in plain text and never returned by list endpoints.
+    password: str | None = None
+
+
+class CreatedOwnerAccountOut(BaseModel):
+    owner: OwnerAccountOut
+    owner_user: OwnerUserSummary
+
+
+class UpdateOwnerUserRequest(BaseModel):
+    """Platform super admin updates farm owner name and/or password."""
+
+    full_name: str | None = Field(default=None, min_length=1, max_length=255)
+    password: str | None = Field(default=None, min_length=8, max_length=128)
 
 
 class SelectOwnerRequest(BaseModel):

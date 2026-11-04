@@ -1,5 +1,7 @@
 import { Image, ImageStyle, StyleProp, View, ViewStyle } from "react-native";
 
+import { APP_BRAND_NAME } from "../../config/appConfig";
+
 type Props = {
   /** Rendered size (square mark). */
   size?: number;
@@ -10,13 +12,13 @@ type Props = {
 };
 
 /**
- * Canonical PoultryTrack brand mark from `assets/brand-logo.png`
+ * Canonical brand mark from `assets/brand-logo.png`
  * (sourced from `assets/android/play_store_512.png`).
  */
 export function BrandLogo({
   size = 64,
   style,
-  accessibilityLabel = "PoultryTrack",
+  accessibilityLabel = APP_BRAND_NAME,
 }: Props) {
   const wrapStyle: StyleProp<ViewStyle> = [{ width: size, height: size }, style];
 

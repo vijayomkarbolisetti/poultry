@@ -3,37 +3,26 @@ import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
+import { describeApiError as describeApiErrorMessage, resolveApiBaseUrl } from "./apiConfig";
+
+export { PRODUCTION_API_URL } from "./apiConfig";
+
 /**
- * Resolve API base URL for emulator vs physical device.
- * - Android emulator default: 10.0.2.2 host loopback alias (port 8001)
- * - Explicit localhost / 127.0.0.1 is kept as-is on emulator so `adb reverse` works
- *   when the emulator virtual NIC is down (10.0.2.2 unreachable).
- * - EXPO_PUBLIC_API_URL overrides when set
- * - Physical device: EXPO_PUBLIC_API_URL (LAN IP) or EXPO_PUBLIC_LAN_API_URL
+ * Resolve API base URL for emulator vs physical device / release APK.
+ * Release builds use public HTTPS (EXPO_PUBLIC_API_URL / app.json extra) — never
+ * emulator loopback or private LAN http:// URLs from .env (Android blocks cleartext).
  */
 function resolveApiUrl(): string {
-  const envUrl = process.env.EXPO_PUBLIC_API_URL;
-  const lanUrl = process.env.EXPO_PUBLIC_LAN_API_URL;
-  const onEmulator = Platform.OS === "android" && Constants.isDevice === false;
-
-  const isLoopback = (url: string) =>
-    /:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(url);
-
-  const toEmulatorHost = (url: string) =>
-    url.replace("://localhost", "://10.0.2.2").replace("://127.0.0.1", "://10.0.2.2");
-
-  if (onEmulator) {
-    if (envUrl) {
-      // Prefer adb reverse for loopback URLs — more reliable than 10.0.2.2 when eth0 is down.
-      if (isLoopback(envUrl)) return envUrl;
-      return toEmulatorHost(envUrl);
-    }
-    return "http://10.0.2.2:8001";
-  }
-  if (lanUrl) return lanUrl;
-  if (envUrl && !envUrl.includes("10.0.2.2")) return envUrl;
-  if (Platform.OS === "android") return envUrl ?? "http://10.0.2.2:8001";
-  return envUrl ?? "http://localhost:8001";
+  const extra = Constants.expoConfig?.extra as { apiUrl?: string } | undefined;
+  return resolveApiBaseUrl({
+    envUrl: process.env.EXPO_PUBLIC_API_URL,
+    lanUrl: process.env.EXPO_PUBLIC_LAN_API_URL,
+    extraUrl: extra?.apiUrl,
+    platform: Platform.OS,
+    isDevice: Constants.isDevice !== false,
+    isDev: typeof __DEV__ === "boolean" ? __DEV__ : false,
+    allowPrivateApi: (process.env.EXPO_PUBLIC_ALLOW_PRIVATE_API ?? "").trim() === "1",
+  });
 }
 
 export const API_URL = resolveApiUrl();
@@ -108,41 +97,7 @@ export const tokenStore = {
 
 /** Turn an API failure into a user-facing message (free-tier hosting can be slow to wake up). */
 export function describeApiError(e: unknown, action: string): string {
-  const err = e as { code?: string; response?: { status?: number; data?: { detail?: unknown } } };
-  const status = err.response?.status;
-  const detail = err.response?.data?.detail;
-  if (typeof detail === "string" && detail.trim()) return detail;
-  if (Array.isArray(detail) && detail.length > 0) {
-    const parts = detail
-      .map((item) => {
-        if (!item || typeof item !== "object") return null;
-        const row = item as { msg?: unknown; loc?: unknown };
-        const msg = typeof row.msg === "string" ? row.msg : null;
-        if (!msg) return null;
-        const loc = Array.isArray(row.loc)
-          ? row.loc.filter((p) => p !== "body" && typeof p === "string").join(".")
-          : "";
-        return loc ? `${loc}: ${msg}` : msg;
-      })
-      .filter(Boolean);
-    if (parts.length) return parts.slice(0, 3).join(" · ");
-  }
-  if (status === 404) {
-    return `Could not ${action}: this feature is not available on the server yet. Ask an admin to update the API.`;
-  }
-  if (status === 409) {
-    return `Could not ${action}: that conflicts with existing data.`;
-  }
-  if (err.code === "ECONNABORTED") {
-    return `The server is taking too long (it may be waking up). Please wait a minute and try again.`;
-  }
-  if (status && status >= 500) {
-    return `Could not ${action}: server error (${status}). Please try again.`;
-  }
-  if (Array.isArray(detail)) {
-    return `Could not ${action}. Please check the details you entered.`;
-  }
-  return `Could not ${action}. Check your internet connection and try again.`;
+  return describeApiErrorMessage(e, action);
 }
 
 export const api = axios.create({

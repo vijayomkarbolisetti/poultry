@@ -12,6 +12,8 @@ export type CreateShedDraft = {
   farmOwnerAccountId: string | null;
   /** Preserved for farmer-managed sheds; Screen 5 defaults create to owner-managed. */
   is_owner_managed: boolean;
+  /** Default true — matches backend default for new sheds. */
+  auto_vaccination_schedules_enabled: boolean;
   initial_farmer_membership_id: string | null;
   cataloguesLoading?: boolean;
   farmsAvailable?: boolean;
@@ -130,6 +132,7 @@ export function createShedPayload(draft: CreateShedDraft): {
   location_notes?: string;
   capacity?: number | null;
   is_owner_managed: boolean;
+  auto_vaccination_schedules_enabled: boolean;
   initial_farmer_membership_id?: string;
 } {
   const cap = parseCapacityText(draft.capacityText);
@@ -139,11 +142,13 @@ export function createShedPayload(draft: CreateShedDraft): {
     location_notes?: string;
     capacity?: number | null;
     is_owner_managed: boolean;
+    auto_vaccination_schedules_enabled: boolean;
     initial_farmer_membership_id?: string;
   } = {
     name: draft.name.trim(),
     code: draft.code.trim(),
     is_owner_managed: draft.is_owner_managed,
+    auto_vaccination_schedules_enabled: draft.auto_vaccination_schedules_enabled,
     capacity: cap.value,
   };
   if (draft.location_notes?.trim()) {
@@ -162,6 +167,7 @@ export function updateShedPayload(draft: CreateShedDraft): {
   location_notes: string;
   capacity: number | null;
   is_owner_managed: boolean;
+  auto_vaccination_schedules_enabled: boolean;
   initial_farmer_membership_id?: string;
 } {
   const cap = parseCapacityText(draft.capacityText);
@@ -170,12 +176,14 @@ export function updateShedPayload(draft: CreateShedDraft): {
     location_notes: string;
     capacity: number | null;
     is_owner_managed: boolean;
+    auto_vaccination_schedules_enabled: boolean;
     initial_farmer_membership_id?: string;
   } = {
     name: draft.name.trim(),
     location_notes: draft.location_notes?.trim() || "",
     capacity: cap.value,
     is_owner_managed: draft.is_owner_managed,
+    auto_vaccination_schedules_enabled: draft.auto_vaccination_schedules_enabled,
   };
   if (!draft.is_owner_managed && draft.initial_farmer_membership_id) {
     payload.initial_farmer_membership_id = draft.initial_farmer_membership_id;

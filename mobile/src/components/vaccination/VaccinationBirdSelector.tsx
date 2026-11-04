@@ -2,6 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useMemo, useState } from "react";
 import {
   FlatList,
+  Image,
   Keyboard,
   Modal,
   Pressable,
@@ -21,7 +22,10 @@ import {
   type BirdSelectFilter,
   type SelectableBirdRow,
 } from "../../features/vaccination/birdSelectionHelpers";
+import { birdIcons } from "../../theme/media";
 import { vaccineUi as ui } from "../../theme/vaccineUi";
+import { typography } from "../../theme/tokens";
+
 
 type Props = {
   visible: boolean;
@@ -289,7 +293,7 @@ export function VaccinationBirdSelector({
                     color={!selectable ? ui.mutedSoft : on ? ui.brand : ui.muted}
                   />
                   <View style={styles.avatar}>
-                    <Ionicons name="egg-outline" size={16} color={ui.brand} />
+                    <Image source={birdIcons.bird} style={styles.avatarImg} resizeMode="cover" />
                   </View>
                   <View style={styles.rowCopy}>
                     <Text style={styles.band} numberOfLines={1}>
@@ -367,8 +371,8 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
   titleIcon: { paddingTop: 2 },
   titleCopy: { flex: 1, gap: 2 },
-  title: { fontSize: 18, fontWeight: "800", color: ui.ink },
-  subtitle: { fontSize: 13, fontWeight: "600", color: ui.muted },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink },
+  subtitle: { fontSize: typography.secondary.fontSize, fontWeight: "600", color: ui.muted },
   closeBtn: {
     width: 36,
     height: 36,
@@ -390,7 +394,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     minHeight: 48,
   },
-  search: { flex: 1, fontSize: 15, fontWeight: "600", color: ui.ink, paddingVertical: 10 },
+  search: { flex: 1, fontSize: typography.body.fontSize, fontWeight: "600", color: ui.ink, paddingVertical: 10 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     borderRadius: 999,
@@ -401,7 +405,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   chipOn: { backgroundColor: ui.brand, borderColor: ui.brand },
-  chipText: { fontSize: 12, fontWeight: "700", color: ui.ink },
+  chipText: { fontSize: typography.caption.fontSize, fontWeight: "700", color: ui.ink },
   chipTextOn: { color: ui.white },
   bulkRow: {
     flexDirection: "row",
@@ -413,9 +417,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: ui.cardBorder,
   },
-  bulkHint: { flex: 1, fontSize: 12, fontWeight: "600", color: ui.muted },
+  bulkHint: { flex: 1, fontSize: typography.caption.fontSize, fontWeight: "600", color: ui.muted },
   bulkActions: { flexDirection: "row", alignItems: "center", gap: 12 },
-  bulkLink: { fontSize: 13, fontWeight: "800", color: ui.brand },
+  bulkLink: { fontSize: typography.secondary.fontSize, fontWeight: "800", color: ui.brand },
   listContent: { paddingHorizontal: ui.horizontal, paddingBottom: 12 },
   emptyList: { flexGrow: 1, justifyContent: "center", paddingHorizontal: ui.horizontal },
   row: {
@@ -435,26 +439,28 @@ const styles = StyleSheet.create({
     backgroundColor: ui.brandSoft,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
   },
+  avatarImg: { width: "100%", height: "100%" },
   rowCopy: { flex: 1, minWidth: 0, gap: 2 },
-  band: { fontSize: 15, fontWeight: "800", color: ui.ink },
-  meta: { fontSize: 12, fontWeight: "600", color: ui.muted },
+  band: { fontSize: typography.body.fontSize, fontWeight: "800", color: ui.ink },
+  meta: { fontSize: typography.caption.fontSize, fontWeight: "600", color: ui.muted },
   badge: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 4 },
   badgeOk: { backgroundColor: ui.brandSoft },
   badgeMuted: { backgroundColor: "#EEF1F0" },
-  badgeText: { fontSize: 11, fontWeight: "800" },
+  badgeText: { fontSize: typography.overline.fontSize, fontWeight: "800" },
   badgeTextOk: { color: ui.brand },
   badgeTextMuted: { color: ui.muted },
   footerHint: {
     textAlign: "center",
-    fontSize: 12,
+    fontSize: typography.caption.fontSize,
     fontWeight: "600",
     color: ui.mutedSoft,
     paddingVertical: 12,
   },
   empty: { alignItems: "center", gap: 8, paddingVertical: 40 },
-  emptyTitle: { fontSize: 16, fontWeight: "800", color: ui.ink, textAlign: "center" },
-  emptyBody: { fontSize: 13, fontWeight: "600", color: ui.muted, textAlign: "center", lineHeight: 18 },
+  emptyTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: ui.ink, textAlign: "center" },
+  emptyBody: { fontSize: typography.secondary.fontSize, fontWeight: "600", color: ui.muted, textAlign: "center", lineHeight: 18 },
   footer: {
     borderTopWidth: 1,
     borderTopColor: ui.cardBorder,
@@ -464,11 +470,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   footerCopy: { gap: 2 },
-  footerCount: { fontSize: 15, fontWeight: "800", color: ui.ink },
-  footerSub: { fontSize: 12, fontWeight: "600", color: ui.muted, lineHeight: 16 },
+  footerCount: { fontSize: typography.body.fontSize, fontWeight: "800", color: ui.ink },
+  footerSub: { fontSize: typography.caption.fontSize, fontWeight: "600", color: ui.muted, lineHeight: 16 },
   footerActions: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10 },
   clearBtn: { paddingHorizontal: 12, paddingVertical: 12 },
-  clearText: { fontSize: 14, fontWeight: "700", color: ui.muted },
+  clearText: { fontSize: typography.label.fontSize, fontWeight: "700", color: ui.muted },
   continueBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -479,5 +485,5 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
   },
   continueDisabled: { opacity: 0.45 },
-  continueText: { color: ui.white, fontWeight: "800", fontSize: 15 },
+  continueText: { color: ui.white, fontWeight: "800", fontSize: typography.bodyStrong.fontSize },
 });

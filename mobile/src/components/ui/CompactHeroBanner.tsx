@@ -19,7 +19,7 @@ type Props = {
  */
 export function CompactHeroBanner({
   source,
-  height = 168,
+  height = 188,
   style,
   accessibilityLabel = "Decorative farm illustration",
   curveFill,
@@ -28,7 +28,7 @@ export function CompactHeroBanner({
   return (
     <ImmersiveHeroHeader
       source={source}
-      minHeight={Math.max(140, height)}
+      minHeight={height}
       style={style}
       accessibilityLabel={accessibilityLabel}
       curveFill={curveFill}

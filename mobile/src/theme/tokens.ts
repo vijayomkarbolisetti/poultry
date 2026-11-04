@@ -103,16 +103,42 @@ export const radius = {
   pill: 999,
 };
 
+/**
+ * App-wide typography contract (Nov 2026).
+ * Prefer these roles over hard-coded fontSize values.
+ *
+ * Allowed sizes: 11, 12, 13, 14, 16, 17, 20–22, 28.
+ * Exceptions must be documented at the call site.
+ */
 export const typography = {
-  display: { fontSize: 32, fontWeight: "800" as const, lineHeight: 38, letterSpacing: -0.6 },
-  heading: { fontSize: 24, fontWeight: "800" as const, lineHeight: 30, letterSpacing: -0.4 },
-  title: { fontSize: 22, fontWeight: "700" as const, lineHeight: 28 },
+  /** Rare hero / success / KPI emphasis */
+  display: { fontSize: 28, fontWeight: "800" as const, lineHeight: 34, letterSpacing: -0.5 },
+  /** Normal page / screen titles */
+  screenTitle: { fontSize: 22, fontWeight: "800" as const, lineHeight: 28, letterSpacing: -0.3 },
+  /** Section and card headings */
+  sectionTitle: { fontSize: 16, fontWeight: "700" as const, lineHeight: 22 },
+  /** Primary reading text */
   body: { fontSize: 16, fontWeight: "400" as const, lineHeight: 24 },
+  /** Emphasized body / primary values in lists */
   bodyStrong: { fontSize: 16, fontWeight: "700" as const, lineHeight: 24 },
+  /** Form field labels */
   label: { fontSize: 14, fontWeight: "600" as const, lineHeight: 18 },
-  caption: { fontSize: 14, fontWeight: "500" as const, lineHeight: 20 },
-  overline: { fontSize: 11, fontWeight: "800" as const, lineHeight: 14, letterSpacing: 1.1 },
+  /** Secondary text and metadata */
+  secondary: { fontSize: 13, fontWeight: "500" as const, lineHeight: 18 },
+  /** Hints, captions, helper text */
+  caption: { fontSize: 12, fontWeight: "500" as const, lineHeight: 16 },
+  /** Compact overlines, badges, tab labels */
+  overline: { fontSize: 11, fontWeight: "700" as const, lineHeight: 14, letterSpacing: 0.4 },
+  /** Primary button label */
   button: { fontSize: 17, fontWeight: "700" as const, lineHeight: 22 },
+  /** Band number entry (intentional emphasis) */
+  bandInput: { fontSize: 22, fontWeight: "800" as const, lineHeight: 28, letterSpacing: 0.4 },
+
+  // --- Backward-compatible aliases (prefer semantic names above) ---
+  /** @deprecated Use `screenTitle` */
+  heading: { fontSize: 22, fontWeight: "800" as const, lineHeight: 28, letterSpacing: -0.3 },
+  /** @deprecated Use `screenTitle` */
+  title: { fontSize: 22, fontWeight: "800" as const, lineHeight: 28, letterSpacing: -0.3 },
 };
 
 export const icons = {

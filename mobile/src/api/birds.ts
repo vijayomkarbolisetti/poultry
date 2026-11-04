@@ -30,7 +30,8 @@ export type BirdSearchResult = {
 
 export type BirdProfileVaccinationEvent = {
   id: string;
-  vaccine_definition_id: string;
+  vaccine_definition_id: string | null;
+  custom_vaccine_name?: string | null;
   vaccine_name: string | null;
   administration_date: string;
   birds_covered: number;
@@ -44,6 +45,8 @@ export type BirdProfileVaccinationEvent = {
   verification_status: string;
   notes: string | null;
   scheduled_dose_id: string | null;
+  /** scheduled = linked to a dose task; manual = ad-hoc / custom recording */
+  recording_kind?: "scheduled" | "manual" | string;
   created_at: string;
   /** individual = tagged to this bird; cohort = full hatch-cohort population coverage */
   coverage_scope?: "individual" | "cohort";
@@ -71,6 +74,9 @@ export type BirdProfileLifecycle = {
   buyer_name?: string | null;
   buyer_mobile?: string | null;
   created_at: string;
+  shed_id?: string | null;
+  from_shed_name?: string | null;
+  to_shed_name?: string | null;
 };
 
 export type BirdParentRef = {
@@ -165,6 +171,28 @@ export type SoldBirdList = {
   items: SoldBirdHit[];
 };
 
+export type DeadBirdHit = {
+  id: string;
+  band_id: string | null;
+  display_code: string | null;
+  breed: string | null;
+  batch_code: string;
+  shed_id: string;
+  shed_name: string | null;
+  shed_code: string | null;
+  died_on: string;
+  reason: string | null;
+  lifecycle_status: string;
+  is_active: boolean;
+};
+
+export type DeadBirdList = {
+  total: number;
+  limit: number;
+  offset: number;
+  items: DeadBirdHit[];
+};
+
 export async function searchBirds(opts: {
   q: string;
   limit?: number;
@@ -209,6 +237,25 @@ export async function listSoldBirds(opts: {
       q: opts.q?.trim() || undefined,
       sold_from: opts.soldFrom || undefined,
       sold_to: opts.soldTo || undefined,
+      limit: opts.limit ?? 20,
+      offset: opts.offset ?? 0,
+    },
+  });
+  return data;
+}
+
+export async function listDeadBirds(opts: {
+  q?: string;
+  diedFrom?: string | null;
+  diedTo?: string | null;
+  limit?: number;
+  offset?: number;
+}): Promise<DeadBirdList> {
+  const { data } = await api.get<DeadBirdList>("/birds/dead-birds", {
+    params: {
+      q: opts.q?.trim() || undefined,
+      died_from: opts.diedFrom || undefined,
+      died_to: opts.diedTo || undefined,
       limit: opts.limit ?? 20,
       offset: opts.offset ?? 0,
     },

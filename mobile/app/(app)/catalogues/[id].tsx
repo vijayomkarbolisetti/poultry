@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useMemo, useRef, useState } from "react";
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,7 +27,7 @@ import {
   type CatalogueSummary,
 } from "../../../src/api/catalogues";
 import { describeApiError } from "../../../src/api/client";
-import { AppDialog } from "../../../src/components/ui/AppDialog";
+import { AppDialog, type AppDialogOption } from "../../../src/components/ui/AppDialog";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
@@ -44,8 +43,15 @@ import { catalogueAgeRangeLabel } from "../../../src/features/catalogues/catalog
 import { vaccineUi as ui } from "../../../src/theme/vaccineUi";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { toast } from "../../../src/ui/toast/toastStore";
+import { typography } from "../../../src/theme/tokens";
+
 
 type TabKey = "schedule" | "details";
+type ChoiceDialog = {
+  title: string;
+  description?: string;
+  options: AppDialogOption[];
+};
 
 function dayTone(index: number) {
   const color = ui.dayPalette[index % ui.dayPalette.length];
@@ -71,6 +77,7 @@ export default function CatalogueDetailScreen() {
     preview: CataloguePreviewUpdate;
   } | null>(null);
   const [removeSaving, setRemoveSaving] = useState(false);
+  const [choice, setChoice] = useState<ChoiceDialog | null>(null);
 
   const query = useQuery({
     queryKey: ["catalogue", id],
@@ -149,26 +156,49 @@ export default function CatalogueDetailScreen() {
   const onPlatformAction = () => {
     if (!cat?.is_platform || !canManage) return;
     if (farmCopies.length === 1) {
-      Alert.alert(cat.name, "A farm copy of this schedule already exists.", [
-        { text: "Open existing copy", onPress: () => openExistingCopy(farmCopies[0]) },
-        { text: "Clone another copy", onPress: () => setShowCloneConfirm(true) },
-        { text: "Cancel", style: "cancel" },
-      ]);
+      setChoice({
+        title: cat.name,
+        description: "A farm copy of this schedule already exists.",
+        options: [
+          {
+            label: "Open existing copy",
+            onPress: () => {
+              setChoice(null);
+              openExistingCopy(farmCopies[0]);
+            },
+          },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setShowCloneConfirm(true);
+            },
+          },
+        ],
+      });
       return;
     }
     if (farmCopies.length > 1) {
-      Alert.alert(
-        cat.name,
-        "Multiple farm copies exist. Open one from My Catalogues, or clone another copy.",
-        [
+      setChoice({
+        title: cat.name,
+        description: "Multiple farm copies exist. Open one from My Catalogues, or clone another copy.",
+        options: [
           {
-            text: "Open first copy",
-            onPress: () => openExistingCopy(farmCopies[0]),
+            label: "Open first copy",
+            onPress: () => {
+              setChoice(null);
+              openExistingCopy(farmCopies[0]);
+            },
           },
-          { text: "Clone another copy", onPress: () => setShowCloneConfirm(true) },
-          { text: "Cancel", style: "cancel" },
+          {
+            label: "Clone another copy",
+            onPress: () => {
+              setChoice(null);
+              setShowCloneConfirm(true);
+            },
+          },
         ],
-      );
+      });
       return;
     }
     setShowCloneConfirm(true);
@@ -264,24 +294,69 @@ export default function CatalogueDetailScreen() {
 
   const onMenu = () => {
     if (!cat || !editable) return;
-    const buttons: { text: string; style?: "cancel" | "destructive"; onPress?: () => void }[] = [
-      { text: "Add vaccine", onPress: openAddVaccine },
-      { text: "Edit name & description", onPress: startDetailsEdit },
+    const options: AppDialogOption[] = [
+      {
+        label: "Add vaccine",
+        onPress: () => {
+          setChoice(null);
+          openAddVaccine();
+        },
+      },
+      {
+        label: "Edit name & description",
+        onPress: () => {
+          setChoice(null);
+          startDetailsEdit();
+        },
+      },
     ];
     const first = scheduleItems[0];
     if (first?.id) {
-      buttons.push({
-        text: "Edit first vaccine",
-        onPress: () => openItem(first),
+      options.push({
+        label: "Edit first vaccine",
+        onPress: () => {
+          setChoice(null);
+          openItem(first);
+        },
       });
-      buttons.push({
-        text: "Remove first vaccine",
-        style: "destructive",
-        onPress: () => void startRemoveItem(first),
+      options.push({
+        label: "Remove first vaccine",
+        tone: "destructive",
+        onPress: () => {
+          setChoice(null);
+          void startRemoveItem(first);
+        },
       });
     }
-    buttons.push({ text: "Cancel", style: "cancel" });
-    Alert.alert(cat.name, "Manage this farm catalogue.", buttons);
+    setChoice({
+      title: cat.name,
+      description: "Manage this farm catalogue.",
+      options,
+    });
+  };
+
+  const onItemMenu = (item: CatalogueItem) => {
+    if (!editable || !item.id) return;
+    setChoice({
+      title: item.name,
+      options: [
+        {
+          label: "Edit",
+          onPress: () => {
+            setChoice(null);
+            openItem(item);
+          },
+        },
+        {
+          label: "Remove",
+          tone: "destructive",
+          onPress: () => {
+            setChoice(null);
+            void startRemoveItem(item);
+          },
+        },
+      ],
+    });
   };
 
   return (
@@ -405,18 +480,7 @@ export default function CatalogueDetailScreen() {
                         disabled={!editable}
                         onPress={() => openItem(item)}
                         onLongPress={
-                          editable && item.id
-                            ? () =>
-                                Alert.alert(item.name, undefined, [
-                                  { text: "Edit", onPress: () => openItem(item) },
-                                  {
-                                    text: "Remove",
-                                    style: "destructive",
-                                    onPress: () => void startRemoveItem(item),
-                                  },
-                                  { text: "Cancel", style: "cancel" },
-                                ])
-                            : undefined
+                          editable && item.id ? () => onItemMenu(item) : undefined
                         }
                         accessibilityRole={editable ? "button" : undefined}
                         accessibilityLabel={item.name}
@@ -481,6 +545,21 @@ export default function CatalogueDetailScreen() {
           </ScrollView>
         </>
       ) : null}
+
+      <AppDialog
+        visible={Boolean(choice)}
+        title={choice?.title ?? ""}
+        description={choice?.description}
+        tone="info"
+        dismissible
+        onDismiss={() => setChoice(null)}
+        options={choice?.options}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setChoice(null),
+        }}
+      />
 
       <AppDialog
         visible={showCloneConfirm}
@@ -600,7 +679,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     flex: 1,
-    fontSize: 17,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "800",
     color: ui.ink,
     lineHeight: 22,
@@ -620,7 +699,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  defaultBadgeText: { fontSize: 10, fontWeight: "800", color: ui.brand },
+  defaultBadgeText: { fontSize: typography.overline.fontSize, fontWeight: "800", color: ui.brand },
   platformBadge: {
     alignSelf: "flex-start",
     backgroundColor: "#EEF2F0",
@@ -628,8 +707,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  platformBadgeText: { fontSize: 10, fontWeight: "800", color: ui.muted },
-  meta: { fontSize: 12, fontWeight: "600", color: ui.muted },
+  platformBadgeText: { fontSize: typography.overline.fontSize, fontWeight: "800", color: ui.muted },
+  meta: { fontSize: typography.caption.fontSize, fontWeight: "600", color: ui.muted },
   cloneCta: {
     alignSelf: "flex-start",
     marginTop: 4,
@@ -638,10 +717,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  cloneCtaText: { color: ui.white, fontWeight: "800", fontSize: 13 },
+  cloneCtaText: { color: ui.white, fontWeight: "800", fontSize: typography.secondary.fontSize },
   tabs: { flexDirection: "row", gap: 18, marginTop: 2 },
   tabBtn: { paddingBottom: 2 },
-  tabText: { fontSize: 14, fontWeight: "700", color: ui.muted },
+  tabText: { fontSize: typography.label.fontSize, fontWeight: "700", color: ui.muted },
   tabTextOn: { color: ui.brand },
   tabUnderline: { marginTop: 3, height: 3, borderRadius: 2, backgroundColor: ui.brand },
   tabUnderlineOff: { marginTop: 3, height: 3 },
@@ -673,12 +752,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dayCaption: { fontSize: 9, fontWeight: "700", letterSpacing: 0.2 },
-  dayValue: { fontSize: 15, fontWeight: "800", marginTop: 0 },
+  dayCaption: { fontSize: typography.caption.fontSize, fontWeight: "700", letterSpacing: 0.2 },
+  dayValue: { fontSize: typography.bodyStrong.fontSize, fontWeight: "800", marginTop: 0 },
   scheduleBody: { flex: 1, gap: 1, minWidth: 0 },
-  scheduleTitle: { fontSize: 14, fontWeight: "800", color: ui.ink },
-  scheduleMeta: { fontSize: 12, fontWeight: "600", color: ui.muted },
-  scheduleType: { fontSize: 11, fontWeight: "500", color: ui.mutedSoft },
+  scheduleTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: ui.ink },
+  scheduleMeta: { fontSize: typography.caption.fontSize, fontWeight: "600", color: ui.muted },
+  scheduleType: { fontSize: typography.overline.fontSize, fontWeight: "500", color: ui.mutedSoft },
   notSpecified: { fontWeight: "500", color: ui.mutedSoft, fontStyle: "italic" },
   detailsCard: {
     backgroundColor: ui.white,
@@ -696,14 +775,14 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     width: 92,
-    fontSize: 12,
+    fontSize: typography.caption.fontSize,
     fontWeight: "700",
     color: ui.muted,
     paddingTop: 1,
   },
   detailValue: {
     flex: 1,
-    fontSize: 14,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "700",
     color: ui.ink,
     lineHeight: 19,
@@ -713,7 +792,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingVertical: 6,
   },
-  editDetailsBtnText: { color: ui.brand, fontWeight: "800", fontSize: 13 },
+  editDetailsBtnText: { color: ui.brand, fontWeight: "800", fontSize: typography.secondary.fontSize },
   muted: { color: ui.muted, fontWeight: "600" },
   emptyBox: { gap: 12, paddingTop: 8 },
   addVaccineBtn: {
@@ -723,12 +802,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  addVaccineBtnText: { color: ui.white, fontWeight: "800", fontSize: 14 },
+  addVaccineBtnText: { color: ui.white, fontWeight: "800", fontSize: typography.label.fontSize },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   centerPad: { padding: 20 },
-  error: { color: ui.muted, fontSize: 14 },
+  error: { color: ui.muted, fontSize: typography.label.fontSize },
   dialogFields: { gap: 8, marginTop: 8 },
-  dialogLabel: { fontSize: 12, fontWeight: "700", color: ui.muted },
+  dialogLabel: { fontSize: typography.caption.fontSize, fontWeight: "700", color: ui.muted },
   dialogInput: {
     backgroundColor: "#F8FAF9",
     borderWidth: 1,
@@ -736,7 +815,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     color: ui.ink,
     fontWeight: "600",
   },

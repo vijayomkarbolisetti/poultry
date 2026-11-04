@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { birdUi } from "../../theme/birdManagementUi";
 import { Button } from "../ui/Button";
+import { typography } from "../../theme/tokens";
+
 
 export type BirdsFilterState = {
   flockId: string | null;
@@ -122,7 +124,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   titleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  title: { fontSize: 18, fontWeight: "800", color: birdUi.text },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text },
   closeBtn: {
     width: 40,
     height: 40,
@@ -131,7 +133,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: birdUi.paleMint,
   },
-  label: { fontSize: 13, fontWeight: "700", color: birdUi.textSecondary },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.textSecondary },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: {
     paddingHorizontal: 14,
@@ -142,7 +144,7 @@ const styles = StyleSheet.create({
     backgroundColor: birdUi.white,
   },
   chipOn: { backgroundColor: birdUi.paleMint, borderColor: birdUi.primary },
-  chipText: { fontSize: 14, fontWeight: "600", color: birdUi.textSecondary },
+  chipText: { fontSize: typography.label.fontSize, fontWeight: "600", color: birdUi.textSecondary },
   chipTextOn: { color: birdUi.primary },
   actions: { flexDirection: "row", gap: 10, marginTop: 4 },
 });

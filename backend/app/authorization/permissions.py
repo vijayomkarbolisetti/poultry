@@ -35,7 +35,12 @@ async def membership_has_permission(
 
 
 async def require_org_context(ctx: AuthContext = Depends(get_auth_context)) -> AuthContext:
-    if ctx.owner_account_id is None or ctx.membership is None:
+    if ctx.owner_account_id is None:
+        raise HTTPException(status_code=400, detail="X-Owner-Account-Id header required")
+    # Platform super admin may operate in a selected farm without a membership (D10).
+    if ctx.user.is_platform_super_admin:
+        return ctx
+    if ctx.membership is None:
         raise HTTPException(status_code=400, detail="X-Owner-Account-Id header required")
     return ctx
 
@@ -45,6 +50,8 @@ def require_permission(permission_code: str):
         ctx: AuthContext = Depends(require_org_context),
         db: AsyncSession = Depends(get_db),
     ) -> AuthContext:
+        if ctx.user.is_platform_super_admin:
+            return ctx
         if ctx.membership is None:
             raise HTTPException(status_code=403, detail="Forbidden")
         if ctx.membership.role == MembershipRole.owner:
@@ -79,7 +86,11 @@ async def assert_shed_access(
     *,
     permission_code: str = "shed.view",
 ) -> None:
-    if ctx.membership is None or ctx.owner_account_id is None:
+    if ctx.owner_account_id is None:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if ctx.user.is_platform_super_admin:
+        return
+    if ctx.membership is None:
         raise HTTPException(status_code=403, detail="Forbidden")
     if ctx.membership.role == MembershipRole.owner:
         return

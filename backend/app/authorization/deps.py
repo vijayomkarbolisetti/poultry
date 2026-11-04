@@ -103,6 +103,7 @@ async def get_auth_context(
                     u.full_name,
                     u.is_active,
                     u.is_platform_super_admin,
+                    u.must_change_password,
                     u.created_at AS user_created_at,
                     u.updated_at AS user_updated_at,
                     m.id AS membership_id,
@@ -141,6 +142,7 @@ async def get_auth_context(
             full_name=row["full_name"],
             is_active=row["is_active"],
             is_platform_super_admin=row["is_platform_super_admin"],
+            must_change_password=bool(row["must_change_password"]),
             created_at=row["user_created_at"],
             updated_at=row["user_updated_at"],
         ),
@@ -164,6 +166,16 @@ async def get_auth_context(
         )
     elif owner_id is not None and not user.is_platform_super_admin:
         raise HTTPException(status_code=403, detail="No active membership for this organization")
+    elif owner_id is not None and user.is_platform_super_admin:
+        # Ephemeral owner-scoped membership so farm services treat super admin like an owner
+        # without requiring a stored owner_memberships row (D10 revised).
+        membership = OwnerMembership(
+            id=user.id,  # stable non-null id for assert paths; not persisted
+            owner_account_id=owner_id,
+            user_id=user.id,
+            role=MembershipRole.owner,
+            is_active=True,
+        )
 
     return AuthContext(user=user, membership=membership, owner_account_id=owner_id)
 
@@ -176,4 +188,10 @@ def require_owner_or_admin(ctx: AuthContext = Depends(get_auth_context)) -> Auth
         MembershipRole.org_admin,
     }:
         raise HTTPException(status_code=403, detail="Owner or org admin required")
+    return ctx
+
+
+def require_platform_super_admin(ctx: AuthContext = Depends(get_auth_context)) -> AuthContext:
+    if not ctx.user.is_platform_super_admin:
+        raise HTTPException(status_code=403, detail="Platform super admin required")
     return ctx

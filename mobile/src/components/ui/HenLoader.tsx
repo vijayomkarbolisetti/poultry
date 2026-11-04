@@ -1,7 +1,7 @@
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
 import { BrandLogo } from "../brand/BrandLogo";
-import { colors, space } from "../../theme/tokens";
+import { colors, space, typography } from "../../theme/tokens";
 
 type Props = {
   label?: string;
@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.inkMuted,
-    fontSize: 15,
+    fontSize: typography.label.fontSize,
     fontWeight: "700",
   },
 });

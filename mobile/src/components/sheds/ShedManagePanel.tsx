@@ -17,7 +17,7 @@ import {
 import { useAuth } from "../../features/auth/AuthContext";
 import { hasPermission } from "../../features/auth/permissions";
 import { birdUi } from "../../theme/birdManagementUi";
-import { space } from "../../theme/tokens";
+import { space, typography } from "../../theme/tokens";
 import { toast } from "../../ui/toast/toastStore";
 import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/Button";
@@ -252,15 +252,15 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionRow: { flexDirection: "row", gap: space.sm },
-  notes: { fontSize: 14, color: birdUi.text },
+  notes: { fontSize: typography.label.fontSize, color: birdUi.text },
   eyebrow: {
-    fontSize: 12,
+    fontSize: typography.caption.fontSize,
     fontWeight: "700",
     color: birdUi.muted,
     textTransform: "uppercase",
     marginTop: 4,
   },
-  muted: { color: birdUi.muted, fontSize: 14 },
-  assignLine: { fontSize: 14, color: birdUi.text, fontWeight: "600" },
+  muted: { color: birdUi.muted, fontSize: typography.secondary.fontSize },
+  assignLine: { fontSize: typography.label.fontSize, color: birdUi.text, fontWeight: "600" },
   error: { color: birdUi.error, fontWeight: "600" },
 });

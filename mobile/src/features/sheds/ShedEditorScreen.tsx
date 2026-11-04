@@ -14,6 +14,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -48,6 +49,8 @@ import { firstRouteParam } from "../../navigation/routeParams";
 import { safeBack } from "../../navigation/safeBack";
 import { vaccineUi as ui } from "../../theme/vaccineUi";
 import { toast } from "../../ui/toast/toastStore";
+import { typography } from "../../theme/tokens";
+
 import {
   createShedPayload,
   mergeCreatedFarmerIntoList,
@@ -91,11 +94,13 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
   const [catalogueId, setCatalogueId] = useState<string | null>(null);
   const [existingCode, setExistingCode] = useState<string | null>(null);
   const [ownerManaged, setOwnerManaged] = useState(true);
+  const [autoSchedulesEnabled, setAutoSchedulesEnabled] = useState(true);
   const [farmerId, setFarmerId] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(mode === "create");
   const [cataloguePickerOpen, setCataloguePickerOpen] = useState(false);
   const [farmerPickerOpen, setFarmerPickerOpen] = useState(false);
   const [addFarmerOpen, setAddFarmerOpen] = useState(false);
+  const [disableSchedulesConfirmOpen, setDisableSchedulesConfirmOpen] = useState(false);
   const [ownerManagedConfirmOpen, setOwnerManagedConfirmOpen] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -200,6 +205,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
     );
     setExistingCode(shed.code);
     setOwnerManaged(shed.is_owner_managed);
+    setAutoSchedulesEnabled(shed.auto_vaccination_schedules_enabled !== false);
     if (shed.is_owner_managed) {
       setFarmerId(null);
     } else {
@@ -346,6 +352,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
       catalogueId,
       farmOwnerAccountId: farmId,
       is_owner_managed: ownerManaged,
+      auto_vaccination_schedules_enabled: autoSchedulesEnabled,
       initial_farmer_membership_id: ownerManaged ? null : farmerId,
       cataloguesLoading: catalogues.isLoading || assignment.isLoading,
       farmsAvailable: hasActiveFarm,
@@ -651,7 +658,7 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
               accessibilityLabel="Select vaccination catalogue"
             >
               <View style={styles.catalogueIcon}>
-                <BrandLogo size={28} accessibilityLabel="PoultryTrack" />
+                <BrandLogo size={28} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.catalogueTitle} numberOfLines={2}>
@@ -672,6 +679,35 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
               Catalogue is shown for reference. You need permission to change the farm default.
             </Text>
           ) : null}
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={styles.settingTitle}>Automatic vaccination schedules</Text>
+              <Text style={styles.settingDesc}>
+                Automatically generate vaccination schedules and reminders for birds in this shed.
+              </Text>
+              {!autoSchedulesEnabled ? (
+                <Text style={styles.settingWarn}>
+                  Open due/overdue tasks are deactivated while this is off. Completed records are kept.
+                  You can still record vaccinations manually.
+                </Text>
+              ) : null}
+            </View>
+            <Switch
+              value={autoSchedulesEnabled}
+              onValueChange={(next) => {
+                if (!next && autoSchedulesEnabled && mode === "edit") {
+                  setDisableSchedulesConfirmOpen(true);
+                  return;
+                }
+                setAutoSchedulesEnabled(next);
+              }}
+              disabled={loading}
+              trackColor={{ false: ui.cardBorder, true: ui.brandSoft }}
+              thumbColor={autoSchedulesEnabled ? ui.brand : ui.mutedSoft}
+              accessibilityLabel="Automatic vaccination schedules"
+            />
+          </View>
 
           <FieldLabel text="Capacity (Birds)" />
           <TextInput
@@ -781,6 +817,27 @@ export function ShedEditorScreen({ mode, shedId }: Props) {
           },
         }}
       />
+
+      <AppDialog
+        visible={disableSchedulesConfirmOpen}
+        title="Turn off automatic schedules?"
+        description="Open vaccination tasks for this shed will be deactivated and will no longer appear as due or overdue. Completed vaccinations and history are kept. You can still record vaccinations manually. Re-enabling regenerates schedules from the catalogue without creating duplicate doses."
+        tone="warning"
+        onDismiss={() => setDisableSchedulesConfirmOpen(false)}
+        secondary={{
+          label: "Cancel",
+          variant: "secondary",
+          onPress: () => setDisableSchedulesConfirmOpen(false),
+        }}
+        primary={{
+          label: "Turn off",
+          variant: "primary",
+          onPress: () => {
+            setDisableSchedulesConfirmOpen(false);
+            setAutoSchedulesEnabled(false);
+          },
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -868,7 +925,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     textAlign: "center",
-    fontSize: 18,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "700",
     color: ui.ink,
   },
@@ -882,10 +939,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   saveBtnDisabled: { opacity: 0.6 },
-  saveBtnText: { color: ui.white, fontWeight: "700", fontSize: 14 },
+  saveBtnText: { color: ui.white, fontWeight: "700", fontSize: typography.label.fontSize },
   savePlaceholder: { width: 64 },
   content: { paddingHorizontal: 20, paddingBottom: 40, gap: 8 },
-  label: { fontSize: 14, fontWeight: "700", color: ui.ink, marginTop: 10 },
+  label: { fontSize: typography.label.fontSize, fontWeight: "700", color: ui.ink, marginTop: 10 },
   required: { color: "#C62828", fontWeight: "700" },
   input: {
     backgroundColor: ui.white,
@@ -894,7 +951,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     color: ui.ink,
   },
   notesInput: { minHeight: 96, paddingTop: 12 },
@@ -910,8 +967,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  selectValue: { flex: 1, fontSize: 15, color: ui.ink, fontWeight: "600" },
-  selectMeta: { fontSize: 12, color: ui.muted, marginTop: 2, fontWeight: "600" },
+  selectValue: { flex: 1, fontSize: typography.bodyStrong.fontSize, color: ui.ink, fontWeight: "600" },
+  selectMeta: { fontSize: typography.caption.fontSize, color: ui.muted, marginTop: 2, fontWeight: "600" },
   placeholder: { color: ui.mutedSoft, fontWeight: "500" },
   segmentRow: {
     flexDirection: "row",
@@ -931,7 +988,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   segmentBtnOn: { backgroundColor: ui.brandSoftStrong },
-  segmentText: { fontSize: 13, fontWeight: "700", color: ui.muted, textAlign: "center" },
+  segmentText: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: ui.muted, textAlign: "center" },
   segmentTextOn: { color: ui.brand },
   addFarmerLink: {
     flexDirection: "row",
@@ -940,7 +997,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     alignSelf: "flex-start",
   },
-  addFarmerLinkText: { color: ui.brand, fontWeight: "700", fontSize: 14 },
+  addFarmerLinkText: { color: ui.brand, fontWeight: "700", fontSize: typography.label.fontSize },
   catalogueSelect: {
     backgroundColor: ui.white,
     borderWidth: 1,
@@ -960,8 +1017,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  catalogueTitle: { fontSize: 15, fontWeight: "700", color: ui.ink },
-  catalogueMeta: { fontSize: 12, color: ui.muted, marginTop: 2, fontWeight: "600" },
+  catalogueTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "700", color: ui.ink },
+  catalogueMeta: { fontSize: typography.caption.fontSize, color: ui.muted, marginTop: 2, fontWeight: "600" },
   catalogueLoading: {
     flexDirection: "row",
     alignItems: "center",
@@ -976,7 +1033,37 @@ const styles = StyleSheet.create({
   catalogueLoadingText: { color: ui.muted, fontWeight: "600" },
   catalogueErrorBox: { gap: 6 },
   retryLink: { color: ui.brand, fontWeight: "700" },
-  hint: { fontSize: 12, color: ui.muted, fontWeight: "600", lineHeight: 16 },
+  hint: { fontSize: typography.caption.fontSize, color: ui.muted, fontWeight: "600", lineHeight: 16 },
+  settingRow: {
+    marginTop: 14,
+    backgroundColor: ui.white,
+    borderWidth: 1,
+    borderColor: ui.cardBorder,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  settingTitle: {
+    fontSize: typography.label.fontSize,
+    fontWeight: "700",
+    color: ui.ink,
+  },
+  settingDesc: {
+    fontSize: typography.caption.fontSize,
+    color: ui.muted,
+    fontWeight: "600",
+    lineHeight: 16,
+  },
+  settingWarn: {
+    fontSize: typography.caption.fontSize,
+    color: "#B45309",
+    fontWeight: "600",
+    lineHeight: 16,
+    marginTop: 2,
+  },
   infoBanner: {
     marginTop: 16,
     backgroundColor: ui.infoBg,
@@ -986,8 +1073,8 @@ const styles = StyleSheet.create({
     gap: 10,
     alignItems: "flex-start",
   },
-  infoText: { flex: 1, fontSize: 13, lineHeight: 18, color: ui.infoText, fontWeight: "600" },
-  fieldError: { color: "#C62828", fontSize: 12, fontWeight: "600" },
+  infoText: { flex: 1, fontSize: typography.secondary.fontSize, lineHeight: 18, color: ui.infoText, fontWeight: "600" },
+  fieldError: { color: "#C62828", fontSize: typography.caption.fontSize, fontWeight: "600" },
   pageError: { color: "#C62828", marginHorizontal: 20, marginTop: 12, fontWeight: "600" },
   retryBtn: {
     marginHorizontal: 20,
@@ -1011,7 +1098,7 @@ const styles = StyleSheet.create({
     paddingBottom: 28,
     gap: 8,
   },
-  modalTitle: { fontSize: 16, fontWeight: "800", color: ui.ink, marginBottom: 4 },
+  modalTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: ui.ink, marginBottom: 4 },
   modalRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1021,10 +1108,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   modalRowOn: { backgroundColor: ui.highlightRow },
-  modalRowTitle: { fontSize: 15, fontWeight: "700", color: ui.ink },
-  modalRowMeta: { fontSize: 12, color: ui.muted, marginTop: 2, fontWeight: "600" },
+  modalRowTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "700", color: ui.ink },
+  modalRowMeta: { fontSize: typography.caption.fontSize, color: ui.muted, marginTop: 2, fontWeight: "600" },
   modalEmpty: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     color: ui.muted,
     fontWeight: "600",
     lineHeight: 18,
@@ -1037,7 +1124,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: ui.cardBorder,
   },
-  modalFooterActionText: { color: ui.brand, fontWeight: "800", fontSize: 15 },
+  modalFooterActionText: { color: ui.brand, fontWeight: "800", fontSize: typography.bodyStrong.fontSize },
   modalCancel: { alignItems: "center", paddingVertical: 12 },
   modalCancelText: { color: ui.muted, fontWeight: "700" },
 });

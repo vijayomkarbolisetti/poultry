@@ -171,6 +171,7 @@ async def create_shed(
     is_owner_managed: bool,
     initial_farmer_membership_id: UUID | None = None,
     capacity: int | None = None,
+    auto_vaccination_schedules_enabled: bool = True,
 ) -> Shed:
     """Create a shed; farmer-managed creates require an initial assignment in the same commit."""
     assert ctx.owner_account_id is not None
@@ -195,13 +196,19 @@ async def create_shed(
         capacity=capacity,
         is_owner_managed=is_owner_managed,
         is_active=True,
+        auto_vaccination_schedules_enabled=bool(auto_vaccination_schedules_enabled),
     )
     db.add(shed)
     try:
         # Unique (owner, code) can fail on flush before commit — catch both.
         await db.flush()  # obtain shed.id before assignment
 
-        after: dict = {"name": name, "code": code, "is_owner_managed": is_owner_managed}
+        after: dict = {
+            "name": name,
+            "code": code,
+            "is_owner_managed": is_owner_managed,
+            "auto_vaccination_schedules_enabled": shed.auto_vaccination_schedules_enabled,
+        }
         if initial_farmer_membership_id is not None:
             await _upsert_assignment(
                 db,
@@ -486,6 +493,7 @@ async def update_shed(
     initial_farmer_membership_id: UUID | None = None,
     capacity: int | None = None,
     capacity_provided: bool = False,
+    auto_vaccination_schedules_enabled: bool | None = None,
 ) -> Shed:
     """Update shed fields and management mode atomically (single commit)."""
     shed = await get_shed(db, ctx, shed_id)
@@ -495,7 +503,9 @@ async def update_shed(
         "is_active": shed.is_active,
         "is_owner_managed": shed.is_owner_managed,
         "capacity": shed.capacity,
+        "auto_vaccination_schedules_enabled": shed.auto_vaccination_schedules_enabled,
     }
+    prev_auto = shed.auto_vaccination_schedules_enabled
     if name is not None:
         shed.name = name.strip()
     if code is not None:
@@ -509,6 +519,8 @@ async def update_shed(
     # Prefer dedicated deactivate/reactivate endpoints for lifecycle; still allow PATCH.
     if is_active is not None:
         shed.is_active = is_active
+    if auto_vaccination_schedules_enabled is not None:
+        shed.auto_vaccination_schedules_enabled = bool(auto_vaccination_schedules_enabled)
 
     switching_to_owner = is_owner_managed is True
     switching_to_farmer = is_owner_managed is False
@@ -556,6 +568,26 @@ async def update_shed(
         elif is_owner_managed is not None:
             shed.is_owner_managed = target_owner_managed
 
+    suppressed_open_doses = 0
+    should_regen_schedules = (not prev_auto) and shed.auto_vaccination_schedules_enabled
+    regen_flock_ids: list[UUID] = []
+    if prev_auto and not shed.auto_vaccination_schedules_enabled:
+        from app.services import vaccine_service
+
+        suppressed_open_doses = await vaccine_service.suppress_open_schedules_for_shed(
+            db, ctx, shed.id, commit=False
+        )
+    elif should_regen_schedules:
+        regen_flock_ids = list(
+            await db.scalars(
+                select(Flock.id).where(
+                    Flock.shed_id == shed.id,
+                    Flock.owner_account_id == ctx.owner_account_id,
+                    Flock.status == FlockStatus.active,
+                )
+            )
+        )
+
     db.add(
         AuditLog(
             owner_account_id=ctx.owner_account_id,
@@ -569,6 +601,9 @@ async def update_shed(
                 "code": shed.code,
                 "is_active": shed.is_active,
                 "is_owner_managed": shed.is_owner_managed,
+                "auto_vaccination_schedules_enabled": shed.auto_vaccination_schedules_enabled,
+                "open_doses_suppressed": suppressed_open_doses,
+                "schedules_will_regenerate": should_regen_schedules,
                 "initial_farmer_membership_id": (
                     str(initial_farmer_membership_id) if initial_farmer_membership_id else None
                 ),
@@ -582,6 +617,14 @@ async def update_shed(
         await db.rollback()
         raise ShedError("Shed code already exists for this organization", "DUPLICATE_CODE") from exc
     await db.refresh(shed)
+
+    # Regenerate after commit so ensure_schedules can see the enabled flag and commit safely.
+    if should_regen_schedules and regen_flock_ids:
+        from app.services import catalogue_service
+
+        for flock_id in regen_flock_ids:
+            await catalogue_service.ensure_schedules_for_flock(db, ctx, flock_id)
+
     return shed
 
 

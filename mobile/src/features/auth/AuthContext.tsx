@@ -49,13 +49,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staleTime: 5 * 60_000,
   });
 
+  const isSuperAdmin = meQuery.data?.is_platform_super_admin === true;
   const resolvedOwner =
     ownerAccountId ?? meQuery.data?.memberships[0]?.owner_account_id ?? null;
 
   useEffect(() => {
     if (!meQuery.data) return;
     const first = meQuery.data.memberships[0]?.owner_account_id;
-    if (!ownerAccountId && first) {
+    // Super admins may have zero memberships — do not force a farm until they pick one.
+    if (!ownerAccountId && first && !meQuery.data.is_platform_super_admin) {
       setOwnerAccountId(first);
       void tokenStore.setOwnerId(first);
     }
@@ -102,7 +104,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (ownerId: string) => {
       setOwnerAccountId(ownerId);
       await tokenStore.setOwnerId(ownerId);
-      queryClient.clear();
+      // Drop farm-scoped caches only. Clearing auth/me leaves the app stuck on
+      // "Opening your farm…" while /me refetches (especially for super admins).
+      queryClient.removeQueries({
+        predicate: (query) => query.queryKey[0] !== "auth",
+      });
     },
     [queryClient],
   );
@@ -110,7 +116,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthState>(
     () => ({
       user: meQuery.data ?? null,
-      loading: !bootstrapped || (hasToken && (meQuery.isLoading || (!!meQuery.data && !resolvedOwner))),
+      loading:
+        !bootstrapped ||
+        (hasToken &&
+          (meQuery.isLoading || (!!meQuery.data && !resolvedOwner && !isSuperAdmin))),
       ownerAccountId: resolvedOwner,
       refreshSession,
       acceptSession,
@@ -123,6 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       bootstrapped,
       hasToken,
       resolvedOwner,
+      isSuperAdmin,
       refreshSession,
       acceptSession,
       signOut,

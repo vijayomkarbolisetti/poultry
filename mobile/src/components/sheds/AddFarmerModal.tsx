@@ -1,26 +1,22 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { z } from "zod";
 
 import { createFarmer, type Farmer } from "../../api/farmers";
 import { describeApiError } from "../../api/client";
 import { DEFAULT_FARMER_PERMS } from "../../features/auth/permissions";
 import { Button } from "../ui/Button";
+import { FormBottomSheet } from "../ui/FormBottomSheet";
 import { TextField } from "../ui/TextField";
-import { colors, radius, space } from "../../theme/tokens";
+import { colors, radius, space, typography } from "../../theme/tokens";
 import { toast } from "../../ui/toast/toastStore";
 
 const schema = z.object({
@@ -39,40 +35,16 @@ type Props = {
 
 /**
  * Nested farmer creation for New Shed — reuses createFarmer API without navigating away.
- * Keyboard height is applied explicitly because Android `pan` mode covers Modal sheets.
+ * Keyboard avoidance comes from FormBottomSheet (Android pan mode covers bare Modals).
  */
 export function AddFarmerModal({ visible, onClose, onCreated }: Props) {
-  const insets = useSafeAreaInsets();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const submitting = useRef(false);
-  const scrollRef = useRef<ScrollView>(null);
   const { control, handleSubmit, reset } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { full_name: "", email: "", password: "" },
   });
-
-  useEffect(() => {
-    if (!visible) {
-      setKeyboardHeight(0);
-      return;
-    }
-    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const onShow = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
-      // Keep fields / submit above the keyboard after layout.
-      requestAnimationFrame(() => {
-        scrollRef.current?.scrollToEnd({ animated: true });
-      });
-    });
-    const onHide = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
-    return () => {
-      onShow.remove();
-      onHide.remove();
-    };
-  }, [visible]);
 
   const close = () => {
     if (loading || submitting.current) return;
@@ -82,7 +54,7 @@ export function AddFarmerModal({ visible, onClose, onCreated }: Props) {
     onClose();
   };
 
-  const onSubmit = handleSubmit(async (values) => {
+  const submitFarmer = async (values: FormValues) => {
     if (submitting.current || loading) return;
     submitting.current = true;
     setLoading(true);
@@ -103,84 +75,68 @@ export function AddFarmerModal({ visible, onClose, onCreated }: Props) {
       setLoading(false);
       submitting.current = false;
     }
-  });
-
-  const bottomPad = Math.max(insets.bottom, space.md) + (keyboardHeight > 0 ? keyboardHeight : 0);
+  };
 
   return (
-    <Modal
+    <FormBottomSheet
       visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={close}
-      statusBarTranslucent
-    >
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <View style={styles.backdrop}>
-          <Pressable style={styles.dismissArea} onPress={close} accessibilityLabel="Dismiss" />
-          <View style={[styles.sheet, { paddingBottom: bottomPad }]}>
-            <View style={styles.header}>
-              <Text style={styles.title}>Add farmer</Text>
-              <Pressable onPress={close} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.close}>Close</Text>
-              </Pressable>
-            </View>
-            <ScrollView
-              ref={scrollRef}
-              contentContainerStyle={styles.body}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.hint}>
-                Create a farmer login for this organization. You can assign sheds and adjust
-                permissions later.
-              </Text>
-              <TextField
-                control={control}
-                name="full_name"
-                label="Full name"
-                autoCapitalize="words"
-                leftIcon="person-outline"
-              />
-              <TextField
-                control={control}
-                name="email"
-                label="Email"
-                keyboardType="email-address"
-                leftIcon="mail-outline"
-                autoCapitalize="none"
-              />
-              <TextField
-                control={control}
-                name="password"
-                label="Temp password"
-                secureTextEntry
-                leftIcon="lock-closed-outline"
-              />
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-              <Button label="Create farmer" onPress={onSubmit} loading={loading} />
-            </ScrollView>
-          </View>
+      onClose={close}
+      dismissAccessibilityLabel="Dismiss"
+      sheetStyle={styles.sheet}
+      header={
+        <View style={styles.header}>
+          <Text style={styles.title}>Add farmer</Text>
+          <Pressable onPress={close} accessibilityRole="button" accessibilityLabel="Close">
+            <Text style={styles.close}>Close</Text>
+          </Pressable>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      }
+      footer={
+        <View style={styles.footerPad}>
+          <Button
+            label="Create farmer"
+            onPress={() => {
+              void handleSubmit(submitFarmer)();
+            }}
+            loading={loading}
+          />
+        </View>
+      }
+      contentContainerStyle={styles.body}
+    >
+      <Text style={styles.hint}>
+        Create a farmer login for this organization. You can assign sheds and adjust permissions
+        later.
+      </Text>
+      <TextField
+        control={control}
+        name="full_name"
+        label="Full name"
+        autoCapitalize="words"
+        leftIcon="person-outline"
+      />
+      <TextField
+        control={control}
+        name="email"
+        label="Email"
+        keyboardType="email-address"
+        leftIcon="mail-outline"
+        autoCapitalize="none"
+      />
+      <TextField
+        control={control}
+        name="password"
+        label="Temp password"
+        secureTextEntry
+        leftIcon="lock-closed-outline"
+      />
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+    </FormBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  backdrop: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-    justifyContent: "flex-end",
-  },
-  dismissArea: { flex: 1 },
   sheet: {
-    maxHeight: "92%",
     backgroundColor: colors.bgElevated,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
@@ -194,9 +150,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  title: { fontSize: 18, fontWeight: "800", color: colors.brand },
-  close: { fontSize: 15, fontWeight: "600", color: colors.inkMuted },
-  body: { padding: space.md, gap: space.sm, paddingBottom: space.xl },
-  hint: { color: colors.inkMuted, fontSize: 14, lineHeight: 20 },
-  error: { color: colors.danger, fontSize: 14 },
+  title: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: colors.brand },
+  close: { fontSize: typography.body.fontSize, fontWeight: "600", color: colors.inkMuted },
+  body: { paddingHorizontal: space.md, gap: space.sm, paddingBottom: space.md },
+  footerPad: { paddingHorizontal: space.md },
+  hint: { color: colors.inkMuted, fontSize: typography.secondary.fontSize, lineHeight: 20 },
+  error: { color: colors.danger, fontSize: typography.label.fontSize },
 });

@@ -20,7 +20,7 @@ import { todayIsoDate } from "../../../src/components/ui/selectUtils";
 import { TextField } from "../../../src/components/ui/TextField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
-import { colors } from "../../../src/theme/tokens";
+import { colors, typography } from "../../../src/theme/tokens";
 import { vaccineUi } from "../../../src/theme/vaccineUi";
 import { toast } from "../../../src/ui/toast/toastStore";
 
@@ -106,7 +106,7 @@ export default function CreateFlockScreen() {
       .map((s) => ({
         value: s.id,
         label: s.name,
-        hint: `${s.code}${s.is_owner_managed ? " · owner-managed" : " · farmer-managed"}`,
+        hint: s.is_owner_managed ? "Owner-managed" : "Farmer-managed",
       }));
     return rows;
   }, [sheds.data, lockedShedId]);
@@ -335,9 +335,9 @@ export default function CreateFlockScreen() {
 const styles = StyleSheet.create({
   error: { color: colors.danger },
   catalogueBlock: { gap: 8 },
-  catalogueLabel: { fontSize: 14, fontWeight: "700", color: colors.ink },
-  catalogueHelper: { fontSize: 12, fontWeight: "600", color: colors.inkMuted, lineHeight: 16 },
-  catalogueEmpty: { fontSize: 13, color: colors.inkMuted, fontWeight: "600" },
+  catalogueLabel: { fontSize: typography.label.fontSize, fontWeight: "700", color: colors.ink },
+  catalogueHelper: { fontSize: typography.caption.fontSize, fontWeight: "600", color: colors.inkMuted, lineHeight: 16 },
+  catalogueEmpty: { fontSize: typography.secondary.fontSize, color: colors.inkMuted, fontWeight: "600" },
   catalogueList: { gap: 8 },
   catalogueCard: {
     flexDirection: "row",
@@ -360,8 +360,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  catalogueTitle: { fontSize: 15, fontWeight: "800", color: vaccineUi.ink },
-  catalogueMeta: { fontSize: 12, fontWeight: "600", color: vaccineUi.muted, marginTop: 2 },
+  catalogueTitle: { fontSize: typography.sectionTitle.fontSize, fontWeight: "800", color: vaccineUi.ink },
+  catalogueMeta: { fontSize: typography.caption.fontSize, fontWeight: "600", color: vaccineUi.muted, marginTop: 2 },
   infoBox: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -373,5 +373,5 @@ const styles = StyleSheet.create({
     padding: 12,
     marginTop: 4,
   },
-  infoText: { flex: 1, fontSize: 12, fontWeight: "600", color: vaccineUi.infoText, lineHeight: 17 },
+  infoText: { flex: 1, fontSize: typography.caption.fontSize, fontWeight: "600", color: vaccineUi.infoText, lineHeight: 17 },
 });

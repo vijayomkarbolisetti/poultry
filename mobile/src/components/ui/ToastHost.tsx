@@ -4,7 +4,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { toast, type ToastPayload, type ToastTone } from "../../ui/toast/toastStore";
-import { radius, space } from "../../theme/tokens";
+import { radius, space, typography } from "../../theme/tokens";
 
 /** Tab bar height in app/(app)/_layout — keep toast above it when present. */
 const TAB_BAR_CLEARANCE = 72;
@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   icon: { marginTop: 1 },
   text: {
     flex: 1,
-    fontSize: 14,
+    fontSize: typography.label.fontSize,
     fontWeight: "600",
     lineHeight: 19,
   },

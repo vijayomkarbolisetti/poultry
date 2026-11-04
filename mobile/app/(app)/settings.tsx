@@ -9,7 +9,7 @@ import { Screen } from "../../src/components/ui/Screen";
 import type { Membership } from "../../src/api/auth";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
-import { colors, layout, radius, shadow, space } from "../../src/theme/tokens";
+import { colors, layout, radius, shadow, space, typography } from "../../src/theme/tokens";
 
 type IconName = ComponentProps<typeof Ionicons>["name"];
 
@@ -132,13 +132,10 @@ export default function SettingsScreen() {
   const { user, ownerAccountId, setActiveOwner, signOut } = useAuth();
   const membership =
     user?.memberships.find((m) => m.owner_account_id === ownerAccountId) ?? user?.memberships[0];
+  const isSuperAdmin = Boolean(user?.is_platform_super_admin);
   const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
   const canCatalogues = hasPermission(user, ownerAccountId, "schedule.view");
-  const canSearch =
-    hasPermission(user, ownerAccountId, "bird.view") ||
-    hasPermission(user, ownerAccountId, "shed.view") ||
-    hasPermission(user, ownerAccountId, "flock.view");
-  const canSoldBirds = hasPermission(user, ownerAccountId, "bird.view");
+  const canBirdHistory = hasPermission(user, ownerAccountId, "bird.view");
 
   const onSignOut = async () => {
     await signOut();
@@ -154,6 +151,30 @@ export default function SettingsScreen() {
     show: boolean;
   }[] = [
     {
+      key: "farms",
+      label: "All farms",
+      description: "Create farms and open any organization",
+      icon: "globe-outline",
+      href: "/(app)/farms",
+      show: isSuperAdmin,
+    },
+    {
+      key: "profile",
+      label: "Change name",
+      description: "Update the name on your farm account",
+      icon: "person-outline",
+      href: "/(app)/account/edit-profile",
+      show: !isSuperAdmin || Boolean(membership),
+    },
+    {
+      key: "password",
+      label: "Change password",
+      description: "Update your login password",
+      icon: "lock-closed-outline",
+      href: "/(auth)/change-password",
+      show: true,
+    },
+    {
       key: "farmers",
       label: "Farmers",
       description: "Manage farm workers and access",
@@ -162,20 +183,20 @@ export default function SettingsScreen() {
       show: canFarmers,
     },
     {
-      key: "search",
-      label: "Search",
-      description: "Find birds and farm records",
-      icon: "search-outline",
-      href: "/(app)/search",
-      show: canSearch,
-    },
-    {
       key: "sold",
       label: "Sold Birds",
       description: "View sales and sold-bird history",
       icon: "pricetag-outline",
       href: "/(app)/birds/sold",
-      show: canSoldBirds,
+      show: canBirdHistory,
+    },
+    {
+      key: "dead",
+      label: "Dead Birds",
+      description: "View mortality and dead-bird history",
+      icon: "heart-dislike-outline",
+      href: "/(app)/birds/dead-birds",
+      show: canBirdHistory,
     },
     {
       key: "catalogues",
@@ -188,7 +209,6 @@ export default function SettingsScreen() {
   ];
   const visibleManage = manageItems.filter((i) => i.show);
   const role = roleLabel(membership?.role);
-  const farmName = membership?.organization_name?.trim() || "Farm";
   const isOwner = membership?.role === "owner";
 
   return (
@@ -205,7 +225,7 @@ export default function SettingsScreen() {
       {/* Compact header — gear is decorative until a Settings destination exists */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <BrandLogo size={28} accessibilityLabel="PoultryTrack" />
+          <BrandLogo size={28} />
           <Text style={styles.headerTitle}>More</Text>
         </View>
         <View
@@ -222,7 +242,7 @@ export default function SettingsScreen() {
       <View
         style={[styles.profileCard, shadow.card]}
         accessibilityRole="summary"
-        accessibilityLabel={`Account ${user?.full_name ?? ""}, ${user?.email ?? ""}, ${farmName}, ${role}`}
+        accessibilityLabel={`Account ${user?.full_name ?? ""}, ${user?.email ?? ""}, ${role}`}
       >
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initials(user?.full_name)}</Text>
@@ -235,13 +255,12 @@ export default function SettingsScreen() {
             {user?.email}
           </Text>
           <View style={styles.profileMeta}>
-            <Text style={styles.farmLine} numberOfLines={1}>
-              {farmName} · {role}
-            </Text>
-            <View style={[styles.roleBadge, isOwner && styles.roleBadgeOwner]}>
-              {isOwner ? <Ionicons name="shield-checkmark" size={11} color="#fff" /> : null}
+            <View style={[styles.roleBadge, (isOwner || isSuperAdmin) && styles.roleBadgeOwner]}>
+              {isOwner || isSuperAdmin ? (
+                <Ionicons name="shield-checkmark" size={11} color="#fff" />
+              ) : null}
               <Text style={styles.roleBadgeText} numberOfLines={1}>
-                {role}
+                {isSuperAdmin ? "platform admin" : role}
               </Text>
             </View>
           </View>
@@ -267,17 +286,25 @@ export default function SettingsScreen() {
         )}
       </View>
 
-      {/* Organizations — preserve switch via card press when not active */}
+      {/* Organizations — memberships; super admins also use All farms */}
       <Text style={styles.section}>Organizations</Text>
       <View style={styles.orgList}>
-        {(user?.memberships ?? []).map((m) => (
-          <OrgCard
-            key={m.id}
-            membership={m}
-            active={m.owner_account_id === ownerAccountId}
-            onSwitch={() => setActiveOwner(m.owner_account_id)}
-          />
-        ))}
+        {(user?.memberships ?? []).length === 0 ? (
+          <Text style={styles.emptyManage}>
+            {isSuperAdmin
+              ? "No personal farm memberships. Open a farm from All farms."
+              : "No organizations linked to this account."}
+          </Text>
+        ) : (
+          (user?.memberships ?? []).map((m) => (
+            <OrgCard
+              key={m.id}
+              membership={m}
+              active={m.owner_account_id === ownerAccountId}
+              onSwitch={() => setActiveOwner(m.owner_account_id)}
+            />
+          ))
+        )}
       </View>
 
       {/* Log out — same session clear as before */}
@@ -307,7 +334,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: typography.screenTitle.fontSize,
     fontWeight: "800",
     color: ui.deep,
     letterSpacing: -0.4,
@@ -343,7 +370,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   avatarText: {
-    fontSize: 20,
+    fontSize: typography.bodyStrong.fontSize,
     fontWeight: "800",
     color: ui.deep,
   },
@@ -353,12 +380,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
-    fontSize: 17,
+    fontSize: typography.button.fontSize,
     fontWeight: "800",
     color: ui.ink,
   },
   email: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     color: ui.muted,
     fontWeight: "500",
   },
@@ -371,7 +398,7 @@ const styles = StyleSheet.create({
   },
   farmLine: {
     flexShrink: 1,
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "700",
     color: ui.deep,
     textTransform: "capitalize",
@@ -390,12 +417,12 @@ const styles = StyleSheet.create({
   },
   roleBadgeText: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: typography.overline.fontSize,
     fontWeight: "800",
     textTransform: "capitalize",
   },
   section: {
-    fontSize: 12,
+    fontSize: typography.caption.fontSize,
     fontWeight: "800",
     color: ui.muted,
     textTransform: "uppercase",
@@ -413,7 +440,7 @@ const styles = StyleSheet.create({
   emptyManage: {
     padding: space.md,
     color: ui.muted,
-    fontSize: 14,
+    fontSize: typography.label.fontSize,
   },
   row: {
     flexDirection: "row",
@@ -441,12 +468,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   rowLabel: {
-    fontSize: 15,
+    fontSize: typography.label.fontSize,
     fontWeight: "700",
     color: ui.ink,
   },
   rowHint: {
-    fontSize: 12,
+    fontSize: typography.caption.fontSize,
     color: ui.muted,
     fontWeight: "500",
   },
@@ -478,7 +505,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   orgName: {
-    fontSize: 15,
+    fontSize: typography.body.fontSize,
     fontWeight: "700",
     color: ui.ink,
   },
@@ -494,13 +521,13 @@ const styles = StyleSheet.create({
   },
   orgMeta: {
     flexShrink: 1,
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     color: ui.muted,
     fontWeight: "600",
     textTransform: "capitalize",
   },
   switchHint: {
-    fontSize: 13,
+    fontSize: typography.secondary.fontSize,
     fontWeight: "800",
     color: ui.deep,
   },
@@ -517,7 +544,7 @@ const styles = StyleSheet.create({
   },
   logoutLabel: {
     color: "#fff",
-    fontSize: 17,
+    fontSize: typography.button.fontSize,
     fontWeight: "700",
   },
   pressed: {

@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LinearGradient } from "expo-linear-gradient";
-import { Link, router } from "expo-router";
+import { router } from "expo-router";
 import {
   Dispatch,
   type RefObject,
@@ -32,17 +32,10 @@ import { describeApiError } from "../../src/api/client";
 import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
+import { APP_BRAND_NAME } from "../../src/config/appConfig";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { loginBackgroundArt } from "../../src/theme/media";
-import {
-  colors,
-  icons,
-  layout,
-  radius,
-  shadows,
-  space,
-  typography,
-} from "../../src/theme/tokens";
+import { colors, icons, layout, radius, shadows, space, typography } from "../../src/theme/tokens";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -84,13 +77,15 @@ export default function LoginScreen() {
     setError(null);
     try {
       const session = await login(values);
-      if (session.user) {
-        await acceptSession(session.user);
+      const user =
+        session.user ??
+        (await (await import("../../src/api/auth")).fetchMe());
+      await acceptSession(user);
+      if (user.must_change_password) {
+        router.replace("/(auth)/change-password");
       } else {
-        const { fetchMe } = await import("../../src/api/auth");
-        await acceptSession(await fetchMe());
+        router.replace("/(app)/home");
       }
-      router.replace("/(app)/home");
     } catch (e: unknown) {
       setError(describeApiError(e, "sign in"));
     } finally {
@@ -112,7 +107,7 @@ export default function LoginScreen() {
   );
 
   return (
-    <View style={styles.root} accessibilityLabel="PoultryTrack sign in">
+    <View style={styles.root} accessibilityLabel={`${APP_BRAND_NAME} sign in`}>
       <ImageBackground
         source={loginBackgroundArt}
         style={styles.bg}
@@ -193,7 +188,7 @@ function LoginForm({
           <BrandLogo size={64} />
         </View>
         <Text style={styles.brand} accessibilityRole="header">
-          PoultryTrack
+          {APP_BRAND_NAME}
         </Text>
         <Text style={styles.tagline}>Farm health, made simple.</Text>
       </View>
@@ -263,28 +258,6 @@ function LoginForm({
         ) : null}
 
         <Button label="Sign In" onPress={onSubmit} loading={loading} disabled={loading} />
-      </View>
-
-      <View style={[styles.footerBlock, shadows.soft]}>
-        <Text style={styles.footer}>
-          Don’t have an account?{" "}
-          <Link href="/(auth)/register" style={styles.link}>
-            Create Farm Account
-          </Link>
-        </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Contact Admin"
-          hitSlop={10}
-          onPress={() => {
-            /* UI only — no support channel wired yet */
-          }}
-          style={styles.contactPress}
-        >
-          <Text style={styles.contact}>
-            Need access? <Text style={styles.contactLink}>Contact Admin</Text>
-          </Text>
-        </Pressable>
       </View>
     </>
   );
@@ -365,44 +338,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.checkboxOn,
     borderColor: colors.checkboxOn,
   },
-  rememberLabel: { color: colors.textFormLabel, fontSize: 14, fontWeight: "500" },
-  forgot: { color: colors.textLink, fontWeight: "700", fontSize: 14 },
-  error: { color: colors.error, fontSize: 14 },
-  footerBlock: {
-    alignSelf: "stretch",
-    alignItems: "center",
-    gap: space.sm,
-    marginTop: space.xs,
-    paddingHorizontal: space.md,
-    paddingVertical: space.md,
-    borderRadius: radius.lg,
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
-    borderWidth: 1,
-    borderColor: "rgba(215, 228, 222, 0.95)",
-  },
-  footer: {
-    color: colors.brandDark,
-    fontSize: 15,
-    textAlign: "center",
-    fontWeight: "700",
-    lineHeight: 22,
-  },
-  link: { color: colors.brand, fontWeight: "800" },
-  contactPress: {
-    minHeight: layout.touchTarget * 0.75,
-    justifyContent: "center",
-    paddingHorizontal: space.xs,
-  },
-  contact: {
-    color: "#4A5F56",
-    fontSize: 13,
-    textAlign: "center",
-    fontWeight: "600",
-    lineHeight: 18,
-  },
-  contactLink: {
-    color: colors.brandDark,
-    fontWeight: "800",
-    textDecorationLine: "underline",
-  },
+  rememberLabel: { color: colors.textFormLabel, fontSize: typography.label.fontSize, fontWeight: "500" },
+  forgot: { color: colors.textLink, fontWeight: "700", fontSize: typography.label.fontSize },
+  error: { color: colors.error, fontSize: typography.label.fontSize },
 });

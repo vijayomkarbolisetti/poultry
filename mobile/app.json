@@ -39,6 +39,7 @@
     ],
     "extra": {
       "router": {},
+      "apiUrl": "https://3.6.160.64.sslip.io",
       "eas": {
         "projectId": "d4462ff8-81fe-496a-b6ad-76822e03f807"
       }

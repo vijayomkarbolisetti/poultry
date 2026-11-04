@@ -41,7 +41,7 @@ export function birdResultSubtitle(hit: {
   is_active: boolean;
   lifecycle_status: string;
 }): string {
-  const shed = hit.shed_name ?? hit.shed_code ?? "Shed";
+  const shed = hit.shed_name || "Shed";
   const status = hit.is_active ? "Active" : hit.lifecycle_status.replace(/_/g, " ");
   return `${shed} · ${status}`;
 }
