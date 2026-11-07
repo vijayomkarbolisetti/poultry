@@ -20,6 +20,7 @@
     "expo-secure-store": "~57.0.4",
     "expo-sharing": "~57.0.23",
     "expo-status-bar": "~57.0.1",
+    "lucide-react-native": "^1.70.0",
     "react": "19.2.3",
     "react-hook-form": "^7.90.0",
     "react-native": "0.86.3",

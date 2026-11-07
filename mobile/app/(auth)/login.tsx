@@ -32,7 +32,7 @@ import { describeApiError } from "../../src/api/client";
 import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Button } from "../../src/components/ui/Button";
 import { TextField } from "../../src/components/ui/TextField";
-import { APP_BRAND_NAME } from "../../src/config/appConfig";
+import { APP_CONFIG } from "../../src/config/appConfig";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { loginBackgroundArt } from "../../src/theme/media";
 import { colors, icons, layout, radius, shadows, space, typography } from "../../src/theme/tokens";
@@ -107,7 +107,7 @@ export default function LoginScreen() {
   );
 
   return (
-    <View style={styles.root} accessibilityLabel={`${APP_BRAND_NAME} sign in`}>
+    <View style={styles.root} accessibilityLabel={`${APP_CONFIG.name} sign in`}>
       <ImageBackground
         source={loginBackgroundArt}
         style={styles.bg}
@@ -188,7 +188,7 @@ function LoginForm({
           <BrandLogo size={64} />
         </View>
         <Text style={styles.brand} accessibilityRole="header">
-          {APP_BRAND_NAME}
+          {APP_CONFIG.name}
         </Text>
         <Text style={styles.tagline}>Farm health, made simple.</Text>
       </View>

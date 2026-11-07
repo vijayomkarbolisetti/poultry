@@ -5,10 +5,13 @@ from app.models.enums import (
     FlockStatus,
     LifecycleEventType,
     MembershipRole,
+    SicknessSeverity,
+    SicknessStatus,
     TrackingMode,
 )
 from app.models.flock import Bird, Flock
 from app.models.lifecycle import LifecycleEvent
+from app.models.sickness import BirdSicknessRecord
 from app.models.parentage import BirdParentDescriptor
 from app.models.media import AnimalMedia
 from app.models.membership import OwnerMembership
@@ -32,6 +35,7 @@ __all__ = [
     "AuditLog",
     "Bird",
     "BirdLifecycleStatus",
+    "BirdSicknessRecord",
     "DobConfidence",
     "Flock",
     "FlockStatus",
@@ -49,6 +53,8 @@ __all__ = [
     "ScheduleRule",
     "Shed",
     "ShedMembership",
+    "SicknessSeverity",
+    "SicknessStatus",
     "TrackingMode",
     "User",
     "VaccinationCorrection",

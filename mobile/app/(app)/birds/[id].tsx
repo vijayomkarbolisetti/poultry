@@ -7,22 +7,30 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "rea
 import {
   getBirdProfile,
   type BirdParentage,
+  type BirdProfileBatchDose,
   type BirdProfileLifecycle,
   type BirdProfileVaccinationEvent,
 } from "../../../src/api/birds";
 import { describeApiError } from "../../../src/api/client";
-import { recordLifecycle } from "../../../src/api/flocks";
+import type { BirdHealthOverview, SicknessEpisode } from "../../../src/api/sickness";
 import { BirdReportActionsSheet } from "../../../src/components/birds/BirdReportActionsSheet";
+import {
+  RecoverSicknessSheet,
+  type RecoverSicknessTarget,
+} from "../../../src/components/birds/RecoverSicknessSheet";
+import {
+  MortalityActionSheet,
+  type MortalityBandedPayload,
+} from "../../../src/components/birds/MortalityActionSheet";
 import {
   SaleActionSheet,
   type SaleBandedPayload,
 } from "../../../src/components/birds/SaleActionSheet";
-import { AppDialog } from "../../../src/components/ui/AppDialog";
 import { Button } from "../../../src/components/ui/Button";
 import { DataQualityBanner } from "../../../src/components/ui/DataQualityBanner";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { Screen } from "../../../src/components/ui/Screen";
-import { formatDisplayDate, todayIsoDate } from "../../../src/components/ui/selectUtils";
+import { formatDisplayDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import {
@@ -30,13 +38,20 @@ import {
   formatRelativeAgeLabel,
   formatSexLabel,
 } from "../../../src/features/birds/birdListHelpers";
+import { lifecycleEventDetail } from "../../../src/features/birds/lifecycleDisplay";
+import {
+  followUpLabel,
+  healthStatusLabel,
+  severityLabel,
+  sicknessStatusLabel,
+  sortSicknessEpisodes,
+} from "../../../src/features/sickness/sicknessHelpers";
 import {
   downloadBirdReportPdf,
   isBirdReportSaveCancelled,
   prepareBirdReportForShare,
   shareBirdReport,
 } from "../../../src/features/birds/birdReportDownload";
-import { newLifecycleIdempotencyKey } from "../../../src/features/birds/birdSelectionHelpers";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
 import { birdIcons, shedHeaderArt } from "../../../src/theme/media";
@@ -59,17 +74,19 @@ export default function BirdProfileScreen() {
   const canUpdate = hasPermission(user, ownerAccountId, "bird.update");
   const canLifecycle = hasPermission(user, ownerAccountId, "lifecycle.record");
   const canRecordVaccination = hasPermission(user, ownerAccountId, "vaccination.record");
-  const [lifeBusy, setLifeBusy] = useState(false);
-  const [lifeMsg, setLifeMsg] = useState<string | null>(null);
-  const [mortalityOpen, setMortalityOpen] = useState(false);
+  const canSicknessView = hasPermission(user, ownerAccountId, "sickness.view");
+  const canSicknessRecord = hasPermission(user, ownerAccountId, "sickness.record");
+  const canRecoverSickness = hasPermission(user, ownerAccountId, "sickness.recover");
+  const [mortalityPayload, setMortalityPayload] = useState<MortalityBandedPayload | null>(null);
   const [salePayload, setSalePayload] = useState<SaleBandedPayload | null>(null);
+  const [recoverTarget, setRecoverTarget] = useState<RecoverSicknessTarget | null>(null);
   const [vaxExpanded, setVaxExpanded] = useState(false);
+  const [upcomingExpanded, setUpcomingExpanded] = useState(false);
   const [lifeExpanded, setLifeExpanded] = useState(false);
+  const [healthExpanded, setHealthExpanded] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
-  const lifeLock = useRef(false);
   const reportLock = useRef(false);
-  const lifeIdemKey = useRef<string | null>(null);
   const reserved = (birdId ?? "").trim().toLowerCase();
 
   const profile = useQuery({
@@ -97,48 +114,34 @@ export default function BirdProfileScreen() {
     void qc.invalidateQueries({ queryKey: ["dashboard", ownerAccountId] });
     void qc.invalidateQueries({ queryKey: ["sold-birds"] });
     void qc.invalidateQueries({ queryKey: ["dead-birds"] });
+    void qc.invalidateQueries({ queryKey: ["sickness"] });
+    void qc.invalidateQueries({ queryKey: ["sickness-summary"] });
   };
 
   const onMortality = () => {
-    if (!birdId || !profile.data || lifeLock.current || !profile.data.is_active) return;
-    setMortalityOpen(true);
-  };
-
-  const confirmMortality = async () => {
-    if (!birdId || !profile.data || lifeLock.current) return;
-    lifeLock.current = true;
-    setLifeBusy(true);
-    setLifeMsg(null);
-    if (!lifeIdemKey.current) {
-      lifeIdemKey.current = newLifecycleIdempotencyKey(`mortality-${birdId}`);
-    }
-    try {
-      await recordLifecycle({
-        event_type: "mortality",
-        effective_date: todayIsoDate(),
-        bird_id: birdId,
-        quantity: 1,
-        reason: "Recorded from bird profile (mortality)",
-        idempotency_key: lifeIdemKey.current,
-      });
-      invalidateRelated(profile.data.shed_id, profile.data.flock_id);
-      setMortalityOpen(false);
-      lifeIdemKey.current = null;
-      toast.success("Mortality recorded");
-      await profile.refetch();
-    } catch (e: unknown) {
-      setMortalityOpen(false);
-      setLifeMsg(describeApiError(e, "record mortality"));
-    } finally {
-      setLifeBusy(false);
-      lifeLock.current = false;
-    }
+    if (!birdId || !profile.data || !profile.data.is_active) return;
+    const label = profile.data.band_id ?? profile.data.display_code ?? birdId.slice(0, 8);
+    setMortalityPayload({ mode: "banded", birdIds: [birdId], labels: [label] });
   };
 
   const onSell = () => {
     if (!birdId || !profile.data || !profile.data.is_active) return;
     const label = profile.data.band_id ?? profile.data.display_code ?? birdId.slice(0, 8);
     setSalePayload({ mode: "banded", birdIds: [birdId], labels: [label] });
+  };
+
+  const onSickness = () => {
+    if (!birdId || !profile.data || !profile.data.is_active) return;
+    const label = profile.data.band_id ?? profile.data.display_code ?? birdId.slice(0, 8);
+    router.push({
+      pathname: "/(app)/birds/record-sickness",
+      params: {
+        shedId: profile.data.shed_id,
+        birdIds: birdId,
+        labels: label,
+        formKey: `${Date.now()}`,
+      },
+    });
   };
 
   const openEdit = (section: "details" | "parentage" | "band") => {
@@ -286,11 +289,23 @@ export default function BirdProfileScreen() {
   const vaccinations = [...(p.individual_vaccinations ?? [])].sort((a, b) =>
     a.administration_date < b.administration_date ? 1 : -1,
   );
+  const upcomingDoses = [...(p.batch_upcoming_doses ?? [])].sort((a, b) =>
+    a.due_date < b.due_date ? -1 : 1,
+  );
   const lifecycle = [...(p.lifecycle_events ?? [])].sort((a, b) =>
     a.effective_date < b.effective_date ? 1 : -1,
   );
+  const mortalityEvent =
+    p.lifecycle_status === "dead"
+      ? lifecycle.find((e) => e.event_type === "mortality")
+      : undefined;
   const visibleVax = vaxExpanded ? vaccinations : vaccinations.slice(0, 1);
+  const visibleUpcoming = upcomingExpanded ? upcomingDoses : upcomingDoses.slice(0, 3);
   const visibleLife = lifeExpanded ? lifecycle : lifecycle.slice(0, 1);
+  const sicknessEpisodes = sortSicknessEpisodes(p.sickness_episodes ?? []);
+  const activeSickness = sicknessEpisodes.find((e) => e.status === "active") ?? null;
+  const visibleSickness = healthExpanded ? sicknessEpisodes : sicknessEpisodes.slice(0, 3);
+  const health = p.health ?? null;
 
   const statusKey = (p.lifecycle_status || "").toLowerCase();
   const statusTone =
@@ -394,6 +409,48 @@ export default function BirdProfileScreen() {
         />
       ) : null}
 
+      {p.lifecycle_status === "dead" ? (
+        <SectionCard
+          icon="heart-dislike-outline"
+          iconColor={birdUi.error}
+          iconBg={birdUi.errorPale}
+          title="Mortality details"
+        >
+          <View style={styles.mortalityRow}>
+            <Text style={styles.mortalityLabel}>Died on</Text>
+            <Text style={styles.mortalityValue}>
+              {mortalityEvent ? formatDisplayDate(mortalityEvent.effective_date) : "Not recorded"}
+            </Text>
+          </View>
+          <View style={styles.mortalityRow}>
+            <Text style={styles.mortalityLabel}>Reason</Text>
+            <Text style={styles.mortalityValue}>
+              {mortalityEvent?.reason?.trim() || "Not recorded"}
+            </Text>
+          </View>
+        </SectionCard>
+      ) : null}
+
+      {canSicknessView && health ? (
+        <HealthSection
+          health={health}
+          episodes={sicknessEpisodes}
+          visibleEpisodes={visibleSickness}
+          expanded={healthExpanded}
+          onToggleExpanded={() => setHealthExpanded((v) => !v)}
+          lifecycleStatus={p.lifecycle_status}
+          birdIsActive={p.is_active}
+          canRecover={canRecoverSickness}
+          onRecover={(episode) =>
+            setRecoverTarget({
+              recordId: episode.id,
+              label: p.band_id ?? p.display_code ?? p.id.slice(0, 8),
+              sickDate: episode.sick_date,
+            })
+          }
+        />
+      ) : null}
+
       {p.is_active ? (
         <View style={styles.actionsGrid}>
           {canUpdate ? (
@@ -421,7 +478,6 @@ export default function BirdProfileScreen() {
               bg={birdUi.errorPale}
               label="Record mortality"
               onPress={onMortality}
-              disabled={lifeBusy}
             />
           ) : null}
           {canLifecycle ? (
@@ -455,6 +511,15 @@ export default function BirdProfileScreen() {
                   },
                 })
               }
+            />
+          ) : null}
+          {canSicknessView && canSicknessRecord && !activeSickness ? (
+            <ActionTile
+              icon="medkit-outline"
+              color={birdUi.error}
+              bg={birdUi.errorPale}
+              label="Mark as sick"
+              onPress={onSickness}
             />
           ) : null}
         </View>
@@ -568,6 +633,42 @@ export default function BirdProfileScreen() {
       </SectionCard>
 
       <SectionCard
+        icon="alarm-outline"
+        title="Upcoming vaccinations"
+        action={
+          upcomingDoses.length > 3 ? (
+            <HeaderAction
+              label={upcomingExpanded ? "Show less" : "View all"}
+              onPress={() => setUpcomingExpanded((v) => !v)}
+            />
+          ) : undefined
+        }
+      >
+        {upcomingDoses.length === 0 ? (
+          <Text style={styles.emptySub}>
+            {p.is_active
+              ? "No remaining hatch-date doses are scheduled."
+              : "No remaining hatch-date doses are on record for this bird."}
+          </Text>
+        ) : (
+          <>
+            {!p.is_active ? (
+              <Text style={styles.emptySub}>
+                Remaining flock schedule for records only. New vaccinations cannot be recorded.
+              </Text>
+            ) : null}
+            {visibleUpcoming.map((dose, idx) => (
+              <UpcomingDoseCard
+                key={dose.id}
+                dose={dose}
+                last={idx === visibleUpcoming.length - 1}
+              />
+            ))}
+          </>
+        )}
+      </SectionCard>
+
+      <SectionCard
         icon="time-outline"
         title="Lifecycle history"
         action={
@@ -615,8 +716,6 @@ export default function BirdProfileScreen() {
         </SectionCard>
       ) : null}
 
-      {lifeMsg ? <Text style={styles.error}>{lifeMsg}</Text> : null}
-
       <SaleActionSheet
         visible={!!salePayload}
         payload={salePayload}
@@ -628,30 +727,25 @@ export default function BirdProfileScreen() {
         }}
       />
 
-      <AppDialog
-        visible={mortalityOpen}
-        title="Record mortality?"
-        description={
-          profile.data
-            ? `Bird ${profile.data.band_id ?? profile.data.display_code ?? birdId?.slice(0, 8)}\n\nThis marks the bird as dead and removes it from the live population. History is preserved.`
-            : undefined
-        }
-        tone="danger"
-        dismissible={!lifeBusy}
-        onDismiss={() => {
-          if (!lifeBusy) setMortalityOpen(false);
+      <MortalityActionSheet
+        visible={!!mortalityPayload}
+        payload={mortalityPayload}
+        onClose={() => setMortalityPayload(null)}
+        onSuccess={() => {
+          if (profile.data) invalidateRelated(profile.data.shed_id, profile.data.flock_id);
+          void profile.refetch();
         }}
-        secondary={{
-          label: "Cancel",
-          variant: "secondary",
-          disabled: lifeBusy,
-          onPress: () => setMortalityOpen(false),
-        }}
-        primary={{
-          label: "Record mortality",
-          variant: "destructive",
-          loading: lifeBusy,
-          onPress: () => void confirmMortality(),
+      />
+
+      <RecoverSicknessSheet
+        key={recoverTarget?.recordId ?? "none"}
+        visible={!!recoverTarget}
+        target={recoverTarget}
+        onClose={() => setRecoverTarget(null)}
+        onSuccess={() => {
+          setRecoverTarget(null);
+          invalidateRelated(p.shed_id, p.flock_id);
+          void profile.refetch();
         }}
       />
 
@@ -681,6 +775,245 @@ function hasParentInfo(
     parentage.band_id?.trim() ||
     (parentage.label && parentage.label.toLowerCase() !== "unknown")
   );
+}
+
+function HealthSection({
+  health,
+  episodes,
+  visibleEpisodes,
+  expanded,
+  onToggleExpanded,
+  lifecycleStatus,
+  birdIsActive,
+  canRecover,
+  onRecover,
+}: {
+  health: BirdHealthOverview;
+  episodes: SicknessEpisode[];
+  visibleEpisodes: SicknessEpisode[];
+  expanded: boolean;
+  onToggleExpanded: () => void;
+  lifecycleStatus: string;
+  birdIsActive: boolean;
+  canRecover: boolean;
+  onRecover: (episode: SicknessEpisode) => void;
+}) {
+  const active = episodes.find((episode) => episode.status === "active") ?? null;
+  const statusText = healthStatusLabel(health.status, lifecycleStatus);
+  const statusColor =
+    health.status === "sick"
+      ? birdUi.error
+      : health.status === "healthy"
+        ? birdUi.successText
+        : health.status === "unresolved_inactive"
+          ? birdUi.orange
+          : birdUi.muted;
+
+  return (
+    <SectionCard
+      icon="fitness-outline"
+      title="Health history"
+      action={
+        episodes.length > 3 ? (
+          <HeaderAction
+            label={expanded ? "Show less" : "View all"}
+            onPress={onToggleExpanded}
+          />
+        ) : undefined
+      }
+    >
+      <View style={styles.healthOverview}>
+        <HealthStat label="Current health" value={statusText} valueColor={statusColor} />
+        <HealthStat label="Total episodes" value={String(health.total_episodes)} />
+        <HealthStat
+          label="Last sickness"
+          value={
+            health.last_sickness_date
+              ? formatDisplayDate(health.last_sickness_date) || health.last_sickness_date
+              : "—"
+          }
+        />
+        <HealthStat
+          label="Last recovery"
+          value={
+            health.last_recovery_date
+              ? formatDisplayDate(health.last_recovery_date) || health.last_recovery_date
+              : "—"
+          }
+        />
+      </View>
+
+      {active ? (
+        <View style={styles.activeSickness}>
+          <View style={styles.activeSicknessTop}>
+            <View
+              style={[
+                styles.healthPill,
+                { backgroundColor: severityBackground(active.severity) },
+              ]}
+            >
+              <Text style={[styles.healthPillText, { color: severityForeground(active.severity) }]}>
+                {severityLabel(active.severity)}
+              </Text>
+            </View>
+            <Text style={styles.activeSicknessDate}>
+              Sick since {formatDisplayDate(active.sick_date) || active.sick_date}
+            </Text>
+            {active.follow_up_date ? (
+              <Text style={styles.activeSicknessFollowUp}>
+                {followUpLabel(active.follow_up_state)}
+              </Text>
+            ) : null}
+          </View>
+          <HealthDetail label="Symptoms" value={active.symptoms} />
+          {active.notes?.trim() ? <HealthDetail label="Notes" value={active.notes} /> : null}
+          {active.treatment?.trim() ? (
+            <HealthDetail label="Treatment" value={active.treatment} />
+          ) : null}
+          {active.follow_up_date ? (
+            <HealthDetail
+              label="Follow-up"
+              value={`${formatDisplayDate(active.follow_up_date) || active.follow_up_date} · ${followUpLabel(active.follow_up_state)}`}
+            />
+          ) : null}
+          {canRecover && birdIsActive ? (
+            <Button
+              label="Mark as recovered"
+              variant="secondary"
+              onPress={() => onRecover(active)}
+              style={styles.healthRecoverBtn}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      {episodes.length === 0 ? (
+        <Text style={styles.emptyHealth}>No sickness episodes recorded.</Text>
+      ) : (
+        <View style={styles.episodeList}>
+          {visibleEpisodes.map((episode) => (
+            <HealthEpisodeRow key={episode.id} episode={episode} />
+          ))}
+        </View>
+      )}
+    </SectionCard>
+  );
+}
+
+function HealthStat({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <View style={styles.healthStat}>
+      <Text style={styles.healthStatLabel}>{label}</Text>
+      <Text style={[styles.healthStatValue, valueColor ? { color: valueColor } : null]}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+function HealthDetail({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.healthDetailRow}>
+      <Text style={styles.healthDetailLabel}>{label}</Text>
+      <Text style={styles.healthDetailValue}>{value}</Text>
+    </View>
+  );
+}
+
+function HealthEpisodeRow({ episode }: { episode: SicknessEpisode }) {
+  return (
+    <View style={styles.episodeRow}>
+      <View
+        style={[
+          styles.episodeDot,
+          { backgroundColor: episode.status === "active" ? birdUi.error : birdUi.successText },
+        ]}
+      />
+      <View style={styles.episodeContent}>
+        <View style={styles.episodeTop}>
+          <Text style={styles.episodeDate}>
+            {formatDisplayDate(episode.sick_date) || episode.sick_date}
+          </Text>
+          <View
+            style={[
+              styles.healthPill,
+              { backgroundColor: severityBackground(episode.severity) },
+            ]}
+          >
+            <Text
+              style={[
+                styles.healthPillText,
+                { color: severityForeground(episode.severity) },
+              ]}
+            >
+              {severityLabel(episode.severity)}
+            </Text>
+          </View>
+          <View
+            style={[
+              styles.healthPill,
+              {
+                backgroundColor:
+                  episode.status === "active" ? birdUi.errorPale : birdUi.successBg,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.healthPillText,
+                {
+                  color:
+                    episode.status === "active"
+                      ? birdUi.error
+                      : birdUi.successText,
+                },
+              ]}
+            >
+              {sicknessStatusLabel(episode.status)}
+            </Text>
+          </View>
+        </View>
+        <Text style={styles.episodeSymptoms}>{episode.symptoms}</Text>
+        {episode.notes?.trim() ? (
+          <Text style={styles.episodeDetail}>Notes: {episode.notes}</Text>
+        ) : null}
+        {episode.treatment?.trim() ? (
+          <Text style={styles.episodeDetail}>Treatment: {episode.treatment}</Text>
+        ) : null}
+        {episode.follow_up_date ? (
+          <Text style={styles.episodeDetail}>
+            Follow-up: {formatDisplayDate(episode.follow_up_date) || episode.follow_up_date} ·{" "}
+            {followUpLabel(episode.follow_up_state)}
+          </Text>
+        ) : null}
+        {episode.recovery_date ? (
+          <Text style={styles.episodeDetail}>
+            Recovered: {formatDisplayDate(episode.recovery_date) || episode.recovery_date}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function severityBackground(severity: string): string {
+  if (severity === "severe") return birdUi.errorPale;
+  if (severity === "moderate") return birdUi.orangePale;
+  return birdUi.successBg;
+}
+
+function severityForeground(severity: string): string {
+  if (severity === "severe") return birdUi.error;
+  if (severity === "moderate") return birdUi.orange;
+  return birdUi.successText;
 }
 
 function SectionCard({
@@ -869,6 +1202,39 @@ function ParentCard({
   return <View style={styles.parentCard}>{body}</View>;
 }
 
+function formatUpcomingDoseStatus(status: string | null | undefined): string {
+  const raw = (status ?? "").toLowerCase().trim();
+  if (raw === "due_soon") return "Due soon";
+  if (raw === "due_today") return "Due today";
+  if (raw === "needs_review") return "Needs review";
+  if (raw === "inactive") return "Schedule closed";
+  if (!raw) return "—";
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function UpcomingDoseCard({
+  dose,
+  last,
+}: {
+  dose: BirdProfileBatchDose;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.vaxCard, !last && styles.rowBorder]}>
+      <View style={styles.vaxTitleRow}>
+        <Text style={styles.vaxName}>{dose.vaccine_name?.trim() || "Vaccine"}</Text>
+        <Text style={styles.vaxDate}>{formatDisplayDate(dose.due_date)}</Text>
+      </View>
+      <Text style={styles.vaxCohortBadge}>
+        Dose {dose.dose_number} · {formatUpcomingDoseStatus(dose.status)}
+      </Text>
+      <Text style={styles.vaxMeta}>
+        Hatch-date schedule · {dose.completed_count} of {dose.eligible_count} birds covered
+      </Text>
+    </View>
+  );
+}
+
 function VaccinationCard({
   event,
   last,
@@ -907,33 +1273,6 @@ function VaccinationCard({
       {event.notes?.trim() ? <Text style={styles.vaxMeta}>{event.notes.trim()}</Text> : null}
     </View>
   );
-}
-
-function lifecycleEventDetail(event: BirdProfileLifecycle): string {
-  const fromName = event.from_shed_name?.trim();
-  const toName = event.to_shed_name?.trim();
-  if (fromName && toName) return `From ${fromName} to ${toName}`;
-  if (toName) return `Transferred to ${toName}`;
-  if (fromName) return `Transferred from ${fromName}`;
-
-  const raw = event.reason?.trim() ?? "";
-  const cleaned = raw
-    .replace(/^\[shed-move(?:-batch)?\]\s*/i, "")
-    .replace(/^\[band-from-unbanded\]\s*/i, "Band assigned: ")
-    .trim();
-  if (cleaned) return cleaned;
-
-  if (event.event_type === "sale") {
-    return (
-      [
-        event.buyer_name ? `Buyer ${event.buyer_name}` : null,
-        event.buyer_mobile ? `Mobile ${event.buyer_mobile}` : null,
-      ]
-        .filter(Boolean)
-        .join(" · ") || "Bird was sold"
-    );
-  }
-  return "—";
 }
 
 function LifecycleCard({
@@ -1292,6 +1631,120 @@ const styles = StyleSheet.create({
   },
   lifeTitle: { fontWeight: "800", color: birdUi.text, fontSize: typography.sectionTitle.fontSize },
   lifeDetail: { color: birdUi.muted, fontSize: typography.caption.fontSize, lineHeight: 16 },
+  mortalityRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 3,
+  },
+  mortalityLabel: {
+    color: birdUi.muted,
+    fontSize: typography.secondary.fontSize,
+    fontWeight: "700",
+  },
+  mortalityValue: {
+    flexShrink: 1,
+    textAlign: "right",
+    color: birdUi.text,
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
+  },
   lifeDate: { fontSize: typography.caption.fontSize, fontWeight: "700", color: birdUi.muted },
+  healthOverview: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  healthStat: {
+    width: "48%",
+    backgroundColor: birdUi.paleMint,
+    borderRadius: 12,
+    padding: 10,
+    gap: 2,
+  },
+  healthStatLabel: {
+    fontSize: typography.overline.fontSize,
+    fontWeight: "700",
+    color: birdUi.muted,
+  },
+  healthStatValue: {
+    fontSize: typography.secondary.fontSize,
+    fontWeight: "800",
+    color: birdUi.text,
+  },
+  activeSickness: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: birdUi.border,
+    borderRadius: 14,
+    padding: 12,
+    gap: 7,
+    backgroundColor: "#fff",
+  },
+  activeSicknessTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  activeSicknessDate: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    color: birdUi.text,
+  },
+  activeSicknessFollowUp: {
+    fontSize: typography.overline.fontSize,
+    fontWeight: "800",
+    color: birdUi.orange,
+  },
+  healthPill: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  healthPillText: { fontSize: typography.overline.fontSize, fontWeight: "800" },
+  healthDetailRow: { flexDirection: "row", gap: 8 },
+  healthDetailLabel: {
+    width: 76,
+    fontSize: typography.caption.fontSize,
+    fontWeight: "700",
+    color: birdUi.muted,
+  },
+  healthDetailValue: {
+    flex: 1,
+    fontSize: typography.caption.fontSize,
+    color: birdUi.text,
+    lineHeight: 16,
+  },
+  healthRecoverBtn: { minHeight: 44 },
+  emptyHealth: {
+    color: birdUi.muted,
+    fontSize: typography.secondary.fontSize,
+    paddingVertical: 8,
+  },
+  episodeList: { gap: 10, marginTop: 4 },
+  episodeRow: { flexDirection: "row", gap: 9 },
+  episodeDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    marginTop: 5,
+  },
+  episodeContent: {
+    flex: 1,
+    gap: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: birdUi.divider,
+    paddingBottom: 9,
+  },
+  episodeTop: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
+  episodeDate: {
+    fontSize: typography.caption.fontSize,
+    fontWeight: "800",
+    color: birdUi.text,
+  },
+  episodeSymptoms: {
+    fontSize: typography.caption.fontSize,
+    color: birdUi.textSecondary,
+    lineHeight: 16,
+  },
+  episodeDetail: {
+    fontSize: typography.caption.fontSize,
+    color: birdUi.muted,
+    lineHeight: 16,
+  },
   error: { color: birdUi.error, fontWeight: "600" },
 });

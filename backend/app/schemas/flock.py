@@ -12,6 +12,7 @@ from app.models.enums import (
     LifecycleEventType,
     TrackingMode,
 )
+from app.schemas.sickness import BirdHealthOverviewOut, SicknessEpisodeOut
 from app.services.sale_helpers import normalize_buyer_mobile, normalize_buyer_name
 
 
@@ -552,6 +553,8 @@ class BirdProfileOut(BaseModel):
     individual_vaccinations: list[BirdProfileVaccinationEventOut]
     batch_upcoming_doses: list[BirdProfileBatchDoseOut]
     lifecycle_events: list[BirdProfileLifecycleOut]
+    health: BirdHealthOverviewOut | None = None
+    sickness_episodes: list[SicknessEpisodeOut] = Field(default_factory=list)
 
 
 class SoldBirdHitOut(BaseModel):

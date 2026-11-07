@@ -23,6 +23,18 @@ export const PERMISSION_LABELS: Record<string, { title: string; hint: string }> 
     title: "Manage catalogues",
     hint: "Create, clone, edit, and assign vaccine catalogues",
   },
+  "sickness.view": {
+    title: "View sick birds",
+    hint: "See sickness episodes, severity, and follow-ups",
+  },
+  "sickness.record": {
+    title: "Record sickness",
+    hint: "Record and edit sickness episodes",
+  },
+  "sickness.recover": {
+    title: "Record recovery",
+    hint: "Mark sickness episodes as recovered",
+  },
 };
 
 export const FARMER_PERM_OPTIONS = [
@@ -38,6 +50,9 @@ export const FARMER_PERM_OPTIONS = [
   "vaccination.view",
   "vaccination.record",
   "schedule.view",
+  "sickness.view",
+  "sickness.record",
+  "sickness.recover",
 ] as const;
 
 export type FarmerPermCode = (typeof FARMER_PERM_OPTIONS)[number];
@@ -59,6 +74,10 @@ export const FARMER_PERM_GROUPS: { title: string; codes: FarmerPermCode[] }[] = 
   {
     title: "Vaccination",
     codes: ["vaccination.view", "vaccination.record", "schedule.view"],
+  },
+  {
+    title: "Health",
+    codes: ["sickness.view", "sickness.record", "sickness.recover"],
   },
 ];
 
@@ -108,14 +127,31 @@ export const FARMER_CREATE_PERM_CATEGORIES: {
     hint: "View dashboard and compliance",
     codes: ["report.view"],
   },
+  {
+    id: "sickness",
+    title: "Sick birds",
+    hint: "View, record, and recover sickness episodes",
+    codes: ["sickness.view", "sickness.record", "sickness.recover"],
+  },
 ];
 
 /** All codes an owner may grant via the farmer create UI (includes vaccination.record). */
 export const ALL_GRANTABLE_FARMER_PERMS: FarmerPermCode[] = [...FARMER_PERM_OPTIONS];
 
-/** Create-farmer starting state: everything except vaccination.record, which the owner opts into. */
+/**
+ * Codes the owner must opt into explicitly. Vaccination recording and sickness
+ * permissions are never granted by default.
+ */
+const EXPLICIT_FARMER_PERMS: FarmerPermCode[] = [
+  "vaccination.record",
+  "sickness.view",
+  "sickness.record",
+  "sickness.recover",
+];
+
+/** Create-farmer starting state: everything except explicit-opt-in codes. */
 export const CREATE_FARMER_INITIAL_PERMS: FarmerPermCode[] = FARMER_PERM_OPTIONS.filter(
-  (c) => c !== "vaccination.record",
+  (c) => !EXPLICIT_FARMER_PERMS.includes(c),
 );
 
 /**
@@ -181,7 +217,9 @@ export function hasPermission(
   code: string,
 ): boolean {
   if (!user) return false;
-  if (user.is_platform_super_admin) return true;
+  // Super admins have every permission, but only inside a farm they have opened:
+  // farm-scoped APIs reject requests without X-Owner-Account-Id.
+  if (user.is_platform_super_admin) return Boolean(ownerAccountId);
   const m = activeMembership(user, ownerAccountId);
   if (!m) return false;
   if (m.role === "owner") return true;

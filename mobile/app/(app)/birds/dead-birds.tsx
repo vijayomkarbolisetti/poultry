@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FlatList,
   Image,
@@ -22,6 +22,8 @@ import { Screen } from "../../../src/components/ui/Screen";
 import { formatDisplayDate } from "../../../src/components/ui/selectUtils";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
+import { useTransientSearchQuery } from "../../../src/features/search/useTransientSearchQuery";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { birdUi } from "../../../src/theme/birdManagementUi";
 import { birdIcons, heroArt } from "../../../src/theme/media";
@@ -45,29 +47,21 @@ function periodRange(key: PeriodKey): { from: string | null; to: string | null }
 export default function DeadBirdsScreen() {
   const { user, ownerAccountId } = useAuth();
   const canView = hasPermission(user, ownerAccountId, "bird.view");
-  const [q, setQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
+  const { query, debouncedQuery, setQuery, clearSearch } = useTransientSearchQuery();
   const [period, setPeriod] = useState<PeriodKey>("all");
   const [exportOpen, setExportOpen] = useState(false);
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => setDebouncedQ(q.trim()), 350);
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    };
-  }, [q]);
+  useResetSearchOnContextChange(ownerAccountId, clearSearch);
 
   const range = useMemo(() => periodRange(period), [period]);
 
   const list = useInfiniteQuery({
-    queryKey: ["dead-birds", ownerAccountId, debouncedQ, period, range.from, range.to],
+    queryKey: ["dead-birds", ownerAccountId, debouncedQuery, period, range.from, range.to],
     enabled: canView,
     initialPageParam: 0,
     queryFn: ({ pageParam }) =>
       listDeadBirds({
-        q: debouncedQ || undefined,
+        q: debouncedQuery || undefined,
         diedFrom: range.from,
         diedTo: range.to,
         limit: 20,
@@ -152,8 +146,8 @@ export default function DeadBirdsScreen() {
                   <Ionicons name="search" size={18} color={birdUi.muted} />
                   <TextInput
                     style={styles.searchInput}
-                    value={q}
-                    onChangeText={setQ}
+                    value={query}
+                    onChangeText={setQuery}
                     placeholder="Search by Band no or id"
                     placeholderTextColor={birdUi.muted}
                     accessibilityLabel="Search dead birds"

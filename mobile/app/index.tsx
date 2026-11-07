@@ -1,7 +1,6 @@
 import { Redirect } from "expo-router";
-import { View } from "react-native";
+import { Image, View } from "react-native";
 
-import { HenLoader } from "../src/components/ui/HenLoader";
 import { useAuth } from "../src/features/auth/AuthContext";
 import { colors } from "../src/theme/tokens";
 
@@ -10,8 +9,13 @@ export default function Index() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg }}>
-        <HenLoader label="Opening your farm…" />
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <Image
+          source={require("../assets/Vibrant Poultry Garden Splash Screen.png")}
+          style={{ flex: 1, width: "100%", height: "100%" }}
+          resizeMode="cover"
+          fadeDuration={0}
+        />
       </View>
     );
   }

@@ -4,7 +4,6 @@ import { Redirect, router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
-  Modal,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -16,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { describeApiError } from "../../../src/api/client";
 import { listSheds, type ShedListItem } from "../../../src/api/sheds";
 import { listScheduledDoses } from "../../../src/api/vaccines";
+import { ShedFilterSheet } from "../../../src/components/sheds/ShedFilterSheet";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import {
@@ -24,6 +24,18 @@ import {
 } from "../../../src/components/ui/ImmersiveHeroHeader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
+import {
+  ALL_SHEDS_ID,
+  buildShedFilterOptions,
+  shedFilterLabel,
+} from "../../../src/features/sheds/shedFilterHelpers";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
+import {
+  byShedToggleLabel,
+  hiddenByShedCount,
+  shouldShowByShedToggle,
+  visibleByShedRows,
+} from "../../../src/features/vaccination/byShedSection";
 import {
   coverageLine,
   DoseCardModel,
@@ -188,8 +200,15 @@ export default function VaccinationDashboardScreen() {
   const canView = hasPermission(user, ownerAccountId, "vaccination.view");
   const canRecord = hasPermission(user, ownerAccountId, "vaccination.record");
   const canSheds = hasPermission(user, ownerAccountId, "shed.view");
-  const [shedFilter, setShedFilter] = useState<ShedFilter>("all");
+  const [shedFilter, setShedFilter] = useState<ShedFilter>(ALL_SHEDS_ID);
   const [shedPickerOpen, setShedPickerOpen] = useState(false);
+  const [byShedExpanded, setByShedExpanded] = useState(false);
+
+  useResetSearchOnContextChange(ownerAccountId, () => {
+    setShedFilter(ALL_SHEDS_ID);
+    setShedPickerOpen(false);
+    setByShedExpanded(false);
+  });
 
   const query = useQuery({
     queryKey: ["vaccination", "dashboard", ownerAccountId, shedFilter],
@@ -212,17 +231,12 @@ export default function VaccinationDashboardScreen() {
     [shedFilter, query.data?.cards],
   );
 
-  const shedOptions = useMemo(() => {
-    const sheds = query.data?.sheds ?? [];
-    return [
-      { id: "all" as ShedFilter, label: "All sheds" },
-      ...sheds.map((s) => ({ id: s.id as ShedFilter, label: s.name })),
-    ];
-  }, [query.data?.sheds]);
+  const shedOptions = useMemo(
+    () => buildShedFilterOptions(query.data?.sheds ?? []),
+    [query.data?.sheds],
+  );
 
-  const shedLabel =
-    shedOptions.find((s) => s.id === shedFilter)?.label ??
-    (shedFilter === "all" ? "All sheds" : "Shed");
+  const shedLabel = shedFilterLabel(shedOptions, shedFilter);
 
   const rows: ListRow[] = useMemo(() => {
     const out: ListRow[] = [];
@@ -278,6 +292,7 @@ export default function VaccinationDashboardScreen() {
       >
         <View style={styles.heroCopy}>
           <Text style={styles.title}>Vaccination</Text>
+          <Text style={styles.subtitle}>Track and manage bird vaccinations</Text>
         </View>
       </ImmersiveHeroHeader>
 
@@ -355,10 +370,27 @@ export default function VaccinationDashboardScreen() {
           }
           renderItem={({ item }) => {
             if (item.type === "shedOverview") {
+              const showToggle = shouldShowByShedToggle(item.rows.length);
+              const hiddenCount = hiddenByShedCount(item.rows.length);
+              const visibleRows = visibleByShedRows(item.rows, byShedExpanded);
               return (
                 <View style={styles.overviewBlock}>
-                  <Text style={styles.sectionTitle}>By shed</Text>
-                  {item.rows.map((row) => (
+                  <View style={styles.byShedHeader}>
+                    <Text style={styles.sectionTitle}>By shed</Text>
+                    {showToggle ? (
+                      <Pressable
+                        onPress={() => setByShedExpanded((open) => !open)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={byShedToggleLabel(hiddenCount, byShedExpanded)}
+                      >
+                        <Text style={styles.byShedToggle}>
+                          {byShedToggleLabel(hiddenCount, byShedExpanded)}
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                  {visibleRows.map((row) => (
                     <Pressable
                       key={row.shedId}
                       style={styles.shedRow}
@@ -408,29 +440,13 @@ export default function VaccinationDashboardScreen() {
         />
       )}
 
-      <Modal visible={shedPickerOpen} transparent animationType="fade" onRequestClose={() => setShedPickerOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setShedPickerOpen(false)}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Filter by shed</Text>
-            {shedOptions.map((opt) => {
-              const active = shedFilter === opt.id;
-              return (
-                <Pressable
-                  key={String(opt.id)}
-                  style={[styles.modalRow, active && styles.modalRowActive]}
-                  onPress={() => {
-                    setShedFilter(opt.id);
-                    setShedPickerOpen(false);
-                  }}
-                >
-                  <Text style={[styles.modalRowText, active && styles.modalRowTextActive]}>{opt.label}</Text>
-                  {active ? <Ionicons name="checkmark" size={18} color={ui.brand} /> : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        </Pressable>
-      </Modal>
+      <ShedFilterSheet
+        visible={shedPickerOpen}
+        onClose={() => setShedPickerOpen(false)}
+        options={shedOptions}
+        selectedId={shedFilter}
+        onSelect={(id) => setShedFilter(id)}
+      />
     </SafeAreaView>
   );
 }
@@ -451,9 +467,11 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     flexShrink: 1,
-    fontSize: typography.secondary.fontSize,
-    fontWeight: "700",
-    color: ui.brand,
+    maxWidth: "72%",
+    fontSize: typography.label.fontSize,
+    fontWeight: "500",
+    color: ui.muted,
+    lineHeight: 20,
   },
   sheet: {
     marginTop: IMMERSIVE_HERO_SHEET_OVERLAP,
@@ -511,6 +529,17 @@ const styles = StyleSheet.create({
   emptyWrap: { flex: 1, paddingHorizontal: ui.horizontal },
   listContent: { paddingHorizontal: ui.horizontal, paddingBottom: 16, gap: 12 },
   overviewBlock: { gap: 8, marginBottom: 4 },
+  byShedHeader: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  byShedToggle: {
+    fontSize: typography.secondary.fontSize,
+    fontWeight: "700",
+    color: ui.brand,
+  },
   shedRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -592,29 +621,4 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   reviewBtnText: { color: ui.white, fontWeight: "800", fontSize: typography.bodyStrong.fontSize },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15, 30, 25, 0.35)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
-    backgroundColor: ui.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 32,
-    gap: 4,
-  },
-  modalTitle: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: ui.ink, marginBottom: 8 },
-  modalRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-  },
-  modalRowActive: { backgroundColor: ui.brandSoft },
-  modalRowText: { fontSize: typography.bodyStrong.fontSize, fontWeight: "600", color: ui.ink },
-  modalRowTextActive: { color: ui.brand, fontWeight: "800" },
 });

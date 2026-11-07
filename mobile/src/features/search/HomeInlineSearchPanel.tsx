@@ -22,12 +22,13 @@ import { hasPermission } from "../auth/permissions";
 import {
   birdSubtitle,
   classifyGlobalSearch,
+  isSearchQueryActive,
   MIN_QUERY_LENGTH,
   normalizeSearchQuery,
+  placeholderForQuery,
   SEARCH_DEBOUNCE_MS,
   shedSubtitle,
 } from "./globalSearchHelpers";
-import { setHomeSearchDraft } from "./homeSearchSession";
 import { typography } from "../../theme/tokens";
 
 
@@ -56,20 +57,19 @@ export function HomeInlineSearchPanel({ draft, colors: c }: Props) {
     const t = setTimeout(() => {
       const next = normalizeSearchQuery(draft);
       setDebounced(next);
-      setHomeSearchDraft(draft);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [draft]);
 
   const types = [canBirds ? "birds" : null, canSheds ? "sheds" : null].filter(Boolean).join(",");
-  const enabled = (canBirds || canSheds) && debounced.length >= MIN_QUERY_LENGTH;
+  const enabled = (canBirds || canSheds) && isSearchQueryActive(debounced);
 
   const query = useQuery({
     queryKey: ["home-inline-search", ownerAccountId, debounced, types],
     queryFn: () => globalSearch({ q: debounced, types, limit: 10 }),
     enabled,
     // Keep previous only when the query string matches — avoids stale overwrite flash.
-    placeholderData: (prev) => (prev?.query === debounced ? prev : undefined),
+    placeholderData: (prev) => placeholderForQuery(prev, debounced),
   });
 
   const uiState = useMemo(
@@ -90,7 +90,6 @@ export function HomeInlineSearchPanel({ draft, colors: c }: Props) {
   );
 
   const openBird = (hit: BirdSearchHit) => {
-    setHomeSearchDraft(draft);
     router.push({
       pathname: "/(app)/birds/[id]",
       params: { id: hit.id, fromHome: "1" },
@@ -98,7 +97,6 @@ export function HomeInlineSearchPanel({ draft, colors: c }: Props) {
   };
 
   const openShed = (hit: ShedSearchHit) => {
-    setHomeSearchDraft(draft);
     router.push({
       pathname: "/(app)/sheds/[id]/birds",
       params: { id: hit.id },

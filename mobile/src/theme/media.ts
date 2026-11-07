@@ -25,13 +25,13 @@ export const dashboardArt = {
  * Overview KPIs use the three portrait themed assets; quick actions use dedicated local art.
  */
 export const homeCardArt = {
-  liveBirds: require("../../assets/live-birds.png"),
-  activeSheds: require("../../assets/active-sheds.png"),
-  farmers: require("../../assets/farmers.png"),
-  manageSheds: require("../../assets/quick-actions-sheds.png"),
-  manageBirds: require("../../assets/quick-actions-birds.png"),
-  vaccination: require("../../assets/quick-actions-Vaccine.png"),
-  catalogues: require("../../assets/quick-actions-catologe.png"),
+  liveBirds: require("../../assets/live_brids2.png"),
+  activeSheds: require("../../assets/active_sheds2.png"),
+  farmers: require("../../assets/farmers2.png"),
+  manageSheds: require("../../assets/quick_actions_manage_sheds2.png"),
+  manageBirds: require("../../assets/quick_actions_manage_birds2.png"),
+  vaccination: require("../../assets/quick_actions_catologes_vaccination2.png"),
+  catalogues: require("../../assets/quick_actions_catologes2.png"),
 } as const;
 
 /** Shed / bird-management header — left clear space for text; art weighted right. */

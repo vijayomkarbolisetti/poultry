@@ -1,6 +1,6 @@
 /**
- * Persists the Home inline search draft across brief navigations
- * (e.g. open bird profile, then return to Home).
+ * Temporary Home inline search draft. The Home screen clears it whenever it
+ * loses focus, so a previous global search cannot reappear after navigation.
  */
 
 let draft = "";

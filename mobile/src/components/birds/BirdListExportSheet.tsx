@@ -6,8 +6,10 @@ import {
   downloadBirdListExport,
   exportPeriodRange,
   isFileSaveCancelled,
+  shareBirdListExport,
   type BirdListExportFormat,
   type BirdListExportKind,
+  type BirdListExportRange,
 } from "../../features/birds/birdListExport";
 import { birdUi } from "../../theme/birdManagementUi";
 import { typography } from "../../theme/tokens";
@@ -17,7 +19,7 @@ import { Button } from "../ui/Button";
 import { FormBottomSheet } from "../ui/FormBottomSheet";
 import { todayIsoDate } from "../ui/selectUtils";
 
-type RangePreset = "last_month" | "last_3_months" | "custom";
+type RangePreset = "all" | "last_month" | "last_3_months" | "custom";
 
 type Props = {
   visible: boolean;
@@ -30,7 +32,7 @@ function titleFor(kind: BirdListExportKind): string {
 }
 
 export function BirdListExportSheet({ visible, kind, onClose }: Props) {
-  const [preset, setPreset] = useState<RangePreset>("last_month");
+  const [preset, setPreset] = useState<RangePreset>("all");
   const [format, setFormat] = useState<BirdListExportFormat>("xlsx");
   const [customFrom, setCustomFrom] = useState(() => todayIsoDate());
   const [customTo, setCustomTo] = useState(() => todayIsoDate());
@@ -40,7 +42,7 @@ export function BirdListExportSheet({ visible, kind, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    setPreset("last_month");
+    setPreset("all");
     setFormat("xlsx");
     setCustomFrom(todayIsoDate());
     setCustomTo(todayIsoDate());
@@ -49,7 +51,7 @@ export function BirdListExportSheet({ visible, kind, onClose }: Props) {
     lock.current = false;
   }, [visible]);
 
-  const resolveRange = (): { from: string; to: string } | null => {
+  const resolveRange = (): BirdListExportRange | null => {
     if (preset === "custom") {
       if (!customFrom || !customTo) {
         setError("Choose both start and end dates.");
@@ -92,6 +94,29 @@ export function BirdListExportSheet({ visible, kind, onClose }: Props) {
     })();
   };
 
+  const onShare = () => {
+    if (busy || lock.current) return;
+    const range = resolveRange();
+    if (!range) return;
+
+    lock.current = true;
+    setBusy(true);
+    setError(null);
+    void (async () => {
+      try {
+        await shareBirdListExport({ kind, format, range });
+        onClose();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : "Could not share export.";
+        setError(msg);
+        toast.error(msg, 8_000);
+      } finally {
+        setBusy(false);
+        lock.current = false;
+      }
+    })();
+  };
+
   return (
     <FormBottomSheet
       visible={visible}
@@ -125,6 +150,15 @@ export function BirdListExportSheet({ visible, kind, onClose }: Props) {
         <View style={styles.footerPad}>
           {error ? <Text style={styles.error}>{error}</Text> : null}
           <Button label="Download" onPress={onDownload} loading={busy} disabled={busy} />
+          <Button
+            label="Share instead"
+            variant="secondary"
+            onPress={onShare}
+            disabled={busy}
+          />
+          <Text style={styles.hint}>
+            If Android refuses the folder, use Share instead to save or send the file.
+          </Text>
         </View>
       }
       contentContainerStyle={styles.body}
@@ -133,6 +167,7 @@ export function BirdListExportSheet({ visible, kind, onClose }: Props) {
       <View style={styles.chips}>
         {(
           [
+            ["all", "All Time"],
             ["last_month", "Last Month"],
             ["last_3_months", "Last 3 Months"],
             ["custom", "Custom Range"],
@@ -257,4 +292,10 @@ const styles = StyleSheet.create({
   customDates: { gap: 10, marginTop: 4 },
   footerPad: { paddingHorizontal: 18, gap: 8 },
   error: { color: birdUi.error, fontWeight: "600", fontSize: typography.caption.fontSize },
+  hint: {
+    color: birdUi.muted,
+    fontSize: typography.caption.fontSize,
+    lineHeight: 16,
+    textAlign: "center",
+  },
 });

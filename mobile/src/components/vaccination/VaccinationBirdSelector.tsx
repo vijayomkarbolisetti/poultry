@@ -85,6 +85,21 @@ export function VaccinationBirdSelector({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<BirdSelectFilter>("eligible");
 
+  const resetSearch = () => {
+    setQuery("");
+    setFilter("eligible");
+  };
+
+  const handleClose = () => {
+    resetSearch();
+    onClose();
+  };
+
+  const handleContinue = () => {
+    resetSearch();
+    onContinue();
+  };
+
   const rows = useMemo(
     () => buildRows(birds, alreadyVaccinatedIds),
     [birds, alreadyVaccinatedIds],
@@ -125,7 +140,7 @@ export function VaccinationBirdSelector({
   const searching = query.trim().length > 0;
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={handleClose}>
       <View style={[styles.root, { paddingTop: Math.max(insets.top, 12) }]}>
         <View style={styles.header}>
           <View style={styles.titleRow}>
@@ -142,7 +157,7 @@ export function VaccinationBirdSelector({
               </Text>
             </View>
             <Pressable
-              onPress={onClose}
+              onPress={handleClose}
               hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel="Close bird selector"
@@ -346,7 +361,7 @@ export function VaccinationBirdSelector({
             <Pressable
               style={[styles.continueBtn, !canContinue && styles.continueDisabled]}
               disabled={!canContinue}
-              onPress={onContinue}
+              onPress={handleContinue}
               accessibilityRole="button"
               accessibilityState={{ disabled: !canContinue }}
               accessibilityLabel="Continue with selected birds"

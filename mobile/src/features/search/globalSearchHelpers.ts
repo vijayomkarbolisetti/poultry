@@ -16,6 +16,22 @@ export function normalizeSearchQuery(raw: string): string {
   return raw.trim().replace(/\s+/g, " ");
 }
 
+/** True when the normalized query is long enough to search. */
+export function isSearchQueryActive(
+  query: string,
+  minLength: number = MIN_QUERY_LENGTH,
+): boolean {
+  return normalizeSearchQuery(query).length >= minLength;
+}
+
+/** Keeps prior data only when it belongs to the current query. */
+export function placeholderForQuery<T extends { query: string }>(
+  previous: T | undefined,
+  query: string,
+): T | undefined {
+  return previous?.query === query ? previous : undefined;
+}
+
 export function classifyGlobalSearch(opts: {
   query: string;
   loading: boolean;

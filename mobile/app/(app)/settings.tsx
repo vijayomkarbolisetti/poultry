@@ -4,7 +4,6 @@ import { ComponentProps } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Screen } from "../../src/components/ui/Screen";
 import type { Membership } from "../../src/api/auth";
 import { useAuth } from "../../src/features/auth/AuthContext";
@@ -136,6 +135,7 @@ export default function SettingsScreen() {
   const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
   const canCatalogues = hasPermission(user, ownerAccountId, "schedule.view");
   const canBirdHistory = hasPermission(user, ownerAccountId, "bird.view");
+  const canSicknessHistory = hasPermission(user, ownerAccountId, "sickness.view");
 
   const onSignOut = async () => {
     await signOut();
@@ -151,28 +151,20 @@ export default function SettingsScreen() {
     show: boolean;
   }[] = [
     {
+      key: "settings",
+      label: "Settings",
+      description: "Username and password",
+      icon: "settings-outline",
+      href: "/(app)/account/settings",
+      show: true,
+    },
+    {
       key: "farms",
       label: "All farms",
       description: "Create farms and open any organization",
       icon: "globe-outline",
       href: "/(app)/farms",
       show: isSuperAdmin,
-    },
-    {
-      key: "profile",
-      label: "Change name",
-      description: "Update the name on your farm account",
-      icon: "person-outline",
-      href: "/(app)/account/edit-profile",
-      show: !isSuperAdmin || Boolean(membership),
-    },
-    {
-      key: "password",
-      label: "Change password",
-      description: "Update your login password",
-      icon: "lock-closed-outline",
-      href: "/(auth)/change-password",
-      show: true,
     },
     {
       key: "farmers",
@@ -199,6 +191,14 @@ export default function SettingsScreen() {
       show: canBirdHistory,
     },
     {
+      key: "sick",
+      label: "Sick Birds",
+      description: "View sickness episodes, follow-ups, and recovery",
+      icon: "medkit-outline",
+      href: "/(app)/birds/sick-birds",
+      show: canSicknessHistory,
+    },
+    {
       key: "catalogues",
       label: "Catalogues",
       description: "Manage vaccination catalogues",
@@ -222,20 +222,19 @@ export default function SettingsScreen() {
         gap: space.md,
       }}
     >
-      {/* Compact header — gear is decorative until a Settings destination exists */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <BrandLogo size={28} />
           <Text style={styles.headerTitle}>More</Text>
         </View>
-        <View
-          style={styles.settingsBadge}
-          pointerEvents="none"
-          importantForAccessibility="no-hide-descendants"
-          accessibilityElementsHidden
+        <Pressable
+          onPress={() => router.push("/(app)/account/settings")}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+          style={({ pressed }) => [styles.settingsBadge, pressed && styles.pressed]}
+          hitSlop={6}
         >
-          <Ionicons name="settings-outline" size={18} color={ui.muted} />
-        </View>
+          <Ionicons name="settings-outline" size={18} color={ui.deep} />
+        </Pressable>
       </View>
 
       {/* Account summary — display only (no profile route / no chevron) */}
@@ -339,7 +338,6 @@ const styles = StyleSheet.create({
     color: ui.deep,
     letterSpacing: -0.4,
   },
-  /** Soft decorative badge — not a control (no Settings screen yet). */
   settingsBadge: {
     width: 36,
     height: 36,
@@ -349,7 +347,6 @@ const styles = StyleSheet.create({
     backgroundColor: ui.mint,
     alignItems: "center",
     justifyContent: "center",
-    opacity: 0.72,
   },
   profileCard: {
     flexDirection: "row",
