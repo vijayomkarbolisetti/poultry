@@ -17,16 +17,20 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { listSheds, type ShedListItem } from "../../../src/api/sheds";
 import { describeApiError } from "../../../src/api/client";
-import { BrandLogo } from "../../../src/components/brand/BrandLogo";
+import { ShedFilterSheet } from "../../../src/components/sheds/ShedFilterSheet";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import {
   IMMERSIVE_HERO_SHEET_OVERLAP,
   ImmersiveHeroHeader,
 } from "../../../src/components/ui/ImmersiveHeroHeader";
-import { APP_BRAND_NAME } from "../../../src/config/appConfig";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
+import {
+  ALL_SHEDS_ID,
+  buildShedFilterOptions,
+  shedFilterLabel,
+} from "../../../src/features/sheds/shedFilterHelpers";
 import { sumLiveBirds } from "../../../src/features/sheds/sumLiveBirds";
 import { heroArt, media } from "../../../src/theme/media";
 import { typography } from "../../../src/theme/tokens";
@@ -298,6 +302,8 @@ export default function ShedsScreen() {
   const canUpdate = hasPermission(user, ownerAccountId, "shed.update");
 
   const [q, setQ] = useState("");
+  const [shedIdFilter, setShedIdFilter] = useState(ALL_SHEDS_ID);
+  const [shedPickerOpen, setShedPickerOpen] = useState(false);
   const [modeFilter, setModeFilter] = useState<ModeFilter>(DEFAULT_MODE);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATUS);
   const [draftMode, setDraftMode] = useState<ModeFilter>(DEFAULT_MODE);
@@ -344,8 +350,15 @@ export default function ShedsScreen() {
     setStatusFilter(DEFAULT_STATUS);
   };
 
+  const shedOptions = useMemo(
+    () => buildShedFilterOptions((sheds.data ?? []).map((s) => ({ id: s.id, name: s.name }))),
+    [sheds.data],
+  );
+  const shedLabel = shedFilterLabel(shedOptions, shedIdFilter);
+
   const scoped = useMemo(() => {
     let rows = (sheds.data ?? []).map(shedListDefaults);
+    if (shedIdFilter !== ALL_SHEDS_ID) rows = rows.filter((s) => s.id === shedIdFilter);
     if (modeFilter === "owner") rows = rows.filter((s) => s.is_owner_managed);
     if (modeFilter === "farmer") rows = rows.filter((s) => !s.is_owner_managed);
     if (q.trim()) {
@@ -353,7 +366,7 @@ export default function ShedsScreen() {
       rows = rows.filter((s) => s.name.toLowerCase().includes(needle));
     }
     return rows;
-  }, [sheds.data, modeFilter, q]);
+  }, [sheds.data, shedIdFilter, modeFilter, q]);
 
   const data = useMemo(() => {
     let rows = scoped;
@@ -375,13 +388,6 @@ export default function ShedsScreen() {
         accessibilityLabel="Sheds farm illustration"
         contentStyle={styles.heroCopy}
       >
-        <View style={styles.brandRow}>
-          <BrandLogo size={26} preferPng accessibilityLabel={`${APP_BRAND_NAME} logo`} />
-          <Text style={styles.brandName}>
-            {APP_BRAND_NAME}
-            <Text style={styles.brandMark}>™</Text>
-          </Text>
-        </View>
         <View style={styles.titleCopy}>
           <Text style={styles.title}>Sheds</Text>
           <Text style={styles.sub}>Search, filter and open a shed to manage birds</Text>
@@ -427,6 +433,19 @@ export default function ShedsScreen() {
             </Pressable>
           ) : null}
         </View>
+
+        <Pressable
+          style={[styles.shedFilterBtn, softShadow()]}
+          onPress={() => setShedPickerOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Filter by shed: ${shedLabel}`}
+        >
+          <Ionicons name="home-outline" size={18} color={ui.secondaryText} />
+          <Text style={styles.shedFilterLabel} numberOfLines={1}>
+            {shedLabel}
+          </Text>
+          <Ionicons name="chevron-down" size={18} color={ui.secondaryText} />
+        </Pressable>
 
         <View style={styles.summary}>
           <View style={styles.summaryMetric}>
@@ -518,6 +537,14 @@ export default function ShedsScreen() {
         )}
       />
 
+      <ShedFilterSheet
+        visible={shedPickerOpen}
+        onClose={() => setShedPickerOpen(false)}
+        options={shedOptions}
+        selectedId={shedIdFilter}
+        onSelect={setShedIdFilter}
+      />
+
       <Modal visible={filterSheet} transparent animationType="fade" onRequestClose={closeFilterSheet}>
         <Pressable style={styles.sheetBackdrop} onPress={closeFilterSheet}>
           <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
@@ -599,21 +626,9 @@ const styles = StyleSheet.create({
   headerBlock: { marginBottom: 8 },
   heroCopy: {
     flexGrow: 1,
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     gap: 12,
   },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  brandName: {
-    fontSize: typography.sectionTitle.fontSize,
-    fontWeight: "800",
-    color: ui.deepGreen,
-    letterSpacing: -0.2,
-  },
-  brandMark: { color: ui.copper, fontSize: typography.overline.fontSize, fontWeight: "700" },
   titleCopy: {
     gap: 6,
     paddingBottom: 4,
@@ -635,6 +650,23 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingHorizontal: ui.horizontal,
     marginTop: IMMERSIVE_HERO_SHEET_OVERLAP,
+  },
+  shedFilterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: ui.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: ui.cardBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  shedFilterLabel: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
+    color: ui.primaryText,
   },
   paddedBlock: { paddingHorizontal: ui.horizontal },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },

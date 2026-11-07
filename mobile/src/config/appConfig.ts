@@ -1,12 +1,20 @@
 /**
- * Application-wide product identity for UI copy.
+ * User-facing product identity. Change `name` in `app-identity.json` to rebrand.
  *
- * Change `APP_BRAND_NAME` here to update the visible brand everywhere the app
- * imports this constant (headers, auth, settings, accessibility labels, etc.).
+ * Native / store labels that cannot import this TypeScript module:
+ * - `android/app/src/main/res/values/strings.xml` (`app_name`) — updated on native rebuild
+ * - `android/settings.gradle` `rootProject.name` — Gradle project name, not the launcher label
+ * - Android `applicationId` / iOS bundle id — never change these for a rename
+ * - EAS `projectId` / `owner` — never change these for a rename
  *
- * Native / store metadata that must stay in static JSON (Expo `app.json`
- * `name`, Android `applicationId`, URL scheme, permission strings) cannot
- * import this module — update those separately when the public product name
- * changes for store listing or OS permission dialogs.
+ * Expo `name` and image-picker permission strings are wired through `app.config.js`.
  */
-export const APP_BRAND_NAME = "PoultryTrack";
+import identity from "./app-identity.json";
+
+export const APP_CONFIG = {
+  name: identity.name,
+  shortName: identity.shortName,
+} as const;
+
+/** @deprecated Prefer `APP_CONFIG.name` — kept for existing imports. */
+export const APP_BRAND_NAME = APP_CONFIG.name;

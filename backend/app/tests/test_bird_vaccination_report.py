@@ -698,7 +698,19 @@ def test_pdf_sale_and_lifecycle_sections() -> None:
                 created_at=datetime(2026, 10, 28, tzinfo=timezone.utc),
             ),
         ],
-        batch_upcoming_doses=[],
+        batch_upcoming_doses=[
+            BirdProfileBatchDoseOut(
+                id=uuid4(),
+                vaccine_definition_id=uuid4(),
+                vaccine_name="ND Booster",
+                dose_number=2,
+                due_date=date(2026, 12, 1),
+                status="upcoming",
+                eligible_count=4,
+                completed_count=0,
+                needs_review=False,
+            )
+        ],
     )
     text = _pdf_text(
         build_bird_vaccination_pdf_bytes(
@@ -720,6 +732,8 @@ def test_pdf_sale_and_lifecycle_sections() -> None:
     assert "BATCH-1" not in text
     assert str(sale_id) not in text
     assert "inactive" in text.lower() or "sold" in text.lower()
+    assert "ND Booster" in text
+    assert "records only" in text.lower()
 
 
 @pytest.mark.asyncio
@@ -750,5 +764,7 @@ async def test_pdf_sold_bird_export_via_api(client: AsyncClient) -> None:
     assert "9876543210" in text
     assert "Sale details" in text
     assert "PDF-LOT-9" in text or "PDF-LOT" in text
+    assert "Upcoming vaccinations" in text or "upcoming" in text.lower()
+    assert "PDF Vax" in text
     assert "Transfer" in text or "Sale" in text
     _forbidden_leaks(text, s["bird_id"])

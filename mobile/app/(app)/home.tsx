@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { fetchDashboard } from "../../src/api/dashboard";
 import { Screen } from "../../src/components/ui/Screen";
-import { APP_BRAND_NAME } from "../../src/config/appConfig";
+import { APP_CONFIG } from "../../src/config/appConfig";
 import { useAuth } from "../../src/features/auth/AuthContext";
 import { hasPermission } from "../../src/features/auth/permissions";
 import { HomeInlineSearchPanel } from "../../src/features/search/HomeInlineSearchPanel";
@@ -368,7 +368,7 @@ export default function HomeScreen() {
         >
           <View style={styles.headerTop}>
             <Text style={styles.brandName} accessibilityRole="header">
-              {APP_BRAND_NAME}
+              {APP_CONFIG.name}
             </Text>
             <Pressable
               accessibilityRole="button"

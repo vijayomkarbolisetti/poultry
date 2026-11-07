@@ -53,6 +53,7 @@ from app.services.schedule_engine import (
     STATUS_DUE_SOON,
     STATUS_DUE_TODAY,
     STATUS_NEEDS_REVIEW,
+    STATUS_INACTIVE,
     STATUS_OVERDUE,
     STATUS_UPCOMING,
     _tz,
@@ -78,6 +79,10 @@ _ROW_ALT = colors.HexColor("#F7FAF8")
 _BATCH_NOTE = (
     "These are planned doses for birds that share this hatch date in the same shed. "
     "Upcoming or overdue here means not yet recorded as given for this bird."
+)
+_INACTIVE_UPCOMING_NOTE = (
+    "This bird is no longer active. Remaining hatch-date schedule doses are listed "
+    "for records only and cannot be recorded for this bird."
 )
 _HISTORY_CONTEXT = (
     "Only administered, saved doses appear below — including vaccinations recorded for "
@@ -145,6 +150,7 @@ def format_dose_status_label(status: str | None) -> str:
         STATUS_DUE_TODAY: "Due today",
         STATUS_OVERDUE: "Overdue",
         STATUS_NEEDS_REVIEW: "Needs review",
+        STATUS_INACTIVE: "Not given (schedule closed)",
         STATUS_COMPLETED_ON_TIME: "Completed on time",
         STATUS_COMPLETED_LATE: "Completed late",
         STATUS_COMPLETED_TIMING_UNKNOWN: "Completed",
@@ -741,6 +747,9 @@ def build_bird_vaccination_pdf_bytes(
         upcoming_body = _p("No upcoming vaccinations are currently scheduled.", muted)
     else:
         story.append(_p(_BATCH_NOTE, note))
+        if not profile.is_active:
+            story.append(Spacer(1, 2))
+            story.append(_p(_INACTIVE_UPCOMING_NOTE, note))
         story.append(Spacer(1, 3))
         header = [
             _p("Vaccine", table_header),

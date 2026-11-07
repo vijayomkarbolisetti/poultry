@@ -323,7 +323,7 @@ export default function AddBirdScreen() {
                 accessibilityState={{ selected: mode === "banded" }}
               >
                 <Ionicons
-                  name="paw-outline"
+                  name="pricetag-outline"
                   size={22}
                   color={mode === "banded" ? birdUi.white : birdUi.primary}
                 />

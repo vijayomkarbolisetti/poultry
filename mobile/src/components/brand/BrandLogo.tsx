@@ -1,6 +1,6 @@
 import { Image, ImageStyle, StyleProp, View, ViewStyle } from "react-native";
 
-import { APP_BRAND_NAME } from "../../config/appConfig";
+import { APP_CONFIG } from "../../config/appConfig";
 
 type Props = {
   /** Rendered size (square mark). */
@@ -18,7 +18,7 @@ type Props = {
 export function BrandLogo({
   size = 64,
   style,
-  accessibilityLabel = APP_BRAND_NAME,
+  accessibilityLabel = APP_CONFIG.name,
 }: Props) {
   const wrapStyle: StyleProp<ViewStyle> = [{ width: size, height: size }, style];
 

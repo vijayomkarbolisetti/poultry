@@ -253,6 +253,7 @@ export default function AppLayout() {
       <Tabs.Screen name="farms/index" options={hidden("All farms")} />
       <Tabs.Screen name="farms/create" options={hidden("Create farm")} />
       <Tabs.Screen name="account/edit-profile" options={hidden("Owner name")} />
+      <Tabs.Screen name="account/settings" options={hidden("Settings")} />
       <Tabs.Screen name="catalogues/index" options={hidden("Catalogues")} />
       <Tabs.Screen name="catalogues/create" options={hidden("Create catalogue")} />
       <Tabs.Screen name="catalogues/[id]" options={hidden("Catalogue")} />

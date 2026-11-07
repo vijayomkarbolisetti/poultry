@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +45,7 @@ from app.schemas.search import BatchSearchHitOut, BatchSearchOut
 from app.services.schedule_engine import (
     STATUS_DUE_SOON,
     STATUS_DUE_TODAY,
+    STATUS_INACTIVE,
     STATUS_NEEDS_REVIEW,
     STATUS_OVERDUE,
     STATUS_UPCOMING,
@@ -58,6 +59,21 @@ _OPEN_DOSE_STATUSES = {
     STATUS_NEEDS_REVIEW,
 }
 _BATCH_DOSE_NOTE = "Shed hatch-date schedule — not confirmed as an individual vaccination"
+
+
+def _profile_upcoming_dose_clause(bird: Bird):
+    """Open flock doses for live birds; remaining schedule for sold/dead reports."""
+    open_active = and_(
+        ScheduledDose.is_active.is_(True),
+        ScheduledDose.status.in_(_OPEN_DOSE_STATUSES),
+    )
+    if bird.is_active and bird.lifecycle_status == BirdLifecycleStatus.active:
+        return open_active
+    remaining_closed = and_(
+        ScheduledDose.is_active.is_(False),
+        ScheduledDose.status == STATUS_INACTIVE,
+    )
+    return or_(open_active, remaining_closed)
 
 
 class FlockError(Exception):
@@ -2175,8 +2191,7 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
             .where(
                 ScheduledDose.owner_account_id == ctx.owner_account_id,
                 ScheduledDose.flock_id == bird.flock_id,
-                ScheduledDose.is_active.is_(True),
-                ScheduledDose.status.in_(_OPEN_DOSE_STATUSES),
+                _profile_upcoming_dose_clause(bird),
             )
             .order_by(ScheduledDose.due_date.asc())
             .limit(100)
@@ -2260,9 +2275,6 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
                 recorded_at=sale_ev.created_at,
             )
 
-    # Sold/dead/exit birds must not surface open flock vaccination tasks as actionable.
-    show_upcoming = bird.is_active and bird.lifecycle_status == BirdLifecycleStatus.active
-
     return BirdProfileOut(
         id=bird.id,
         band_id=bird.band_id,
@@ -2294,7 +2306,7 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
         dam_parentage=dam_parentage,
         sale=sale_out,
         individual_vaccinations=individual,
-        batch_upcoming_doses=batch_doses if show_upcoming else [],
+        batch_upcoming_doses=batch_doses,
         lifecycle_events=lifecycle,
     )
 

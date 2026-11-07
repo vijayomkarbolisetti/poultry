@@ -7,6 +7,7 @@ import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "rea
 import {
   getBirdProfile,
   type BirdParentage,
+  type BirdProfileBatchDose,
   type BirdProfileLifecycle,
   type BirdProfileVaccinationEvent,
 } from "../../../src/api/birds";
@@ -64,6 +65,7 @@ export default function BirdProfileScreen() {
   const [mortalityOpen, setMortalityOpen] = useState(false);
   const [salePayload, setSalePayload] = useState<SaleBandedPayload | null>(null);
   const [vaxExpanded, setVaxExpanded] = useState(false);
+  const [upcomingExpanded, setUpcomingExpanded] = useState(false);
   const [lifeExpanded, setLifeExpanded] = useState(false);
   const [reportBusy, setReportBusy] = useState(false);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
@@ -286,10 +288,14 @@ export default function BirdProfileScreen() {
   const vaccinations = [...(p.individual_vaccinations ?? [])].sort((a, b) =>
     a.administration_date < b.administration_date ? 1 : -1,
   );
+  const upcomingDoses = [...(p.batch_upcoming_doses ?? [])].sort((a, b) =>
+    a.due_date < b.due_date ? -1 : 1,
+  );
   const lifecycle = [...(p.lifecycle_events ?? [])].sort((a, b) =>
     a.effective_date < b.effective_date ? 1 : -1,
   );
   const visibleVax = vaxExpanded ? vaccinations : vaccinations.slice(0, 1);
+  const visibleUpcoming = upcomingExpanded ? upcomingDoses : upcomingDoses.slice(0, 3);
   const visibleLife = lifeExpanded ? lifecycle : lifecycle.slice(0, 1);
 
   const statusKey = (p.lifecycle_status || "").toLowerCase();
@@ -564,6 +570,42 @@ export default function BirdProfileScreen() {
               last={idx === visibleVax.length - 1}
             />
           ))
+        )}
+      </SectionCard>
+
+      <SectionCard
+        icon="alarm-outline"
+        title="Upcoming vaccinations"
+        action={
+          upcomingDoses.length > 3 ? (
+            <HeaderAction
+              label={upcomingExpanded ? "Show less" : "View all"}
+              onPress={() => setUpcomingExpanded((v) => !v)}
+            />
+          ) : undefined
+        }
+      >
+        {upcomingDoses.length === 0 ? (
+          <Text style={styles.emptySub}>
+            {p.is_active
+              ? "No remaining hatch-date doses are scheduled."
+              : "No remaining hatch-date doses are on record for this bird."}
+          </Text>
+        ) : (
+          <>
+            {!p.is_active ? (
+              <Text style={styles.emptySub}>
+                Remaining flock schedule for records only. New vaccinations cannot be recorded.
+              </Text>
+            ) : null}
+            {visibleUpcoming.map((dose, idx) => (
+              <UpcomingDoseCard
+                key={dose.id}
+                dose={dose}
+                last={idx === visibleUpcoming.length - 1}
+              />
+            ))}
+          </>
         )}
       </SectionCard>
 
@@ -867,6 +909,39 @@ function ParentCard({
   }
 
   return <View style={styles.parentCard}>{body}</View>;
+}
+
+function formatUpcomingDoseStatus(status: string | null | undefined): string {
+  const raw = (status ?? "").toLowerCase().trim();
+  if (raw === "due_soon") return "Due soon";
+  if (raw === "due_today") return "Due today";
+  if (raw === "needs_review") return "Needs review";
+  if (raw === "inactive") return "Schedule closed";
+  if (!raw) return "—";
+  return raw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function UpcomingDoseCard({
+  dose,
+  last,
+}: {
+  dose: BirdProfileBatchDose;
+  last?: boolean;
+}) {
+  return (
+    <View style={[styles.vaxCard, !last && styles.rowBorder]}>
+      <View style={styles.vaxTitleRow}>
+        <Text style={styles.vaxName}>{dose.vaccine_name?.trim() || "Vaccine"}</Text>
+        <Text style={styles.vaxDate}>{formatDisplayDate(dose.due_date)}</Text>
+      </View>
+      <Text style={styles.vaxCohortBadge}>
+        Dose {dose.dose_number} · {formatUpcomingDoseStatus(dose.status)}
+      </Text>
+      <Text style={styles.vaxMeta}>
+        Hatch-date schedule · {dose.completed_count} of {dose.eligible_count} birds covered
+      </Text>
+    </View>
+  );
 }
 
 function VaccinationCard({
