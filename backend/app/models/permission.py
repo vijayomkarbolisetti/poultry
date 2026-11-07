@@ -27,6 +27,9 @@ PERMISSION_CODES = [
     "media.view",
     "media.upload",
     "lifecycle.record",
+    "sickness.view",
+    "sickness.record",
+    "sickness.recover",
 ]
 
 

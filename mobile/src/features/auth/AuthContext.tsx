@@ -11,6 +11,7 @@ import {
 
 import { fetchMe, logout as apiLogout, type UserMe } from "../../api/auth";
 import { tokenStore } from "../../api/client";
+import { clearHomeSearchDraft } from "../search/homeSearchSession";
 
 type AuthState = {
   user: UserMe | null;
@@ -95,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await apiLogout();
+    clearHomeSearchDraft();
     setHasToken(false);
     setOwnerAccountId(null);
     queryClient.clear();
@@ -102,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const setActiveOwner = useCallback(
     async (ownerId: string) => {
+      clearHomeSearchDraft();
       setOwnerAccountId(ownerId);
       await tokenStore.setOwnerId(ownerId);
       // Drop farm-scoped caches only. Clearing auth/me leaves the app stuck on

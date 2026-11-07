@@ -261,6 +261,7 @@ _PHASE48_TABLES = (
     "vaccination_corrections",
     "notifications",
     "animal_media",
+    "bird_sickness_records",
 )
 
 
@@ -316,8 +317,8 @@ async def engine():
             )
         # Hard-check that migration chain is applied (fail loud if create_all sneaks back).
         ver = await conn.scalar(text("SELECT version_num FROM alembic_version"))
-        if ver != "0019_drop_admin_visible_pw":
-            raise RuntimeError(f"Expected alembic 0019_drop_admin_visible_pw, got {ver!r}")
+        if ver != "0020_bird_sickness_records":
+            raise RuntimeError(f"Expected alembic 0020_bird_sickness_records, got {ver!r}")
         idx = await conn.scalar(
             text(
                 """

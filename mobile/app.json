@@ -7,6 +7,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "poultrytracker",
+    "splash": {
+      "image": "./assets/Vibrant Poultry Garden Splash Screen.png",
+      "resizeMode": "cover",
+      "backgroundColor": "#D8F5DE"
+    },
     "ios": {
       "supportsTablet": true
     },

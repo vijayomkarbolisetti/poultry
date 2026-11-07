@@ -318,6 +318,11 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       setSearchDraft(getHomeSearchDraft());
+      return () => {
+        // Global search is transient: leaving Home ends the search context.
+        clearHomeSearchDraft();
+        setSearchDraft("");
+      };
     }, []),
   );
 

@@ -1,16 +1,24 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import {
+  ArrowLeftRight,
+  HandCoins,
+  HeartCrack,
+  Syringe,
+  Thermometer,
+} from "lucide-react-native";
 
 import { listBirdsInShed, type ShedBirdListItem } from "../../../../src/api/birds";
 import { describeApiError } from "../../../../src/api/client";
@@ -47,6 +55,10 @@ import { Screen } from "../../../../src/components/ui/Screen";
 import { useAuth } from "../../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../../src/features/auth/permissions";
 import {
+  buildSearchContextKey,
+  useResetSearchOnContextChange,
+} from "../../../../src/features/search/searchLifecycle";
+import {
   formatRelativeAgeLabel,
   formatSexLabel,
   formatUnbandedCohortLabel,
@@ -82,6 +94,7 @@ import { birdIcons, shedHeaderArt } from "../../../../src/theme/media";
 import { colors, icons, layout, radius, shadows, space, typography } from "../../../../src/theme/tokens";
 
 const LIST_DOCK_SPACE = layout.buttonMinHeight * 2 + space.xl;
+const BULK_DOCK_SPACE = 148;
 
 
 const PAGE = 20;
@@ -112,6 +125,7 @@ export default function ShedBirdsScreen() {
   const canCreateGroup = hasPermission(user, ownerAccountId, "flock.create");
   const canLifecycle = hasPermission(user, ownerAccountId, "lifecycle.record");
   const canRecordVaccination = hasPermission(user, ownerAccountId, "vaccination.record");
+  const canSickness = hasPermission(user, ownerAccountId, "sickness.record");
   const canUpdateShed = hasPermission(user, ownerAccountId, "shed.update");
 
   const [tab, setTab] = useState<TabKey>("banded");
@@ -268,12 +282,18 @@ export default function ShedBirdsScreen() {
     );
   }, [unbandedBatchesApi, overviewByFlockId, debouncedQ]);
 
-  // Never carry selection or manage panel across sheds.
-  useEffect(() => {
-    setSelected(new Set());
-    setShowManage(false);
-    filterKey.current = "";
-  }, [id]);
+  // Never carry search, selection, or the manage panel across sheds or farms.
+  useResetSearchOnContextChange(
+    buildSearchContextKey({ ownerAccountId, shedId: id }),
+    () => {
+      setQ("");
+      setDebouncedQ("");
+      setSelected(new Set());
+      setShowManage(false);
+      filterKey.current = "";
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    },
+  );
 
   useEffect(() => {
     const key = buildBirdMgmtContextKey({
@@ -468,14 +488,16 @@ export default function ShedBirdsScreen() {
     );
   }
 
-  // Banded multi-select must work for vaccination-only users (no lifecycle.record),
-  // so they can open Record vaccination without visiting each Bird Profile.
+  // Banded multi-select must work for vaccination/sickness-only users (no lifecycle.record),
+  // so they can open the action without visiting each Bird Profile.
   const canSelectBanded =
-    (canLifecycle || canRecordVaccination) && !!shed?.is_active;
+    (canLifecycle || canRecordVaccination || canSickness) && !!shed?.is_active;
   const showBulkBar =
     !!shed?.is_active &&
     selected.size > 0 &&
-    (canLifecycle || (canRecordVaccination && tab === "banded"));
+    (canLifecycle ||
+      (canRecordVaccination && tab === "banded") ||
+      (canSickness && tab === "banded"));
   const bulkDisabledUnbanded = tab === "unbanded" && !unbandedBulk.ok;
   const allLoadedSelected =
     tab === "banded" && areAllEligibleSelected(selected, loadedEligibleIds);
@@ -492,6 +514,22 @@ export default function ShedBirdsScreen() {
         shedId: id,
         birdIds: ids.join(","),
         labels: birdLabels.join("|"),
+      },
+    });
+    setSelected(new Set());
+  };
+
+  const openSickness = () => {
+    if (!id || selected.size === 0 || tab !== "banded") return;
+    const ids = [...selected];
+    const birdLabels = items.filter((b) => selected.has(b.id)).map((b) => birdLabel(b));
+    router.push({
+      pathname: "/(app)/birds/record-sickness",
+      params: {
+        shedId: id,
+        birdIds: ids.join(","),
+        labels: birdLabels.join("|"),
+        formKey: `${Date.now()}`,
       },
     });
     setSelected(new Set());
@@ -516,6 +554,8 @@ export default function ShedBirdsScreen() {
       <ImmersiveHeroHeader
         source={shedHeaderArt}
         curveFill={birdUi.bg}
+        minHeight={160}
+        style={styles.hero}
         accessibilityLabel="Shed header illustration"
         contentStyle={styles.heroCopy}
       >
@@ -567,6 +607,14 @@ export default function ShedBirdsScreen() {
             {managedLabel}
             {farmerNames ? ` · ${farmerNames}` : " · No farmer assigned"}
           </Text>
+          <View
+            style={styles.totalBirds}
+            accessibilityLabel={`Total Birds ${liveCount}`}
+          >
+            <Ionicons name="egg-outline" size={14} color={birdUi.primary} />
+            <Text style={styles.totalBirdsLabel}>Total Birds</Text>
+            <Text style={styles.totalBirdsValue}>{liveCount}</Text>
+          </View>
         </View>
       </ImmersiveHeroHeader>
 
@@ -588,35 +636,6 @@ export default function ShedBirdsScreen() {
           <DataQualityBanner message="Inactive — history stays available. Reactivate before adding birds." />
         </View>
       ) : null}
-
-      <View style={styles.metricsCard}>
-        <Metric
-          icon="egg-outline"
-          iconBg={birdUi.iconCircle}
-          iconColor={birdUi.primary}
-          value={liveCount}
-          label="Live"
-          tone={birdUi.primary}
-        />
-        <View style={styles.metricDivider} />
-        <Metric
-          icon="pricetag-outline"
-          iconBg={birdUi.orangePale}
-          iconColor={birdUi.orange}
-          value={bandedCount}
-          label="Banded"
-          tone={birdUi.orange}
-        />
-        <View style={styles.metricDivider} />
-        <Metric
-          icon="people-outline"
-          iconBg={birdUi.bluePale}
-          iconColor={birdUi.blue}
-          value={unbandedCount}
-          label="Unbanded"
-          tone={birdUi.blue}
-        />
-      </View>
 
       <View style={styles.tabs}>
         <Pressable
@@ -672,19 +691,6 @@ export default function ShedBirdsScreen() {
         </View>
       </View>
 
-      {showSelectAll && selected.size === 0 ? (
-        <View style={styles.selectAllRow}>
-          <Text style={styles.selectAllHint}>Tap a bird to select</Text>
-          <Pressable
-            onPress={onSelectAllPress}
-            style={styles.selectAllHit}
-            accessibilityRole="button"
-            accessibilityLabel="Select all"
-          >
-            <Text style={styles.selectAllLink}>Select all</Text>
-          </Pressable>
-        </View>
-      ) : null}
     </View>
   );
 
@@ -731,40 +737,62 @@ export default function ShedBirdsScreen() {
               </Pressable>
             </View>
           </View>
-          {showBulkBar ? (
-            <View style={styles.bulkActions}>
-              {canRecordVaccination && tab === "banded" ? (
-                <Button label="Record vaccination" onPress={openRecordVaccination} />
-              ) : null}
-              {canLifecycle ? (
-                <>
-                  <View style={styles.bulkRow}>
-                    <Button
-                      label="Mortality"
-                      variant="danger"
-                      onPress={openMortality}
-                      disabled={bulkDisabledUnbanded}
-                      style={styles.bulkBtn}
-                    />
-                    <Button
-                      label="Transfer"
-                      variant="secondary"
-                      onPress={openTransfer}
-                      disabled={bulkDisabledUnbanded}
-                      style={styles.bulkBtn}
-                    />
-                  </View>
-                  <Button
-                    label="Sold"
-                    variant="secondary"
-                    onPress={openSale}
-                    disabled={bulkDisabledUnbanded}
-                  />
-                </>
-              ) : null}
-            </View>
-          ) : null}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bulkActionsRow}
+          >
+            {canRecordVaccination && tab === "banded" ? (
+              <BulkActionChip
+                Icon={Syringe}
+                label="Vaccine"
+                accessibilityLabel="Record vaccination"
+                onPress={openRecordVaccination}
+              />
+            ) : null}
+            {canSickness && tab === "banded" ? (
+              <BulkActionChip
+                Icon={Thermometer}
+                label="Sickness"
+                accessibilityLabel="Record sickness"
+                onPress={openSickness}
+              />
+            ) : null}
+            {canLifecycle ? (
+              <BulkActionChip
+                Icon={HeartCrack}
+                label="Mortality"
+                accessibilityLabel="Record mortality"
+                danger
+                onPress={openMortality}
+                disabled={bulkDisabledUnbanded}
+              />
+            ) : null}
+            {canLifecycle ? (
+              <BulkActionChip
+                Icon={ArrowLeftRight}
+                label="Transfer"
+                accessibilityLabel="Transfer birds"
+                onPress={openTransfer}
+                disabled={bulkDisabledUnbanded}
+              />
+            ) : null}
+            {canLifecycle ? (
+              <BulkActionChip
+                Icon={HandCoins}
+                label="Sold"
+                accessibilityLabel="Sell birds"
+                onPress={openSale}
+                disabled={bulkDisabledUnbanded}
+              />
+            ) : null}
+          </ScrollView>
           {unbandedMultiHint ? <Text style={styles.bulkHint}>{unbandedMultiHint}</Text> : null}
+          {tab === "unbanded" && canSickness ? (
+            <Text style={styles.bulkHint}>
+              Sickness requires individually banded birds — band a bird first.
+            </Text>
+          ) : null}
         </View>
       ) : null}
       {canAddBirds && !showBulkBar ? (
@@ -786,7 +814,7 @@ export default function ShedBirdsScreen() {
 
   const showDock = canAddBirds || showBulkBar;
   const footerPad = showBulkBar
-    ? layout.buttonMinHeight * 4 + space.xxl
+    ? BULK_DOCK_SPACE
     : showDock
       ? LIST_DOCK_SPACE
       : space.lg;
@@ -969,34 +997,6 @@ export default function ShedBirdsScreen() {
   );
 }
 
-function Metric({
-  icon,
-  iconBg,
-  iconColor,
-  value,
-  label,
-  tone,
-}: {
-  icon: ComponentProps<typeof Ionicons>["name"];
-  iconBg: string;
-  iconColor: string;
-  value: number;
-  label: string;
-  tone: string;
-}) {
-  return (
-    <View style={styles.metric} accessibilityLabel={`${label} ${value}`}>
-      <View style={[styles.metricIcon, { backgroundColor: iconBg }]}>
-        <Ionicons name={icon} size={14} color={iconColor} />
-      </View>
-      <View style={styles.metricCopy}>
-        <Text style={[styles.metricValue, { color: tone }]}>{value}</Text>
-        <Text style={styles.metricLabel}>{label}</Text>
-      </View>
-    </View>
-  );
-}
-
 function genderIconSource(sex: string | null | undefined) {
   const normalized = normalizeSexSelectValue(sex);
   if (normalized === "male") return birdIcons.male;
@@ -1014,6 +1014,47 @@ function EmptyBirds() {
         body="Add banded birds or record an unbanded population for this shed."
       />
     </View>
+  );
+}
+
+type BulkActionIcon = ComponentType<{
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+}>;
+
+function BulkActionChip({
+  Icon,
+  label,
+  accessibilityLabel,
+  danger,
+  onPress,
+  disabled,
+}: {
+  Icon: BulkActionIcon;
+  label: string;
+  accessibilityLabel: string;
+  danger?: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const tone = danger ? colors.danger : colors.primary;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      style={[
+        styles.bulkActionChip,
+        danger && styles.bulkActionChipDanger,
+        disabled && styles.bulkActionChipDisabled,
+      ]}
+    >
+      <Icon size={20} color={tone} strokeWidth={2} />
+      <Text style={[styles.bulkActionLabel, { color: tone }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -1078,10 +1119,7 @@ function BandedBirdRow({
       </View>
       <View style={styles.birdCopy}>
         <Text style={styles.band} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={styles.birdMeta} numberOfLines={1}>
-          {sexLabel}
+          {title} · {sexLabel}
         </Text>
       </View>
       <Pressable
@@ -1161,21 +1199,23 @@ function UnbandedCohortRow({
 
 const styles = StyleSheet.create({
   list: { flex: 1 },
-  listContent: { paddingBottom: space.md, gap: space.sm },
-  listFooter: { paddingHorizontal: space.lg, paddingBottom: LIST_DOCK_SPACE, paddingTop: space.sm, gap: space.sm },
+  listContent: { paddingBottom: space.sm, gap: 8 },
+  listFooter: { paddingHorizontal: space.lg, paddingBottom: LIST_DOCK_SPACE, paddingTop: space.xs, gap: 6 },
   stateScreen: { gap: space.md, padding: space.lg, backgroundColor: colors.bg },
-  headerBlock: { gap: space.sm, marginBottom: space.xs },
+  headerBlock: { gap: 6, marginBottom: 0 },
+  hero: { paddingBottom: 28 },
   heroCopy: {
     flexGrow: 1,
-    gap: space.sm,
-    justifyContent: "space-between",
+    gap: 4,
+    justifyContent: "flex-start",
   },
   heroTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  heroIdentity: { gap: space.xs },
+  heroIdentity: { gap: 3 },
+  identityTopRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   backBtn: {
     width: layout.touchTarget,
     height: layout.touchTarget,
@@ -1214,50 +1254,38 @@ const styles = StyleSheet.create({
   pillText: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, fontWeight: "700" },
   managed: { ...typography.caption, color: colors.inkMuted },
   bannerWrap: { marginHorizontal: space.lg },
-  metricsCard: {
-    marginHorizontal: space.lg,
+  totalBirds: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    gap: 6,
+    marginTop: 4,
+    backgroundColor: "rgba(255,255,255,0.86)",
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.xs,
-  },
-  metric: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: space.xs,
-    paddingHorizontal: space.xs,
-  },
-  metricIcon: {
-    width: icons.xl,
-    height: icons.xl,
     borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  metricCopy: { gap: 0 },
-  metricValue: { fontSize: typography.bodyStrong.fontSize, lineHeight: typography.bodyStrong.lineHeight, fontWeight: "800" },
-  metricLabel: { ...typography.overline, color: colors.inkMuted },
-  metricDivider: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: "stretch",
-    backgroundColor: colors.border,
-    marginVertical: space.xs,
+  totalBirdsLabel: {
+    fontSize: typography.overline.fontSize,
+    fontWeight: "700",
+    color: colors.inkMuted,
+  },
+  totalBirdsValue: {
+    fontSize: typography.bodyStrong.fontSize,
+    fontWeight: "800",
+    color: birdUi.primary,
   },
   tabs: {
     marginHorizontal: space.lg,
     flexDirection: "row",
-    gap: space.xs,
+    gap: 6,
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: space.xs,
+    padding: 6,
   },
   tab: {
     flex: 1,
@@ -1266,7 +1294,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: space.xs,
-    paddingVertical: space.sm,
+    paddingVertical: 8,
     borderRadius: radius.sm,
   },
   tabOn: { backgroundColor: colors.primary },
@@ -1276,15 +1304,6 @@ const styles = StyleSheet.create({
   searchRow: {
     marginHorizontal: space.lg,
   },
-  selectAllRow: {
-    marginHorizontal: space.lg,
-    minHeight: layout.touchTarget,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: space.sm,
-  },
-  selectAllHint: { ...typography.secondary, color: colors.inkMuted },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -1293,14 +1312,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.md,
-    paddingHorizontal: space.md,
-    minHeight: layout.inputMinHeight,
+    paddingHorizontal: 12,
+    minHeight: 48,
   },
   searchInput: {
     flex: 1,
     ...typography.body,
     color: colors.ink,
-    paddingVertical: space.sm,
+    paddingVertical: 6,
   },
   dock: {
     position: "absolute",
@@ -1308,23 +1327,24 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     paddingHorizontal: space.lg,
-    paddingTop: space.sm,
-    paddingBottom: space.md,
+    paddingTop: 6,
+    paddingBottom: 10,
     backgroundColor: colors.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    gap: space.sm,
+    gap: 6,
     ...shadows.soft,
   },
   bulkBar: {
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: space.md,
-    gap: space.sm,
+    padding: 10,
+    gap: 6,
   },
   bulkTopRow: {
+    minHeight: 30,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1343,7 +1363,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   bulkCount: { ...typography.bodyStrong, color: colors.ink },
-  selectAllHit: { minHeight: layout.touchTarget, justifyContent: "center", paddingHorizontal: space.xs },
+  selectAllHit: { minHeight: 32, justifyContent: "center", paddingHorizontal: space.xs },
   selectAllLink: {
     fontSize: typography.label.fontSize,
     lineHeight: typography.label.lineHeight,
@@ -1351,21 +1371,34 @@ const styles = StyleSheet.create({
     color: colors.primary,
     textDecorationLine: "underline",
   },
-  bulkActions: { gap: space.sm },
-  bulkRow: { flexDirection: "row", gap: space.xs },
-  bulkBtn: { flex: 1, width: undefined, alignSelf: "stretch" },
+  bulkActionsRow: { flexDirection: "row", gap: 8, paddingRight: 4, paddingVertical: 2 },
+  bulkActionChip: {
+    minWidth: 76,
+    minHeight: 62,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+  },
+  bulkActionChipDanger: { borderColor: colors.danger, backgroundColor: birdUi.errorPale },
+  bulkActionChipDisabled: { opacity: 0.35 },
+  bulkActionLabel: { fontSize: typography.caption.fontSize, fontWeight: "700", textAlign: "center" },
   bulkHint: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: colors.warning, fontWeight: "600" },
   birdCard: {
     marginHorizontal: space.lg,
     flexDirection: "row",
     alignItems: "center",
-    gap: space.sm,
+    gap: 8,
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingVertical: space.sm,
-    paddingHorizontal: space.sm,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     minHeight: layout.touchTarget,
   },
   birdCardSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
@@ -1391,7 +1424,7 @@ const styles = StyleSheet.create({
   },
   checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   checkboxDisabled: { opacity: 0.35 },
-  band: { fontSize: typography.bodyStrong.fontSize, lineHeight: typography.bodyStrong.lineHeight, fontWeight: "800", color: colors.ink },
+  band: { fontSize: typography.bodyStrong.fontSize, lineHeight: 22, fontWeight: "800", color: colors.ink },
   birdMeta: { ...typography.caption, color: colors.inkMuted },
   link: { fontSize: typography.secondary.fontSize, lineHeight: typography.secondary.lineHeight, fontWeight: "700", color: colors.primary },
   bandAction: {

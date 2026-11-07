@@ -135,6 +135,7 @@ export default function SettingsScreen() {
   const canFarmers = hasPermission(user, ownerAccountId, "farmer.manage");
   const canCatalogues = hasPermission(user, ownerAccountId, "schedule.view");
   const canBirdHistory = hasPermission(user, ownerAccountId, "bird.view");
+  const canSicknessHistory = hasPermission(user, ownerAccountId, "sickness.view");
 
   const onSignOut = async () => {
     await signOut();
@@ -188,6 +189,14 @@ export default function SettingsScreen() {
       icon: "heart-dislike-outline",
       href: "/(app)/birds/dead-birds",
       show: canBirdHistory,
+    },
+    {
+      key: "sick",
+      label: "Sick Birds",
+      description: "View sickness episodes, follow-ups, and recovery",
+      icon: "medkit-outline",
+      href: "/(app)/birds/sick-birds",
+      show: canSicknessHistory,
     },
     {
       key: "catalogues",

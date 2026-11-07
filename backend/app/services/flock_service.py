@@ -2245,12 +2245,22 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
                 buyer_mobile=e.buyer_mobile,
                 created_at=e.created_at,
                 shed_id=e.shed_id,
-                to_shed_name=life_shed_names.get(e.shed_id) if e.shed_id else None,
             )
             for e in life_rows
         ],
         life_shed_names,
     )
+
+    health = None
+    sickness_episodes = []
+    from app.services import sickness_service
+
+    if await sickness_service.can_view_sickness(db, ctx):
+        history = await sickness_service.get_bird_sickness_history(
+            db, ctx, bird.id, bird=bird
+        )
+        health = sickness_service.health_overview(history)
+        sickness_episodes = history.episodes
 
     sale_out: BirdSaleDetailsOut | None = None
     if bird.lifecycle_status == BirdLifecycleStatus.sold:
@@ -2308,6 +2318,8 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
         individual_vaccinations=individual,
         batch_upcoming_doses=batch_doses,
         lifecycle_events=lifecycle,
+        health=health,
+        sickness_episodes=sickness_episodes,
     )
 
 

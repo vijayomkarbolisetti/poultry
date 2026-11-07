@@ -22,6 +22,7 @@ import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
 import { filterFarmers } from "../../../src/features/farmers/farmerListHelpers";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { farmerHeaderArt } from "../../../src/theme/media";
 import { colors, radius, shadow, space, typography } from "../../../src/theme/tokens";
@@ -42,6 +43,8 @@ export default function FarmersScreen() {
   const canManage = hasPermission(user, ownerAccountId, "farmer.manage");
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
+
+  useResetSearchOnContextChange(ownerAccountId, () => setQuery(""));
 
   const farmers = useQuery({
     queryKey: ["farmers", ownerAccountId],

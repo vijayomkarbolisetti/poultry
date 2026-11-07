@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.sickness import raise_sickness_http
 from app.authorization.deps import AuthContext
 from app.authorization.permissions import require_permission
 from app.core.database import get_db
@@ -27,7 +28,8 @@ from app.schemas.flock import (
     RegisterBandedInShedIn,
     SoldBirdListOut,
 )
-from app.services import flock_service
+from app.schemas.sickness import SicknessCreate, SicknessHistoryOut, SicknessRecordOut
+from app.services import flock_service, sickness_service
 
 router = APIRouter()
 
@@ -349,6 +351,35 @@ async def get_bird_profile(
         return await flock_service.get_bird_profile(db, ctx, bird_id)
     except flock_service.FlockError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
+
+
+@router.post(
+    "/{bird_id}/sickness",
+    response_model=SicknessRecordOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_bird_sickness(
+    bird_id: UUID,
+    body: SicknessCreate,
+    ctx: AuthContext = Depends(require_permission("sickness.record")),
+    db: AsyncSession = Depends(get_db),
+) -> SicknessRecordOut:
+    try:
+        return await sickness_service.create_sickness(db, ctx, bird_id, body)
+    except sickness_service.SicknessError as exc:
+        raise_sickness_http(exc)
+
+
+@router.get("/{bird_id}/sickness-history", response_model=SicknessHistoryOut)
+async def get_bird_sickness_history(
+    bird_id: UUID,
+    ctx: AuthContext = Depends(require_permission("sickness.view")),
+    db: AsyncSession = Depends(get_db),
+) -> SicknessHistoryOut:
+    try:
+        return await sickness_service.get_bird_sickness_history(db, ctx, bird_id)
+    except sickness_service.SicknessError as exc:
+        raise_sickness_http(exc)
 
 
 @router.get("/{bird_id}/vaccination-report.pdf")

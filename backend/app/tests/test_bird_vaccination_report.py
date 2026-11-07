@@ -436,6 +436,9 @@ def test_lifecycle_labels_and_badge_colors() -> None:
         ],
         {shed_a: "North Shed", shed_b: "South Shed"},
     )
+    assert seeded[0].from_shed_name is None
+    assert seeded[0].to_shed_name is None
+    assert format_lifecycle_detail(seeded[0]) == "Banded in place"
     assert seeded[1].from_shed_name == "North Shed"
     assert seeded[1].to_shed_name == "South Shed"
     assert format_lifecycle_detail(seeded[1]) == "From North Shed to South Shed"

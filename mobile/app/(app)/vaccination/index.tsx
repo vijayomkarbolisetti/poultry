@@ -29,6 +29,7 @@ import {
   buildShedFilterOptions,
   shedFilterLabel,
 } from "../../../src/features/sheds/shedFilterHelpers";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
 import {
   byShedToggleLabel,
   hiddenByShedCount,
@@ -202,6 +203,12 @@ export default function VaccinationDashboardScreen() {
   const [shedFilter, setShedFilter] = useState<ShedFilter>(ALL_SHEDS_ID);
   const [shedPickerOpen, setShedPickerOpen] = useState(false);
   const [byShedExpanded, setByShedExpanded] = useState(false);
+
+  useResetSearchOnContextChange(ownerAccountId, () => {
+    setShedFilter(ALL_SHEDS_ID);
+    setShedPickerOpen(false);
+    setByShedExpanded(false);
+  });
 
   const query = useQuery({
     queryKey: ["vaccination", "dashboard", ownerAccountId, shedFilter],

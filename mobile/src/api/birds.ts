@@ -3,6 +3,7 @@
  * Batches remain under `/flocks`; birds use `/birds`.
  */
 import { api } from "./client";
+import type { BirdHealthOverview, SicknessEpisode } from "./sickness";
 
 export type BirdSearchHit = {
   id: string;
@@ -145,6 +146,8 @@ export type BirdProfile = {
   individual_vaccinations?: BirdProfileVaccinationEvent[];
   batch_upcoming_doses?: BirdProfileBatchDose[];
   lifecycle_events: BirdProfileLifecycle[];
+  health?: BirdHealthOverview | null;
+  sickness_episodes?: SicknessEpisode[];
 };
 
 export type SoldBirdHit = {

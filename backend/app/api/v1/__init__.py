@@ -14,6 +14,7 @@ from app.api.v1 import (
     reports,
     search,
     sheds,
+    sickness,
     vaccinations,
     vaccines,
 )
@@ -26,6 +27,7 @@ api_router.include_router(sheds.router, prefix="/sheds", tags=["sheds"])
 api_router.include_router(farmers.router, prefix="/farmers", tags=["farmers"])
 api_router.include_router(flocks.router, prefix="/flocks", tags=["flocks"])
 api_router.include_router(birds.router, prefix="/birds", tags=["birds"])
+api_router.include_router(sickness.router, prefix="/sickness", tags=["sickness"])
 api_router.include_router(lifecycle.router, prefix="/lifecycle-events", tags=["lifecycle"])
 api_router.include_router(vaccines.router, prefix="/vaccines", tags=["vaccines"])
 api_router.include_router(catalogues.router, prefix="/vaccine-catalogues", tags=["vaccine-catalogues"])

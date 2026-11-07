@@ -98,9 +98,10 @@ export default function AddBirdScreen() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [remoteBandAvail, setRemoteBandAvail] = useState<"checking" | "available" | "taken" | null>(
-    null,
-  );
+  const [remoteBandCheck, setRemoteBandCheck] = useState<{
+    band: string;
+    status: "checking" | "available" | "taken";
+  } | null>(null);
 
   useEffect(() => {
     if (mode !== "banded") return;
@@ -118,28 +119,37 @@ export default function AddBirdScreen() {
 
   useEffect(() => {
     if (mode !== "banded") return;
-    if (localBandAvail !== "idle" || !normalizeBand(bandId)) return;
+    const band = normalizeBand(bandId);
+    if (localBandAvail !== "idle" || !band) return;
     const req = ++availReq.current;
     const timer = setTimeout(() => {
-      setRemoteBandAvail("checking");
+      setRemoteBandCheck({ band, status: "checking" });
       void (async () => {
         try {
           const result = await searchBirds({
-            q: normalizeBand(bandId),
+            q: band,
             limit: 8,
             includeInactive: false,
           });
           if (req !== availReq.current) return;
-          const conflict = findBandConflict(result.items, "", normalizeBand(bandId));
-          setRemoteBandAvail(conflict ? "taken" : "available");
+          const conflict = findBandConflict(result.items, "", band);
+          setRemoteBandCheck({ band, status: conflict ? "taken" : "available" });
         } catch {
           if (req !== availReq.current) return;
-          setRemoteBandAvail("available");
+          setRemoteBandCheck({ band, status: "available" });
         }
       })();
     }, 350);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      availReq.current += 1;
+    };
   }, [bandId, mode, localBandAvail]);
+
+  const remoteBandAvail =
+    mode === "banded" && remoteBandCheck?.band === normalizeBand(bandId)
+      ? remoteBandCheck.status
+      : null;
 
   const bandAvail =
     localBandAvail !== "idle" || !normalizeBand(bandId)
@@ -206,7 +216,7 @@ export default function AddBirdScreen() {
         setNotes("");
         setSireText("");
         setDamText("");
-        setRemoteBandAvail(null);
+        setRemoteBandCheck(null);
         toast.success(`Saved ${savedBand}. Enter the next band number.`);
         requestAnimationFrame(() => bandRef.current?.focus());
       } else {
@@ -378,7 +388,7 @@ export default function AddBirdScreen() {
                     onChangeText={(t) => {
                       setBandId(t);
                       setMsg(null);
-                      setRemoteBandAvail(null);
+                      setRemoteBandCheck(null);
                     }}
                     placeholder="e.g. 67A"
                     placeholderTextColor={birdUi.muted}
