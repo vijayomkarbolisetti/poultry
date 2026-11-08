@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { BrandLogo } from "../../src/components/brand/BrandLogo";
 import { Screen } from "../../src/components/ui/Screen";
-import { APP_BRAND_NAME } from "../../src/config/appConfig";
+import { APP_CONFIG } from "../../src/config/appConfig";
 import { colors, radius, shadows, space, typography } from "../../src/theme/tokens";
 
 /**
@@ -17,7 +17,7 @@ export default function RegisterScreen() {
         <BrandLogo size={56} />
         <Text style={styles.brand}>Account by invitation</Text>
         <Text style={styles.sub}>
-          {APP_BRAND_NAME} farm accounts are created by a platform admin. Ask your admin for login
+          {APP_CONFIG.name} farm accounts are created by a platform admin. Ask your admin for login
           details.
         </Text>
       </View>

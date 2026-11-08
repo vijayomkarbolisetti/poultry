@@ -5,8 +5,10 @@
 import {
   birdSubtitle,
   classifyGlobalSearch,
+  isSearchQueryActive,
   MIN_QUERY_LENGTH,
   normalizeSearchQuery,
+  placeholderForQuery,
   shedSubtitle,
 } from "./globalSearchHelpers";
 import {
@@ -119,6 +121,16 @@ assert(
 assert(MIN_QUERY_LENGTH === 2, "min length");
 assert(normalizeSearchQuery("  hello   world ") === "hello world", "normalize");
 
+assert(isSearchQueryActive("") === false, "empty query is inactive");
+assert(isSearchQueryActive(" a ") === false, "short query is inactive");
+assert(isSearchQueryActive(" ab ") === true, "trimmed query is active");
+assert(isSearchQueryActive("ab", 3) === false, "custom min length is respected");
+
+const prior = { query: "vax", birds: { total: 1 } };
+assert(placeholderForQuery(prior, "vax") === prior, "matching query keeps prior data");
+assert(placeholderForQuery(prior, "other") === undefined, "different query drops prior data");
+assert(placeholderForQuery(undefined, "vax") === undefined, "no prior data stays undefined");
+
 const birdSub = birdSubtitle({
   breed: "Aseel",
   batch_code: "B1",
@@ -183,7 +195,8 @@ assert(
 assert(normalizeSearchQuery("   ") === "", "whitespace-only query stays empty/dashboard");
 assert(getHomeSearchDraft() === "", "session empty after clear");
 setHomeSearchDraft("VAX");
-assert(getHomeSearchDraft() === "VAX", "restore after result navigation");
+assert(getHomeSearchDraft() === "VAX", "session persists while Home stays focused");
 clearHomeSearchDraft();
+assert(getHomeSearchDraft() === "", "session cleared when Home loses focus");
 
 console.log("homeInlineSearch.test.ts OK");

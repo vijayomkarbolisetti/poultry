@@ -27,6 +27,7 @@ import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { HenLoader } from "../ui/HenLoader";
+import { buildSearchContextKey, useResetSearchOnContextChange } from "../../features/search/searchLifecycle";
 import { SelectField } from "../ui/SelectField";
 
 const PAGE = 20;
@@ -112,13 +113,16 @@ export function ShedBirdsSection({
   const unbandedBatches = birds.data?.pages[0]?.unbanded_batches ?? [];
   const loadedEligibleIds = useMemo(() => eligibleIdsFromLoaded(items), [items]);
 
-  // Never carry selection across sheds.
-  useEffect(() => {
+  // Never carry search or selection across sheds.
+  useResetSearchOnContextChange(buildSearchContextKey({ shedId }), () => {
+    setQ("");
+    setDebouncedQ("");
     setSelected(new Set());
     setSelectMode(false);
     setSelectionNote(null);
     filterKey.current = "";
-  }, [shedId]);
+    if (debounceTimer.id) clearTimeout(debounceTimer.id);
+  });
 
   // Clear selection when search/filters change so stale IDs cannot be submitted.
   useEffect(() => {

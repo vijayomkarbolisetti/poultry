@@ -1,7 +1,7 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useQuery } from "@tanstack/react-query";
-import { router } from "expo-router";
-import { ComponentProps, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { ComponentProps, useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Image,
@@ -27,8 +27,10 @@ import { hasPermission } from "../../src/features/auth/permissions";
 import {
   birdSubtitle,
   classifyGlobalSearch,
+  isSearchQueryActive,
   MIN_QUERY_LENGTH,
   normalizeSearchQuery,
+  placeholderForQuery,
   SEARCH_DEBOUNCE_MS,
   shedSubtitle,
 } from "../../src/features/search/globalSearchHelpers";
@@ -58,15 +60,23 @@ export default function GlobalSearchScreen() {
     return () => clearTimeout(t);
   }, [draft]);
 
+  useFocusEffect(
+    useCallback(() => () => {
+      // Leaving the global search screen ends this search context.
+      setDraft("");
+      setDebounced("");
+    }, []),
+  );
+
   const types = [canBirds ? "birds" : null, canSheds ? "sheds" : null].filter(Boolean).join(",");
 
-  const enabled = canSearch && debounced.length >= MIN_QUERY_LENGTH;
+  const enabled = canSearch && isSearchQueryActive(debounced);
 
   const query = useQuery({
     queryKey: ["global-search", ownerAccountId, debounced, types],
     queryFn: () => globalSearch({ q: debounced, types, limit: 10 }),
     enabled,
-    placeholderData: (prev) => (prev?.query === debounced ? prev : undefined),
+    placeholderData: (prev) => placeholderForQuery(prev, debounced),
   });
 
   const uiState = useMemo(
@@ -87,6 +97,7 @@ export default function GlobalSearchScreen() {
   );
 
   const rows: ResultRow[] = useMemo(() => {
+    if (!isSearchQueryActive(debounced)) return [];
     const data = query.data;
     if (!data) return [];
     const out: ResultRow[] = [];
@@ -111,7 +122,7 @@ export default function GlobalSearchScreen() {
       }
     }
     return out;
-  }, [query.data]);
+  }, [debounced, query.data]);
 
   const onOpen = (href: string) => {
     router.push(href as never);

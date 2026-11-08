@@ -23,6 +23,7 @@ import { Button } from "../../../src/components/ui/Button";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import { useAuth } from "../../../src/features/auth/AuthContext";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
 import { safeBack } from "../../../src/navigation/safeBack";
 import { colors, radius, shadow, space, typography } from "../../../src/theme/tokens";
 import { toast } from "../../../src/ui/toast/toastStore";
@@ -37,6 +38,9 @@ export default function FarmsScreen() {
   const qc = useQueryClient();
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
+
+  useResetSearchOnContextChange(ownerAccountId, () => setQuery(""));
+
   const [editFarm, setEditFarm] = useState<OwnerAccountListItem | null>(null);
   const [editName, setEditName] = useState("");
   const [editPassword, setEditPassword] = useState("");

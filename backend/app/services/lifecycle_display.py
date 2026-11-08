@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
-from app.models.enums import BirdLifecycleStatus
+from app.models.enums import BirdLifecycleStatus, LifecycleEventType
 from app.schemas.flock import BirdProfileLifecycleOut
 
 _SHED_MOVE_TAG = re.compile(r"^\[shed-move(?:-batch)?\]\s*", re.IGNORECASE)
@@ -114,7 +114,10 @@ def enrich_lifecycle_shed_names(
         from_name = ev.from_shed_name
         to_name = ev.to_shed_name
         reason = (ev.reason or "").strip()
-        is_shed_move = bool(_SHED_MOVE_TAG.match(reason))
+        is_shed_move = (
+            bool(_SHED_MOVE_TAG.match(reason))
+            or ev.event_type == LifecycleEventType.transfer
+        )
         if is_shed_move:
             if not to_name and ev.shed_id:
                 to_name = shed_names.get(ev.shed_id)
@@ -128,8 +131,12 @@ def enrich_lifecycle_shed_names(
                     to_name = to_name or parsed.group(2).strip()
             if ev.shed_id:
                 known_shed_id = ev.shed_id
-        elif ev.shed_id:
-            known_shed_id = ev.shed_id
+        else:
+            # A normal event's shed_id is the current location, not a transfer destination.
+            from_name = None
+            to_name = None
+            if ev.shed_id:
+                known_shed_id = ev.shed_id
         enriched_by_id[ev.id] = ev.model_copy(
             update={"from_shed_name": from_name, "to_shed_name": to_name}
         )

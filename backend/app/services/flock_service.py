@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,6 +45,7 @@ from app.schemas.search import BatchSearchHitOut, BatchSearchOut
 from app.services.schedule_engine import (
     STATUS_DUE_SOON,
     STATUS_DUE_TODAY,
+    STATUS_INACTIVE,
     STATUS_NEEDS_REVIEW,
     STATUS_OVERDUE,
     STATUS_UPCOMING,
@@ -58,6 +59,21 @@ _OPEN_DOSE_STATUSES = {
     STATUS_NEEDS_REVIEW,
 }
 _BATCH_DOSE_NOTE = "Shed hatch-date schedule — not confirmed as an individual vaccination"
+
+
+def _profile_upcoming_dose_clause(bird: Bird):
+    """Open flock doses for live birds; remaining schedule for sold/dead reports."""
+    open_active = and_(
+        ScheduledDose.is_active.is_(True),
+        ScheduledDose.status.in_(_OPEN_DOSE_STATUSES),
+    )
+    if bird.is_active and bird.lifecycle_status == BirdLifecycleStatus.active:
+        return open_active
+    remaining_closed = and_(
+        ScheduledDose.is_active.is_(False),
+        ScheduledDose.status == STATUS_INACTIVE,
+    )
+    return or_(open_active, remaining_closed)
 
 
 class FlockError(Exception):
@@ -2175,8 +2191,7 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
             .where(
                 ScheduledDose.owner_account_id == ctx.owner_account_id,
                 ScheduledDose.flock_id == bird.flock_id,
-                ScheduledDose.is_active.is_(True),
-                ScheduledDose.status.in_(_OPEN_DOSE_STATUSES),
+                _profile_upcoming_dose_clause(bird),
             )
             .order_by(ScheduledDose.due_date.asc())
             .limit(100)
@@ -2230,12 +2245,22 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
                 buyer_mobile=e.buyer_mobile,
                 created_at=e.created_at,
                 shed_id=e.shed_id,
-                to_shed_name=life_shed_names.get(e.shed_id) if e.shed_id else None,
             )
             for e in life_rows
         ],
         life_shed_names,
     )
+
+    health = None
+    sickness_episodes = []
+    from app.services import sickness_service
+
+    if await sickness_service.can_view_sickness(db, ctx):
+        history = await sickness_service.get_bird_sickness_history(
+            db, ctx, bird.id, bird=bird
+        )
+        health = sickness_service.health_overview(history)
+        sickness_episodes = history.episodes
 
     sale_out: BirdSaleDetailsOut | None = None
     if bird.lifecycle_status == BirdLifecycleStatus.sold:
@@ -2259,9 +2284,6 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
                 buyer_mobile=sale_ev.buyer_mobile,
                 recorded_at=sale_ev.created_at,
             )
-
-    # Sold/dead/exit birds must not surface open flock vaccination tasks as actionable.
-    show_upcoming = bird.is_active and bird.lifecycle_status == BirdLifecycleStatus.active
 
     return BirdProfileOut(
         id=bird.id,
@@ -2294,8 +2316,10 @@ async def get_bird_profile(db: AsyncSession, ctx: AuthContext, bird_id: UUID) ->
         dam_parentage=dam_parentage,
         sale=sale_out,
         individual_vaccinations=individual,
-        batch_upcoming_doses=batch_doses if show_upcoming else [],
+        batch_upcoming_doses=batch_doses,
         lifecycle_events=lifecycle,
+        health=health,
+        sickness_episodes=sickness_episodes,
     )
 
 

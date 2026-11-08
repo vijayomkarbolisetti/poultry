@@ -118,7 +118,7 @@ async def test_sale_success_and_profile_details(client: AsyncClient) -> None:
     assert p["sale"]["buyer_name"] == "Ramesh Kumar"
     assert p["sale"]["buyer_mobile"] == "+919876543210"
     assert p["sale"]["sold_on"] == "2026-10-25"
-    assert p["batch_upcoming_doses"] == []
+    assert isinstance(p["batch_upcoming_doses"], list)
 
 
 @pytest.mark.asyncio
@@ -268,6 +268,56 @@ async def test_sold_birds_search(client: AsyncClient) -> None:
     )
     assert by_mobile.status_code == 200
     assert any(i["buyer_mobile"] == "9988776655" for i in by_mobile.json()["items"])
+
+
+@pytest.mark.asyncio
+async def test_sold_bird_profile_keeps_upcoming_schedule(client: AsyncClient) -> None:
+    auth = await _owner(client, f"sold-up-{uuid4().hex[:8]}@example.com", "Sold Upcoming")
+    shed = await _shed(client, auth["headers"], f"Q{uuid4().hex[:4].upper()}")
+    flock = await _flock(client, auth["headers"], shed, f"BQ-{uuid4().hex[:6]}")
+    bird = await _bird(client, auth["headers"], flock["id"], f"SU-{uuid4().hex[:5].upper()}")
+    vax = await client.post(
+        "/api/v1/vaccines",
+        headers=auth["headers"],
+        json={
+            "name": "Sold Upcoming Vax",
+            "category": "vaccine",
+            "rules": [
+                {
+                    "dose_number": 1,
+                    "target_age_days": 400,
+                    "grace_period_days": 0,
+                    "reminder_lead_days": 0,
+                }
+            ],
+        },
+    )
+    assert vax.status_code == 201, vax.text
+    gen = await client.post(
+        "/api/v1/vaccines/generate-schedules",
+        headers=auth["headers"],
+        json={"flock_id": flock["id"], "vaccine_definition_ids": [vax.json()["id"]]},
+    )
+    assert gen.status_code == 200, gen.text
+    assert gen.json(), gen.text
+    sale = await client.post(
+        "/api/v1/lifecycle-events",
+        headers=auth["headers"],
+        json={
+            "event_type": "sale",
+            "effective_date": "2026-10-25",
+            "bird_id": bird["id"],
+            "buyer_name": "Ramesh Kumar",
+            "buyer_mobile": "9876543210",
+            "idempotency_key": f"sale-up-{uuid4().hex}",
+        },
+    )
+    assert sale.status_code in {200, 201}, sale.text
+    prof = await client.get(f"/api/v1/birds/{bird['id']}/profile", headers=auth["headers"])
+    assert prof.status_code == 200, prof.text
+    upcoming = prof.json()["batch_upcoming_doses"]
+    assert upcoming, upcoming
+    assert any("Sold Upcoming Vax" == (d.get("vaccine_name") or "") for d in upcoming)
 
 
 @pytest.mark.asyncio

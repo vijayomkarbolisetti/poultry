@@ -1,8 +1,23 @@
-import Ionicons from "@expo/vector-icons/Ionicons";
-import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
 import { useQuery } from "@tanstack/react-query";
 import { router, useFocusEffect } from "expo-router";
-import { ComponentProps, useCallback, useMemo, useState } from "react";
+import { ComponentType, useCallback, useMemo, useState } from "react";
+import {
+  Bird,
+  ChevronDown,
+  ChevronRight,
+  CircleX,
+  CloudOff,
+  EllipsisVertical,
+  House,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Tag,
+  User,
+  UserRound,
+  Users,
+  Warehouse,
+} from "lucide-react-native";
 import {
   FlatList,
   Modal,
@@ -17,22 +32,31 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { listSheds, type ShedListItem } from "../../../src/api/sheds";
 import { describeApiError } from "../../../src/api/client";
-import { BrandLogo } from "../../../src/components/brand/BrandLogo";
+import { ShedFilterSheet } from "../../../src/components/sheds/ShedFilterSheet";
 import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../src/components/ui/HenLoader";
 import {
   IMMERSIVE_HERO_SHEET_OVERLAP,
   ImmersiveHeroHeader,
 } from "../../../src/components/ui/ImmersiveHeroHeader";
-import { APP_BRAND_NAME } from "../../../src/config/appConfig";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
+import {
+  ALL_SHEDS_ID,
+  buildShedFilterOptions,
+  shedFilterLabel,
+} from "../../../src/features/sheds/shedFilterHelpers";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
 import { sumLiveBirds } from "../../../src/features/sheds/sumLiveBirds";
 import { heroArt, media } from "../../../src/theme/media";
 import { typography } from "../../../src/theme/tokens";
 
 
-type IconName = ComponentProps<typeof Ionicons>["name"];
+type LucideIcon = ComponentType<{
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+}>;
 type ModeFilter = "all" | "owner" | "farmer";
 type StatusFilter = "active" | "inactive" | "all";
 
@@ -70,7 +94,7 @@ const ui = {
   ownerPillText: "#176B45",
   divider: "#DCEBE4",
   filterBg: "#EFFFEB",
-  horizontal: 24,
+  horizontal: 16,
 };
 
 /** Stable shed-icon accents in reference order: orange → green → blue. */
@@ -101,10 +125,10 @@ function shedListDefaults(item: ShedListItem): ShedListItem {
 function softShadow() {
   return {
     shadowColor: "#022C22",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 5,
+    elevation: 1,
   };
 }
 
@@ -135,16 +159,14 @@ function Chip({
 }
 
 function MetricCell({
-  icon,
-  mci,
+  Icon,
   value,
   label,
   iconColor,
   circleBg,
   showDivider,
 }: {
-  icon?: IconName;
-  mci?: ComponentProps<typeof MaterialCommunityIcons>["name"];
+  Icon: LucideIcon;
   value: number;
   label: string;
   iconColor: string;
@@ -155,11 +177,7 @@ function MetricCell({
     <View style={styles.metricCell}>
       {showDivider ? <View style={styles.metricDivider} /> : null}
       <View style={[styles.metricIcon, { backgroundColor: circleBg }]}>
-        {mci ? (
-          <MaterialCommunityIcons name={mci} size={16} color={iconColor} />
-        ) : (
-          <Ionicons name={icon!} size={16} color={iconColor} />
-        )}
+        <Icon size={15} color={iconColor} strokeWidth={2} />
       </View>
       <Text style={styles.metricValue}>{value}</Text>
       <Text style={styles.metricLabel} numberOfLines={1}>
@@ -185,6 +203,7 @@ function ShedCard({
   const modeLabel = item.is_owner_managed ? "Owner Managed" : "Farmer Managed";
   const modePillBg = item.is_owner_managed ? ui.ownerPillBg : ui.farmerPillBg;
   const modePillText = item.is_owner_managed ? ui.ownerPillText : ui.farmerPillText;
+  const ModeIcon = item.is_owner_managed ? UserRound : User;
   const openBirdManagement = () =>
     router.push({ pathname: "/(app)/sheds/[id]/birds", params: { id: item.id } });
 
@@ -199,11 +218,11 @@ function ShedCard({
             accessibilityLabel={`Open shed management for ${item.name}`}
           >
             <View style={[styles.illustration, { backgroundColor: tone.bg }]}>
-              <Ionicons name="home" size={36} color={tone.icon} />
+              <Warehouse size={30} color={tone.icon} strokeWidth={2} />
             </View>
             <View style={styles.cardInfo}>
               <View style={styles.cardTitleRow}>
-                <Text style={styles.cardTitle} numberOfLines={2}>
+                <Text style={styles.cardTitle} numberOfLines={1}>
                   {item.name}
                 </Text>
                 <View
@@ -231,8 +250,8 @@ function ShedCard({
                 </View>
               </View>
               <View style={[styles.modePill, { backgroundColor: modePillBg }]}>
-                <Ionicons name="person" size={12} color={modePillText} />
-                <Text style={[styles.modePillText, { color: modePillText }]} numberOfLines={2}>
+                <ModeIcon size={12} color={modePillText} strokeWidth={2} />
+                <Text style={[styles.modePillText, { color: modePillText }]} numberOfLines={1}>
                   {modeLabel}
                 </Text>
               </View>
@@ -246,7 +265,7 @@ function ShedCard({
               accessibilityLabel={`More actions for ${item.name}`}
               style={styles.menuBtn}
             >
-              <Ionicons name="ellipsis-vertical" size={20} color={ui.secondaryText} />
+              <EllipsisVertical size={20} color={ui.secondaryText} strokeWidth={2} />
             </Pressable>
           ) : null}
         </View>
@@ -260,14 +279,14 @@ function ShedCard({
           <View style={styles.metricsRow}>
             <View style={styles.metricsCols}>
               <MetricCell
-                mci="bird"
+                Icon={Bird}
                 value={item.total_live_birds}
                 label="Live Birds"
                 iconColor={ui.liveIcon}
                 circleBg={ui.liveCircle}
               />
               <MetricCell
-                icon="pricetag"
+                Icon={Tag}
                 value={item.banded_birds}
                 label="Banded"
                 iconColor={ui.bandedIcon}
@@ -275,7 +294,7 @@ function ShedCard({
                 showDivider
               />
               <MetricCell
-                icon="link"
+                Icon={Users}
                 value={item.unbanded_birds}
                 label="Unbanded"
                 iconColor={ui.unbandedIcon}
@@ -283,7 +302,12 @@ function ShedCard({
                 showDivider
               />
             </View>
-            <Ionicons name="chevron-forward" size={18} color="#9AA8A1" style={styles.cardChevron} />
+            <ChevronRight
+              size={18}
+              color="#9AA8A1"
+              strokeWidth={2}
+              style={styles.cardChevron}
+            />
           </View>
           {item.count_mismatch ? <Text style={styles.mismatch}>Counts need review</Text> : null}
         </Pressable>
@@ -298,12 +322,20 @@ export default function ShedsScreen() {
   const canUpdate = hasPermission(user, ownerAccountId, "shed.update");
 
   const [q, setQ] = useState("");
+  const [shedIdFilter, setShedIdFilter] = useState(ALL_SHEDS_ID);
+  const [shedPickerOpen, setShedPickerOpen] = useState(false);
   const [modeFilter, setModeFilter] = useState<ModeFilter>(DEFAULT_MODE);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(DEFAULT_STATUS);
   const [draftMode, setDraftMode] = useState<ModeFilter>(DEFAULT_MODE);
   const [draftStatus, setDraftStatus] = useState<StatusFilter>(DEFAULT_STATUS);
   const [filterSheet, setFilterSheet] = useState(false);
   const [menuItem, setMenuItem] = useState<ShedListItem | null>(null);
+
+  useResetSearchOnContextChange(ownerAccountId, () => {
+    setQ("");
+    setShedIdFilter(ALL_SHEDS_ID);
+    setShedPickerOpen(false);
+  });
 
   // Load inactive sheds when the user can manage them so Total sheds stays accurate.
   const includeInactive = canUpdate;
@@ -344,8 +376,15 @@ export default function ShedsScreen() {
     setStatusFilter(DEFAULT_STATUS);
   };
 
+  const shedOptions = useMemo(
+    () => buildShedFilterOptions((sheds.data ?? []).map((s) => ({ id: s.id, name: s.name }))),
+    [sheds.data],
+  );
+  const shedLabel = shedFilterLabel(shedOptions, shedIdFilter);
+
   const scoped = useMemo(() => {
     let rows = (sheds.data ?? []).map(shedListDefaults);
+    if (shedIdFilter !== ALL_SHEDS_ID) rows = rows.filter((s) => s.id === shedIdFilter);
     if (modeFilter === "owner") rows = rows.filter((s) => s.is_owner_managed);
     if (modeFilter === "farmer") rows = rows.filter((s) => !s.is_owner_managed);
     if (q.trim()) {
@@ -353,7 +392,7 @@ export default function ShedsScreen() {
       rows = rows.filter((s) => s.name.toLowerCase().includes(needle));
     }
     return rows;
-  }, [sheds.data, modeFilter, q]);
+  }, [sheds.data, shedIdFilter, modeFilter, q]);
 
   const data = useMemo(() => {
     let rows = scoped;
@@ -372,16 +411,11 @@ export default function ShedsScreen() {
       <ImmersiveHeroHeader
         source={heroArt.sheds}
         curveFill={ui.bg}
+        minHeight={170}
+        style={styles.hero}
         accessibilityLabel="Sheds farm illustration"
         contentStyle={styles.heroCopy}
       >
-        <View style={styles.brandRow}>
-          <BrandLogo size={26} preferPng accessibilityLabel={`${APP_BRAND_NAME} logo`} />
-          <Text style={styles.brandName}>
-            {APP_BRAND_NAME}
-            <Text style={styles.brandMark}>™</Text>
-          </Text>
-        </View>
         <View style={styles.titleCopy}>
           <Text style={styles.title}>Sheds</Text>
           <Text style={styles.sub}>Search, filter and open a shed to manage birds</Text>
@@ -391,7 +425,7 @@ export default function ShedsScreen() {
       <View style={styles.headerBody}>
         <View style={styles.searchRow}>
           <View style={[styles.searchWrap, softShadow()]}>
-            <Ionicons name="search" size={20} color={ui.secondaryText} />
+            <Search size={20} color={ui.secondaryText} strokeWidth={2} />
             <TextInput
               value={q}
               onChangeText={setQ}
@@ -403,7 +437,7 @@ export default function ShedsScreen() {
             />
             {q ? (
               <Pressable onPress={() => setQ("")} hitSlop={8} accessibilityLabel="Clear search">
-                <Ionicons name="close-circle" size={18} color={ui.secondaryText} />
+                <CircleX size={18} color={ui.secondaryText} strokeWidth={2} />
               </Pressable>
             ) : null}
           </View>
@@ -413,7 +447,7 @@ export default function ShedsScreen() {
             accessibilityRole="button"
             accessibilityLabel={filtersActive ? "Open filters, filters active" : "Open filters"}
           >
-            <Ionicons name="options-outline" size={24} color={ui.deepGreen} />
+            <SlidersHorizontal size={22} color={ui.deepGreen} strokeWidth={2} />
             {filtersActive ? <View style={styles.filterDot} /> : null}
           </Pressable>
           {canCreate ? (
@@ -423,15 +457,28 @@ export default function ShedsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Add Shed"
             >
-              <Ionicons name="add" size={24} color={ui.white} />
+              <Plus size={24} color={ui.white} strokeWidth={2} />
             </Pressable>
           ) : null}
         </View>
 
+        <Pressable
+          style={[styles.shedFilterBtn, softShadow()]}
+          onPress={() => setShedPickerOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Filter by shed: ${shedLabel}`}
+        >
+          <House size={18} color={ui.secondaryText} strokeWidth={2} />
+          <Text style={styles.shedFilterLabel} numberOfLines={1}>
+            {shedLabel}
+          </Text>
+          <ChevronDown size={18} color={ui.secondaryText} strokeWidth={2} />
+        </Pressable>
+
         <View style={styles.summary}>
           <View style={styles.summaryMetric}>
             <View style={styles.summaryIcon}>
-              <Ionicons name="home" size={20} color={ui.deepGreen} />
+              <House size={18} color={ui.deepGreen} strokeWidth={2} />
             </View>
             <View>
               <Text style={styles.summaryLabel}>Total Sheds</Text>
@@ -441,7 +488,7 @@ export default function ShedsScreen() {
           <View style={styles.summaryDivider} />
           <View style={styles.summaryMetric}>
             <View style={styles.summaryIcon}>
-              <MaterialCommunityIcons name="bird" size={20} color={ui.deepGreen} />
+              <Bird size={18} color={ui.deepGreen} strokeWidth={2} />
             </View>
             <View>
               <Text style={styles.summaryLabel}>Total Birds</Text>
@@ -452,7 +499,7 @@ export default function ShedsScreen() {
 
         {sheds.isError ? (
           <Pressable style={styles.errorBox} onPress={() => sheds.refetch()}>
-            <Ionicons name="cloud-offline-outline" size={18} color="#D92D20" />
+            <CloudOff size={18} color="#D92D20" strokeWidth={2} />
             <Text style={styles.errorText}>{describeApiError(sheds.error, "load sheds")}</Text>
             <Text style={styles.retry}>Retry</Text>
           </Pressable>
@@ -516,6 +563,14 @@ export default function ShedsScreen() {
             <ShedCard item={item} index={index} canUpdate={canUpdate} onMenu={setMenuItem} />
           </View>
         )}
+      />
+
+      <ShedFilterSheet
+        visible={shedPickerOpen}
+        onClose={() => setShedPickerOpen(false)}
+        options={shedOptions}
+        selectedId={shedIdFilter}
+        onSelect={setShedIdFilter}
       />
 
       <Modal visible={filterSheet} transparent animationType="fade" onRequestClose={closeFilterSheet}>
@@ -592,32 +647,22 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: ui.bg },
   list: { flex: 1, backgroundColor: ui.bg },
   listContent: {
-    paddingBottom: 28,
-    gap: 16,
+    paddingBottom: 96,
+    gap: 12,
     flexGrow: 1,
   },
-  headerBlock: { marginBottom: 8 },
+  headerBlock: { marginBottom: 0 },
+  hero: { paddingBottom: 28 },
   heroCopy: {
     flexGrow: 1,
-    justifyContent: "space-between",
-    gap: 12,
+    justifyContent: "flex-end",
+    gap: 4,
   },
-  brandRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  brandName: {
-    fontSize: typography.sectionTitle.fontSize,
-    fontWeight: "800",
-    color: ui.deepGreen,
-    letterSpacing: -0.2,
-  },
-  brandMark: { color: ui.copper, fontSize: typography.overline.fontSize, fontWeight: "700" },
   titleCopy: {
-    gap: 6,
-    paddingBottom: 4,
-    maxWidth: "62%",
+    gap: 2,
+    paddingBottom: 0,
+    paddingRight: 8,
+    maxWidth: "58%",
   },
   title: {
     fontSize: typography.screenTitle.fontSize,
@@ -629,12 +674,30 @@ const styles = StyleSheet.create({
     fontSize: typography.label.fontSize,
     fontWeight: "500",
     color: ui.secondaryText,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   headerBody: {
-    gap: 14,
+    gap: 12,
     paddingHorizontal: ui.horizontal,
     marginTop: IMMERSIVE_HERO_SHEET_OVERLAP,
+  },
+  shedFilterBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minHeight: 48,
+    backgroundColor: ui.white,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: ui.cardBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  shedFilterLabel: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    fontWeight: "700",
+    color: ui.primaryText,
   },
   paddedBlock: { paddingHorizontal: ui.horizontal },
   searchRow: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -647,25 +710,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: ui.white,
-    borderRadius: 22,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "#CDE5D9",
     paddingHorizontal: 12,
-    minHeight: 56,
+    minHeight: 48,
   },
   search: {
     flex: 1,
     minWidth: 0,
     fontSize: typography.body.fontSize,
     color: ui.primaryText,
-    paddingVertical: 10,
+    paddingVertical: 6,
     includeFontPadding: false,
   },
   filterBtn: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     flexShrink: 0,
-    borderRadius: 18,
+    borderRadius: 16,
     backgroundColor: ui.filterBg,
     alignItems: "center",
     justifyContent: "center",
@@ -686,43 +749,49 @@ const styles = StyleSheet.create({
     borderColor: ui.filterBg,
   },
   addBtn: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    borderRadius: 18,
+    borderRadius: 16,
     backgroundColor: ui.deepGreen,
   },
   summary: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: ui.summaryBg,
-    borderRadius: 24,
-    minHeight: 110,
-    paddingVertical: 18,
-    paddingHorizontal: 16,
+    borderRadius: 18,
+    minHeight: 88,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
   },
   summaryMetric: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12,
+    gap: 10,
   },
   summaryIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: ui.paleMint,
     alignItems: "center",
     justifyContent: "center",
   },
-  summaryLabel: { fontSize: typography.label.fontSize, fontWeight: "600", color: ui.secondaryText },
-  summaryValue: { fontSize: typography.display.fontSize, fontWeight: "800", color: ui.primaryText, marginTop: 1 },
+  summaryLabel: { fontSize: typography.caption.fontSize, fontWeight: "600", color: ui.secondaryText },
+  summaryValue: {
+    fontSize: typography.screenTitle.fontSize,
+    lineHeight: 26,
+    fontWeight: "800",
+    color: ui.primaryText,
+    marginTop: 1,
+  },
   summaryDivider: {
     width: StyleSheet.hairlineWidth,
-    height: 52,
+    height: 40,
     backgroundColor: ui.divider,
   },
   errorBox: {
@@ -737,37 +806,38 @@ const styles = StyleSheet.create({
   retry: { color: ui.deepGreen, fontWeight: "800", fontSize: typography.secondary.fontSize },
   card: {
     backgroundColor: ui.white,
-    borderRadius: 28,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: ui.cardBorder,
     overflow: "hidden",
   },
-  cardBody: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 14, gap: 12 },
+  cardBody: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 12, gap: 10 },
   cardTopRow: { flexDirection: "row", alignItems: "flex-start", gap: 4 },
   cardIdentityPress: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     minWidth: 0,
   },
   illustration: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
+    width: 76,
+    height: 76,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
-  cardInfo: { flex: 1, minWidth: 0, gap: 8 },
+  cardInfo: { flex: 1, minWidth: 0, gap: 6 },
   cardTitleRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
   },
   cardTitle: {
     flex: 1,
-    fontSize: typography.sectionTitle.fontSize,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: "800",
     color: ui.primaryText,
     letterSpacing: -0.3,
@@ -776,36 +846,36 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
-  modePillText: { fontSize: typography.caption.fontSize, fontWeight: "700" },
+  modePillText: { fontSize: 11, lineHeight: 14, fontWeight: "700" },
   statusPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     borderRadius: 999,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: typography.overline.fontSize, fontWeight: "800" },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusText: { fontSize: 10, lineHeight: 12, fontWeight: "800" },
   menuBtn: {
-    width: 28,
-    height: 28,
+    width: 32,
+    height: 32,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 4,
+    marginTop: 0,
   },
-  metricsPress: { gap: 6 },
+  metricsPress: { gap: 4 },
   metricsRow: {
     flexDirection: "row",
     alignItems: "center",
     borderTopWidth: 1,
     borderTopColor: ui.divider,
-    paddingTop: 12,
+    paddingTop: 10,
     gap: 4,
   },
   metricsCols: {
@@ -818,7 +888,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: 3,
+    gap: 2,
     position: "relative",
     paddingHorizontal: 2,
   },
@@ -831,20 +901,21 @@ const styles = StyleSheet.create({
     backgroundColor: ui.divider,
   },
   metricIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  metricValue: { fontSize: typography.display.fontSize, fontWeight: "800", color: ui.primaryText },
+  metricValue: { fontSize: 20, lineHeight: 23, fontWeight: "800", color: ui.primaryText },
   metricLabel: {
-    fontSize: typography.caption.fontSize,
+    fontSize: 11,
+    lineHeight: 14,
     fontWeight: "600",
     color: ui.secondaryText,
     textAlign: "center",
   },
-  cardChevron: { width: 18, marginLeft: 2, flexShrink: 0 },
+  cardChevron: { width: 16, marginLeft: 0, flexShrink: 0 },
   mismatch: { fontSize: typography.caption.fontSize, fontWeight: "700", color: ui.bandedIcon },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   chip: {

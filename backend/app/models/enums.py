@@ -46,3 +46,14 @@ class LifecycleEventType(str, enum.Enum):
 class BirdParentRole(str, enum.Enum):
     sire = "sire"
     dam = "dam"
+
+
+class SicknessSeverity(str, enum.Enum):
+    mild = "mild"
+    moderate = "moderate"
+    severe = "severe"
+
+
+class SicknessStatus(str, enum.Enum):
+    active = "active"
+    recovered = "recovered"

@@ -21,6 +21,7 @@ import { space, typography } from "../../theme/tokens";
 import { toast } from "../../ui/toast/toastStore";
 import { AppDialog } from "../ui/AppDialog";
 import { Button } from "../ui/Button";
+import { buildSearchContextKey, useResetSearchOnContextChange } from "../../features/search/searchLifecycle";
 import { SelectField } from "../ui/SelectField";
 
 type Props = {
@@ -46,6 +47,11 @@ export function ShedManagePanel({ shedId, shed, assignments, onChanged }: Props)
 
   const [selectedFarmer, setSelectedFarmer] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useResetSearchOnContextChange(
+    buildSearchContextKey({ ownerAccountId, shedId }),
+    () => setSelectedFarmer(null),
+  );
   const [error, setError] = useState<string | null>(null);
   const [deactivateDeps, setDeactivateDeps] = useState<ShedDependencies | null>(null);
   const [reactivateOpen, setReactivateOpen] = useState(false);

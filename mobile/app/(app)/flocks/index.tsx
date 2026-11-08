@@ -13,6 +13,7 @@ import { Screen } from "../../../src/components/ui/Screen";
 import { SelectField } from "../../../src/components/ui/SelectField";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../src/features/auth/permissions";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
 import { media } from "../../../src/theme/media";
 import { colors, space, typography } from "../../../src/theme/tokens";
 
@@ -27,6 +28,8 @@ export default function FlocksScreen() {
   const canCreate = hasPermission(user, ownerAccountId, "flock.create");
   const [shedFilter, setShedFilter] = useState<string | null>("all");
   const [statusFilter, setStatusFilter] = useState<string | null>("active");
+
+  useResetSearchOnContextChange(ownerAccountId, () => setShedFilter("all"));
 
   const sheds = useQuery({ queryKey: ["sheds", ownerAccountId], queryFn: () => listSheds() });
   const shedIdParam = shedFilter && shedFilter !== "all" ? shedFilter : undefined;

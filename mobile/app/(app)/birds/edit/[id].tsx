@@ -229,9 +229,10 @@ function EditBirdForm({
   const [moreInfoOpen, setMoreInfoOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [remoteAvailability, setRemoteAvailability] = useState<
-    Extract<BandAvailability, "checking" | "available" | "taken"> | null
-  >(null);
+  const [remoteAvailability, setRemoteAvailability] = useState<{
+    band: string;
+    status: Extract<BandAvailability, "checking" | "available" | "taken">;
+  } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => bandRef.current?.focus(), 350);
@@ -244,39 +245,44 @@ function EditBirdForm({
   );
 
   useEffect(() => {
-    if (localAvailability !== "idle" || !normalizeBand(bandId)) {
+    const band = normalizeBand(bandId);
+    if (localAvailability !== "idle" || !band) {
       return;
     }
     const req = ++availabilityReq.current;
     const timer = setTimeout(() => {
-      setRemoteAvailability("checking");
+      setRemoteAvailability({ band, status: "checking" });
       void (async () => {
         try {
           const result = await searchBirds({
-            q: normalizeBand(bandId),
+            q: band,
             limit: 8,
             includeInactive: false,
           });
           if (req !== availabilityReq.current) return;
           const conflict = findBandConflict(result.items, birdId, bandId);
-          setRemoteAvailability(conflict ? "taken" : "available");
+          setRemoteAvailability({ band, status: conflict ? "taken" : "available" });
         } catch {
           if (req !== availabilityReq.current) return;
-          setRemoteAvailability("available");
+          setRemoteAvailability({ band, status: "available" });
         }
       })();
     }, 350);
     return () => {
       clearTimeout(timer);
+      availabilityReq.current += 1;
     };
   }, [bandId, birdId, localAvailability]);
+
+  const remoteStatus =
+    remoteAvailability?.band === normalizeBand(bandId) ? remoteAvailability.status : null;
 
   const availability: BandAvailability =
     localAvailability !== "idle" || !normalizeBand(bandId)
       ? localAvailability === "idle" && !normalizeBand(bandId)
         ? "idle"
         : localAvailability
-      : (remoteAvailability ?? "idle");
+      : (remoteStatus ?? "idle");
 
   const hadBand = !isUnbanded(seed.bandId);
   const bandDirty = !bandsEqual(bandId, seed.bandId);

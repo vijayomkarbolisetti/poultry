@@ -1,17 +1,24 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { ComponentProps, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  ArrowLeftRight,
+  HandCoins,
+  HeartCrack,
+  Syringe,
+  Thermometer,
+} from "lucide-react-native";
 
 import { listBirdsInShed, type ShedBirdListItem } from "../../../../src/api/birds";
 import { describeApiError } from "../../../../src/api/client";
@@ -40,11 +47,17 @@ import {
 import { ShedManagePanel } from "../../../../src/components/sheds/ShedManagePanel";
 import { AppDialog } from "../../../../src/components/ui/AppDialog";
 import { Button } from "../../../../src/components/ui/Button";
+import { DataQualityBanner } from "../../../../src/components/ui/DataQualityBanner";
+import { EmptyState } from "../../../../src/components/ui/EmptyState";
 import { HenLoader } from "../../../../src/components/ui/HenLoader";
 import { ImmersiveHeroHeader } from "../../../../src/components/ui/ImmersiveHeroHeader";
 import { Screen } from "../../../../src/components/ui/Screen";
 import { useAuth } from "../../../../src/features/auth/AuthContext";
 import { hasPermission } from "../../../../src/features/auth/permissions";
+import {
+  buildSearchContextKey,
+  useResetSearchOnContextChange,
+} from "../../../../src/features/search/searchLifecycle";
 import {
   formatRelativeAgeLabel,
   formatSexLabel,
@@ -78,7 +91,10 @@ import { firstRouteParam } from "../../../../src/navigation/routeParams";
 import { safeBack } from "../../../../src/navigation/safeBack";
 import { birdUi } from "../../../../src/theme/birdManagementUi";
 import { birdIcons, shedHeaderArt } from "../../../../src/theme/media";
-import { typography } from "../../../../src/theme/tokens";
+import { colors, icons, layout, radius, shadows, space, typography } from "../../../../src/theme/tokens";
+
+const LIST_DOCK_SPACE = layout.buttonMinHeight * 2 + space.xl;
+const BULK_DOCK_SPACE = 148;
 
 
 const PAGE = 20;
@@ -102,7 +118,6 @@ export default function ShedBirdsScreen() {
   const id = firstRouteParam(params.id);
   const focus = firstRouteParam(params.focus);
   const resumeTransferFlag = firstRouteParam(params.resumeTransfer);
-  const insets = useSafeAreaInsets();
   const { user, ownerAccountId } = useAuth();
   const qc = useQueryClient();
   const canView = hasPermission(user, ownerAccountId, "bird.view");
@@ -110,6 +125,7 @@ export default function ShedBirdsScreen() {
   const canCreateGroup = hasPermission(user, ownerAccountId, "flock.create");
   const canLifecycle = hasPermission(user, ownerAccountId, "lifecycle.record");
   const canRecordVaccination = hasPermission(user, ownerAccountId, "vaccination.record");
+  const canSickness = hasPermission(user, ownerAccountId, "sickness.record");
   const canUpdateShed = hasPermission(user, ownerAccountId, "shed.update");
 
   const [tab, setTab] = useState<TabKey>("banded");
@@ -266,12 +282,18 @@ export default function ShedBirdsScreen() {
     );
   }, [unbandedBatchesApi, overviewByFlockId, debouncedQ]);
 
-  // Never carry selection or manage panel across sheds.
-  useEffect(() => {
-    setSelected(new Set());
-    setShowManage(false);
-    filterKey.current = "";
-  }, [id]);
+  // Never carry search, selection, or the manage panel across sheds or farms.
+  useResetSearchOnContextChange(
+    buildSearchContextKey({ ownerAccountId, shedId: id }),
+    () => {
+      setQ("");
+      setDebouncedQ("");
+      setSelected(new Set());
+      setShowManage(false);
+      filterKey.current = "";
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    },
+  );
 
   useEffect(() => {
     const key = buildBirdMgmtContextKey({
@@ -430,12 +452,14 @@ export default function ShedBirdsScreen() {
 
   if (!canView) {
     return (
-      <Screen>
-        <Text style={styles.error}>You do not have permission to view birds.</Text>
-        <Button
-          label="Back"
-          variant="secondary"
-          onPress={() => safeBack("/(app)/sheds")}
+      <Screen style={styles.stateScreen}>
+        <EmptyState
+          variant="compact"
+          imageSource={birdIcons.bird}
+          title="Cannot view birds"
+          body="You do not have permission to view birds in this shed."
+          actionLabel="Back"
+          onAction={() => safeBack("/(app)/sheds")}
         />
       </Screen>
     );
@@ -443,7 +467,7 @@ export default function ShedBirdsScreen() {
 
   if (overview.isLoading || !overview.data) {
     return (
-      <Screen>
+      <Screen style={styles.stateScreen}>
         <HenLoader label="Loading birds…" />
       </Screen>
     );
@@ -451,21 +475,29 @@ export default function ShedBirdsScreen() {
 
   if (overview.isError) {
     return (
-      <Screen>
-        <Text style={styles.error}>{describeApiError(overview.error, "load shed")}</Text>
-        <Button label="Retry" onPress={() => overview.refetch()} />
+      <Screen style={styles.stateScreen}>
+        <EmptyState
+          variant="compact"
+          imageSource={birdIcons.bird}
+          title="Could not load shed"
+          body={describeApiError(overview.error, "load shed")}
+          actionLabel="Retry"
+          onAction={() => overview.refetch()}
+        />
       </Screen>
     );
   }
 
-  // Banded multi-select must work for vaccination-only users (no lifecycle.record),
-  // so they can open Record vaccination without visiting each Bird Profile.
+  // Banded multi-select must work for vaccination/sickness-only users (no lifecycle.record),
+  // so they can open the action without visiting each Bird Profile.
   const canSelectBanded =
-    (canLifecycle || canRecordVaccination) && !!shed?.is_active;
+    (canLifecycle || canRecordVaccination || canSickness) && !!shed?.is_active;
   const showBulkBar =
     !!shed?.is_active &&
     selected.size > 0 &&
-    (canLifecycle || (canRecordVaccination && tab === "banded"));
+    (canLifecycle ||
+      (canRecordVaccination && tab === "banded") ||
+      (canSickness && tab === "banded"));
   const bulkDisabledUnbanded = tab === "unbanded" && !unbandedBulk.ok;
   const allLoadedSelected =
     tab === "banded" && areAllEligibleSelected(selected, loadedEligibleIds);
@@ -487,6 +519,22 @@ export default function ShedBirdsScreen() {
     setSelected(new Set());
   };
 
+  const openSickness = () => {
+    if (!id || selected.size === 0 || tab !== "banded") return;
+    const ids = [...selected];
+    const birdLabels = items.filter((b) => selected.has(b.id)).map((b) => birdLabel(b));
+    router.push({
+      pathname: "/(app)/birds/record-sickness",
+      params: {
+        shedId: id,
+        birdIds: ids.join(","),
+        labels: birdLabels.join("|"),
+        formKey: `${Date.now()}`,
+      },
+    });
+    setSelected(new Set());
+  };
+
   const onSelectAllPress = () => {
     const selecting = !allLoadedSelected;
     setSelected((prev) => toggleSelectAllLoaded(prev, loadedEligibleIds));
@@ -497,11 +545,17 @@ export default function ShedBirdsScreen() {
     }
   };
 
+  const clearSelection = () => {
+    setSelected(new Set());
+  };
+
   const listHeader = (
     <View style={styles.headerBlock}>
       <ImmersiveHeroHeader
         source={shedHeaderArt}
         curveFill={birdUi.bg}
+        minHeight={160}
+        style={styles.hero}
         accessibilityLabel="Shed header illustration"
         contentStyle={styles.heroCopy}
       >
@@ -509,9 +563,10 @@ export default function ShedBirdsScreen() {
           <Pressable
             onPress={() => safeBack("/(app)/sheds")}
             style={styles.backBtn}
+            accessibilityRole="button"
             accessibilityLabel="Back"
           >
-            <Ionicons name="arrow-back" size={22} color={birdUi.text} />
+            <Ionicons name="arrow-back" size={icons.lg} color={colors.ink} />
           </Pressable>
           {canUpdateShed ? (
             <Pressable
@@ -521,11 +576,11 @@ export default function ShedBirdsScreen() {
               accessibilityState={{ expanded: showManage }}
               accessibilityLabel={showManage ? "Close shed management" : "Manage shed"}
             >
-              <Ionicons name="settings-outline" size={16} color={birdUi.primary} />
+              <Ionicons name="settings-outline" size={icons.sm} color={colors.primary} />
               <Text style={styles.manageBtnText}>{showManage ? "Close" : "Manage"}</Text>
             </Pressable>
           ) : (
-            <View style={{ width: 40 }} />
+            <View style={{ width: layout.touchTarget }} />
           )}
         </View>
         <View style={styles.heroIdentity}>
@@ -535,13 +590,13 @@ export default function ShedBirdsScreen() {
               <View
                 style={[
                   styles.pillDot,
-                  { backgroundColor: shed?.is_active ? birdUi.successText : birdUi.error },
+                  { backgroundColor: shed?.is_active ? colors.success : colors.danger },
                 ]}
               />
               <Text
                 style={[
                   styles.pillText,
-                  { color: shed?.is_active ? birdUi.successText : birdUi.error },
+                  { color: shed?.is_active ? colors.success : colors.danger },
                 ]}
               >
                 {shed?.is_active ? "Active" : "Inactive"}
@@ -552,6 +607,14 @@ export default function ShedBirdsScreen() {
             {managedLabel}
             {farmerNames ? ` · ${farmerNames}` : " · No farmer assigned"}
           </Text>
+          <View
+            style={styles.totalBirds}
+            accessibilityLabel={`Total Birds ${liveCount}`}
+          >
+            <Ionicons name="egg-outline" size={14} color={birdUi.primary} />
+            <Text style={styles.totalBirdsLabel}>Total Birds</Text>
+            <Text style={styles.totalBirdsValue}>{liveCount}</Text>
+          </View>
         </View>
       </ImmersiveHeroHeader>
 
@@ -569,39 +632,10 @@ export default function ShedBirdsScreen() {
       ) : null}
 
       {!shed?.is_active ? (
-        <Text style={styles.warnBanner}>
-          Inactive — history stays available. Reactivate before adding birds.
-        </Text>
+        <View style={styles.bannerWrap}>
+          <DataQualityBanner message="Inactive — history stays available. Reactivate before adding birds." />
+        </View>
       ) : null}
-
-      <View style={styles.metricsCard}>
-        <Metric
-          icon="egg-outline"
-          iconBg={birdUi.iconCircle}
-          iconColor={birdUi.primary}
-          value={liveCount}
-          label="Live"
-          tone={birdUi.primary}
-        />
-        <View style={styles.metricDivider} />
-        <Metric
-          icon="pricetag-outline"
-          iconBg={birdUi.orangePale}
-          iconColor={birdUi.orange}
-          value={bandedCount}
-          label="Banded"
-          tone={birdUi.orange}
-        />
-        <View style={styles.metricDivider} />
-        <Metric
-          icon="people-outline"
-          iconBg={birdUi.bluePale}
-          iconColor={birdUi.blue}
-          value={unbandedCount}
-          label="Unbanded"
-          tone={birdUi.blue}
-        />
-      </View>
 
       <View style={styles.tabs}>
         <Pressable
@@ -613,7 +647,7 @@ export default function ShedBirdsScreen() {
           <Ionicons
             name="pricetag"
             size={16}
-            color={tab === "banded" ? "#fff" : birdUi.orange}
+            color={tab === "banded" ? colors.textOnPrimary : colors.warning}
           />
           <Text style={[styles.tabText, tab === "banded" && styles.tabTextOn]}>
             Banded ({bandedCount})
@@ -628,7 +662,7 @@ export default function ShedBirdsScreen() {
           <Ionicons
             name="people"
             size={16}
-            color={tab === "unbanded" ? "#fff" : birdUi.blue}
+            color={tab === "unbanded" ? colors.textOnPrimary : colors.info}
           />
           <Text style={[styles.tabText, tab === "unbanded" && styles.tabTextOn]}>
             Unbanded ({unbandedCount})
@@ -638,115 +672,170 @@ export default function ShedBirdsScreen() {
 
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
-          <Ionicons name="search" size={18} color={birdUi.muted} />
+          <Ionicons name="search" size={icons.md} color={colors.iconMuted} />
           <TextInput
             style={styles.searchInput}
             value={q}
             onChangeText={onSearchChange}
             placeholder={tab === "banded" ? "Search by Band" : "Search hatch or breed…"}
-            placeholderTextColor={birdUi.muted}
+            placeholderTextColor={colors.textPlaceholder}
             autoCapitalize="characters"
             autoCorrect={false}
-            accessibilityLabel="Search by Band"
+            accessibilityLabel={tab === "banded" ? "Search by Band" : "Search hatch or breed"}
           />
           {q ? (
             <Pressable onPress={clearSearch} hitSlop={10} accessibilityLabel="Clear search">
-              <Ionicons name="close-circle" size={18} color={birdUi.muted} />
+              <Ionicons name="close-circle" size={icons.md} color={colors.iconMuted} />
             </Pressable>
           ) : null}
         </View>
       </View>
 
-      {showSelectAll || showBulkBar ? (
+    </View>
+  );
+
+  const canAddBirds = (canCreate || canCreateGroup) && !!shed?.is_active;
+  const selectedLabel =
+    tab === "banded"
+      ? formatSelectedBirdsLabel(selected.size)
+      : selected.size === 1
+        ? "1 selected"
+        : `${selected.size} selected`;
+
+  const dock = (
+    <View style={styles.dock} pointerEvents="box-none">
+      {showBulkBar ? (
         <View style={styles.bulkBar}>
           <View style={styles.bulkTopRow}>
             <View style={styles.bulkLeft}>
-              <Ionicons name="checkbox" size={20} color={birdUi.primary} />
-              <Text style={styles.bulkCount}>
-                {tab === "banded"
-                  ? formatSelectedBirdsLabel(selected.size)
-                  : selected.size === 1
-                    ? "1 selected"
-                    : `${selected.size} selected`}
+              <Ionicons name="checkbox" size={icons.md} color={colors.primary} />
+              <Text style={styles.bulkCount} accessibilityLiveRegion="polite">
+                {selected.size > 0 ? selectedLabel : "Select birds"}
               </Text>
             </View>
-            {showSelectAll ? (
-              <Pressable
-                onPress={onSelectAllPress}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={allLoadedSelected ? "Deselect all" : "Select all"}
-              >
-                <Text style={styles.selectAllLink}>
-                  {allLoadedSelected ? "Deselect all" : "Select all"}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-          {showBulkBar ? (
-            <View style={styles.bulkActions}>
-              {canRecordVaccination && tab === "banded" ? (
+            <View style={styles.bulkTopActions}>
+              {showSelectAll ? (
                 <Pressable
-                  style={styles.vaxBtn}
-                  onPress={openRecordVaccination}
+                  onPress={onSelectAllPress}
+                  hitSlop={12}
+                  style={styles.selectAllHit}
                   accessibilityRole="button"
-                  accessibilityLabel="Record vaccination"
+                  accessibilityLabel={allLoadedSelected ? "Deselect all" : "Select all"}
                 >
-                  <Ionicons name="medkit-outline" size={16} color="#fff" />
-                  <Text style={styles.vaxBtnText}>Record vaccination</Text>
+                  <Text style={styles.selectAllLink}>
+                    {allLoadedSelected ? "Deselect all" : "Select all"}
+                  </Text>
                 </Pressable>
               ) : null}
-              {canLifecycle ? (
-                <>
-                  <Pressable
-                    style={[styles.mortalityBtn, bulkDisabledUnbanded && styles.btnDisabled]}
-                    onPress={openMortality}
-                    disabled={bulkDisabledUnbanded}
-                    accessibilityRole="button"
-                    accessibilityLabel="Mortality"
-                  >
-                    <Ionicons name="skull-outline" size={16} color="#fff" />
-                    <Text style={styles.mortalityBtnText}>Mortality</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.transferBtn, bulkDisabledUnbanded && styles.btnDisabled]}
-                    onPress={openTransfer}
-                    disabled={bulkDisabledUnbanded}
-                    accessibilityRole="button"
-                    accessibilityLabel="Transfer"
-                  >
-                    <Ionicons name="swap-horizontal" size={16} color="#fff" />
-                    <Text style={styles.transferBtnText}>Transfer</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.soldBtn, bulkDisabledUnbanded && styles.btnDisabled]}
-                    onPress={openSale}
-                    disabled={bulkDisabledUnbanded}
-                    accessibilityRole="button"
-                    accessibilityLabel="Sold"
-                  >
-                    <Ionicons name="pricetag-outline" size={16} color="#fff" />
-                    <Text style={styles.soldBtnText}>Sold</Text>
-                  </Pressable>
-                </>
-              ) : null}
+              <Pressable
+                onPress={clearSelection}
+                style={styles.clearSelectionHit}
+                accessibilityRole="button"
+                accessibilityLabel="Clear selection"
+              >
+                <Ionicons name="close" size={icons.lg} color={colors.inkMuted} />
+              </Pressable>
             </View>
-          ) : null}
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bulkActionsRow}
+          >
+            {canRecordVaccination && tab === "banded" ? (
+              <BulkActionChip
+                Icon={Syringe}
+                label="Vaccine"
+                accessibilityLabel="Record vaccination"
+                onPress={openRecordVaccination}
+              />
+            ) : null}
+            {canSickness && tab === "banded" ? (
+              <BulkActionChip
+                Icon={Thermometer}
+                label="Sickness"
+                accessibilityLabel="Record sickness"
+                onPress={openSickness}
+              />
+            ) : null}
+            {canLifecycle ? (
+              <BulkActionChip
+                Icon={HeartCrack}
+                label="Mortality"
+                accessibilityLabel="Record mortality"
+                danger
+                onPress={openMortality}
+                disabled={bulkDisabledUnbanded}
+              />
+            ) : null}
+            {canLifecycle ? (
+              <BulkActionChip
+                Icon={ArrowLeftRight}
+                label="Transfer"
+                accessibilityLabel="Transfer birds"
+                onPress={openTransfer}
+                disabled={bulkDisabledUnbanded}
+              />
+            ) : null}
+            {canLifecycle ? (
+              <BulkActionChip
+                Icon={HandCoins}
+                label="Sold"
+                accessibilityLabel="Sell birds"
+                onPress={openSale}
+                disabled={bulkDisabledUnbanded}
+              />
+            ) : null}
+          </ScrollView>
           {unbandedMultiHint ? <Text style={styles.bulkHint}>{unbandedMultiHint}</Text> : null}
+          {tab === "unbanded" && canSickness ? (
+            <Text style={styles.bulkHint}>
+              Sickness requires individually banded birds — band a bird first.
+            </Text>
+          ) : null}
         </View>
+      ) : null}
+      {canAddBirds && !showBulkBar ? (
+        <Button
+          label="Add birds"
+          onPress={() =>
+            router.push({
+              pathname: "/(app)/birds/add",
+              params: {
+                shedId: id!,
+                mode: canCreate ? "banded" : "unbanded",
+              },
+            })
+          }
+        />
       ) : null}
     </View>
   );
 
+  const showDock = canAddBirds || showBulkBar;
+  const footerPad = showBulkBar
+    ? BULK_DOCK_SPACE
+    : showDock
+      ? LIST_DOCK_SPACE
+      : space.lg;
+
   return (
-    <Screen edges={["left", "right", "bottom"]} style={{ backgroundColor: birdUi.bg, padding: 0 }}>
+    <Screen
+      edges={["left", "right"]}
+      style={{ backgroundColor: birdUi.bg, padding: 0, flex: 1, gap: 0 }}
+    >
       {tab === "banded" ? (
         <FlatList
-          style={{ flex: 1 }}
+          style={styles.list}
           data={items}
+          extraData={selected}
           keyExtractor={(item) => item.id}
           ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          initialNumToRender={PAGE}
+          windowSize={7}
           onRefresh={() => {
             void overview.refetch();
             void birds.refetch();
@@ -760,18 +849,27 @@ export default function ShedBirdsScreen() {
               <HenLoader label="Loading birds…" />
             ) : birds.isError ? (
               <View style={styles.emptyBox}>
-                <Text style={styles.error}>{describeApiError(birds.error, "load birds")}</Text>
-                <Button label="Retry" onPress={() => birds.refetch()} />
+                <EmptyState
+                  variant="compact"
+                  imageSource={birdIcons.bird}
+                  title="Could not load birds"
+                  body={describeApiError(birds.error, "load birds")}
+                  actionLabel="Retry"
+                  onAction={() => birds.refetch()}
+                />
               </View>
             ) : emptyPopulation ? (
               <EmptyBirds />
             ) : (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyTitle}>No matching birds</Text>
-                <Text style={styles.emptyBody}>Try a different search.</Text>
-                {debouncedQ ? (
-                  <Button label="Clear search" variant="secondary" onPress={clearSearch} />
-                ) : null}
+                <EmptyState
+                  variant="compact"
+                  imageSource={birdIcons.bird}
+                  title="No matching birds"
+                  body="Try a different search."
+                  actionLabel={debouncedQ ? "Clear search" : undefined}
+                  onAction={debouncedQ ? clearSearch : undefined}
+                />
               </View>
             )
           }
@@ -785,25 +883,28 @@ export default function ShedBirdsScreen() {
             />
           )}
           ListFooterComponent={
-            birds.hasNextPage ? (
-              <Button
-                label="Load more"
-                variant="secondary"
-                loading={birds.isFetchingNextPage}
-                onPress={() => birds.fetchNextPage()}
-              />
-            ) : (
-              <View style={{ height: 100 }} />
-            )
+            <View style={[styles.listFooter, { paddingBottom: footerPad }]}>
+              {birds.hasNextPage ? (
+                <Button
+                  label="Load more"
+                  variant="secondary"
+                  loading={birds.isFetchingNextPage}
+                  onPress={() => birds.fetchNextPage()}
+                />
+              ) : null}
+            </View>
           }
         />
       ) : (
         <FlatList
-          style={{ flex: 1 }}
+          style={styles.list}
           data={unbandedRows}
+          extraData={selected}
           keyExtractor={(item) => item.flock_id}
           ListHeaderComponent={listHeader}
           contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           onRefresh={() => {
             void overview.refetch();
             void birdsSummary.refetch();
@@ -814,12 +915,16 @@ export default function ShedBirdsScreen() {
               <EmptyBirds />
             ) : (
               <View style={styles.emptyBox}>
-                <Text style={styles.emptyTitle}>No unbanded birds</Text>
-                <Text style={styles.emptyBody}>
-                  {debouncedQ
-                    ? "No populations match this search."
-                    : "Record an unbanded population with Add birds."}
-                </Text>
+                <EmptyState
+                  variant="compact"
+                  imageSource={birdIcons.bird}
+                  title="No unbanded birds"
+                  body={
+                    debouncedQ
+                      ? "No populations match this search."
+                      : "Record an unbanded population with Add birds."
+                  }
+                />
               </View>
             )
           }
@@ -838,31 +943,11 @@ export default function ShedBirdsScreen() {
               }
             />
           )}
-          ListFooterComponent={<View style={{ height: 100 }} />}
+          ListFooterComponent={<View style={[styles.listFooter, { paddingBottom: footerPad }]} />}
         />
       )}
 
-      {(canCreate || canCreateGroup) && shed?.is_active ? (
-        <View style={[styles.fabWrap, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-          <Pressable
-            style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.92 }]}
-            onPress={() =>
-              router.push({
-                pathname: "/(app)/birds/add",
-                params: {
-                  shedId: id!,
-                  mode: canCreate ? "banded" : "unbanded",
-                },
-              })
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Add bird"
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-            <Text style={styles.addBtnText}>Add bird</Text>
-          </Pressable>
-        </View>
-      ) : null}
+      {showDock ? dock : null}
 
       <AppDialog
         visible={Boolean(selectAllNote)}
@@ -912,34 +997,6 @@ export default function ShedBirdsScreen() {
   );
 }
 
-function Metric({
-  icon,
-  iconBg,
-  iconColor,
-  value,
-  label,
-  tone,
-}: {
-  icon: ComponentProps<typeof Ionicons>["name"];
-  iconBg: string;
-  iconColor: string;
-  value: number;
-  label: string;
-  tone: string;
-}) {
-  return (
-    <View style={styles.metric} accessibilityLabel={`${label} ${value}`}>
-      <View style={[styles.metricIcon, { backgroundColor: iconBg }]}>
-        <Ionicons name={icon} size={14} color={iconColor} />
-      </View>
-      <View style={styles.metricCopy}>
-        <Text style={[styles.metricValue, { color: tone }]}>{value}</Text>
-        <Text style={styles.metricLabel}>{label}</Text>
-      </View>
-    </View>
-  );
-}
-
 function genderIconSource(sex: string | null | undefined) {
   const normalized = normalizeSexSelectValue(sex);
   if (normalized === "male") return birdIcons.male;
@@ -950,14 +1007,54 @@ function genderIconSource(sex: string | null | undefined) {
 function EmptyBirds() {
   return (
     <View style={styles.emptyBox}>
-      <View style={styles.emptyIcon}>
-        <Image source={birdIcons.bird} style={styles.emptyIconImg} resizeMode="cover" />
-      </View>
-      <Text style={styles.emptyTitle}>No registered birds yet</Text>
-      <Text style={styles.emptyBody}>
-        Add banded birds or record an unbanded population for this shed.
-      </Text>
+      <EmptyState
+        variant="compact"
+        imageSource={birdIcons.bird}
+        title="No registered birds yet"
+        body="Add banded birds or record an unbanded population for this shed."
+      />
     </View>
+  );
+}
+
+type BulkActionIcon = ComponentType<{
+  size?: number;
+  color?: string;
+  strokeWidth?: number;
+}>;
+
+function BulkActionChip({
+  Icon,
+  label,
+  accessibilityLabel,
+  danger,
+  onPress,
+  disabled,
+}: {
+  Icon: BulkActionIcon;
+  label: string;
+  accessibilityLabel: string;
+  danger?: boolean;
+  onPress: () => void;
+  disabled?: boolean;
+}) {
+  const tone = danger ? colors.danger : colors.primary;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      style={[
+        styles.bulkActionChip,
+        danger && styles.bulkActionChipDanger,
+        disabled && styles.bulkActionChipDisabled,
+      ]}
+    >
+      <Icon size={20} color={tone} strokeWidth={2} />
+      <Text style={[styles.bulkActionLabel, { color: tone }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -1010,7 +1107,7 @@ function BandedBirdRow({
           style={[styles.checkbox, selected && styles.checkboxOn, !eligible && styles.checkboxDisabled]}
           importantForAccessibility="no"
         >
-          {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+          {selected ? <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} /> : null}
         </View>
       ) : null}
       <View style={styles.birdAvatar}>
@@ -1022,19 +1119,16 @@ function BandedBirdRow({
       </View>
       <View style={styles.birdCopy}>
         <Text style={styles.band} numberOfLines={1}>
-          {title}
-        </Text>
-        <Text style={styles.birdMeta} numberOfLines={1}>
-          {sexLabel}
+          {title} · {sexLabel}
         </Text>
       </View>
       <Pressable
         onPress={open}
-        hitSlop={10}
+        style={styles.profileHit}
         accessibilityRole="button"
         accessibilityLabel={`Open profile for ${title}`}
       >
-        <Ionicons name="chevron-forward" size={18} color={birdUi.muted} />
+        <Ionicons name="chevron-forward" size={icons.md} color={colors.iconMuted} />
       </Pressable>
     </Pressable>
   );
@@ -1073,7 +1167,7 @@ function UnbandedCohortRow({
           style={[styles.checkbox, selected && styles.checkboxOn]}
           importantForAccessibility="no"
         >
-          {selected ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+          {selected ? <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} /> : null}
         </View>
       ) : null}
       <View style={[styles.birdAvatar, { backgroundColor: birdUi.bluePale }]}>
@@ -1091,7 +1185,7 @@ function UnbandedCohortRow({
               e.stopPropagation?.();
               onBand();
             }}
-            hitSlop={6}
+            style={styles.bandAction}
             accessibilityRole="button"
             accessibilityLabel={`Band a bird from ${row.label}`}
           >
@@ -1104,227 +1198,215 @@ function UnbandedCohortRow({
 }
 
 const styles = StyleSheet.create({
-  listContent: { paddingBottom: 24, gap: 10 },
-  headerBlock: { gap: 12, marginBottom: 4 },
+  list: { flex: 1 },
+  listContent: { paddingBottom: space.sm, gap: 8 },
+  listFooter: { paddingHorizontal: space.lg, paddingBottom: LIST_DOCK_SPACE, paddingTop: space.xs, gap: 6 },
+  stateScreen: { gap: space.md, padding: space.lg, backgroundColor: colors.bg },
+  headerBlock: { gap: 6, marginBottom: 0 },
+  hero: { paddingBottom: 28 },
   heroCopy: {
     flexGrow: 1,
-    gap: 12,
-    justifyContent: "space-between",
+    gap: 4,
+    justifyContent: "flex-start",
   },
   heroTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  heroIdentity: { gap: 6 },
+  heroIdentity: { gap: 3 },
+  identityTopRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    width: layout.touchTarget,
+    height: layout.touchTarget,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTranslucent,
     alignItems: "center",
     justifyContent: "center",
   },
   manageBtn: {
+    minHeight: layout.touchTarget,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.92)",
+    gap: space.xs,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTranslucent,
   },
-  manageBtnText: { fontSize: typography.secondary.fontSize, fontWeight: "700", color: birdUi.primary },
+  manageBtnText: { fontSize: typography.secondary.fontSize, lineHeight: typography.secondary.lineHeight, fontWeight: "700", color: colors.primary },
   shedName: {
-    fontSize: typography.screenTitle.fontSize,
-    fontWeight: "800",
-    color: birdUi.deepGreen,
-    letterSpacing: -0.4,
+    ...typography.screenTitle,
+    color: colors.ink,
   },
-  metaRow: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  shedMeta: { fontSize: typography.secondary.fontSize, fontWeight: "600", color: birdUi.textSecondary },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: space.xs, flexWrap: "wrap" },
   pill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
+    gap: space.xs,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.pill,
   },
-  pillOn: { backgroundColor: birdUi.successBg },
-  pillOff: { backgroundColor: birdUi.errorPale },
-  pillDot: { width: 6, height: 6, borderRadius: 3 },
-  pillText: { fontSize: typography.caption.fontSize, fontWeight: "700" },
-  managed: { fontSize: typography.caption.fontSize, color: birdUi.muted, marginTop: 2 },
-  warnBanner: {
-    marginHorizontal: birdUi.horizontal,
-    backgroundColor: birdUi.orangePale,
-    color: birdUi.orange,
-    fontWeight: "600",
-    fontSize: typography.secondary.fontSize,
-    padding: 10,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  metricsCard: {
-    marginHorizontal: birdUi.horizontal,
+  pillOn: { backgroundColor: colors.primarySoft },
+  pillOff: { backgroundColor: colors.disabledBg },
+  pillDot: { width: space.xs, height: space.xs, borderRadius: radius.pill },
+  pillText: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, fontWeight: "700" },
+  managed: { ...typography.caption, color: colors.inkMuted },
+  bannerWrap: { marginHorizontal: space.lg },
+  totalBirds: {
+    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: birdUi.white,
-    borderRadius: 12,
+    gap: 6,
+    marginTop: 4,
+    backgroundColor: "rgba(255,255,255,0.86)",
     borderWidth: 1,
-    borderColor: birdUi.border,
-    paddingVertical: 8,
-    paddingHorizontal: 6,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  metric: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 4,
+  totalBirdsLabel: {
+    fontSize: typography.overline.fontSize,
+    fontWeight: "700",
+    color: colors.inkMuted,
   },
-  metricIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  metricCopy: { gap: 0 },
-  metricValue: { fontSize: typography.bodyStrong.fontSize, fontWeight: "800", lineHeight: 18 },
-  metricLabel: { fontSize: typography.overline.fontSize, fontWeight: "600", color: birdUi.muted, lineHeight: 13 },
-  metricDivider: {
-    width: StyleSheet.hairlineWidth,
-    alignSelf: "stretch",
-    backgroundColor: birdUi.divider,
-    marginVertical: 2,
+  totalBirdsValue: {
+    fontSize: typography.bodyStrong.fontSize,
+    fontWeight: "800",
+    color: birdUi.primary,
   },
   tabs: {
-    marginHorizontal: birdUi.horizontal,
+    marginHorizontal: space.lg,
     flexDirection: "row",
-    gap: 8,
-    backgroundColor: birdUi.white,
-    borderRadius: 14,
+    gap: 6,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: birdUi.border,
-    padding: 4,
+    borderColor: colors.border,
+    padding: 6,
   },
   tab: {
     flex: 1,
+    minHeight: layout.touchTarget,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 11,
+    gap: space.xs,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
   },
-  tabOn: { backgroundColor: birdUi.primary },
-  tabOnBlue: { backgroundColor: birdUi.blue },
-  tabText: { fontSize: typography.label.fontSize, fontWeight: "700", color: birdUi.text },
-  tabTextOn: { color: "#fff" },
+  tabOn: { backgroundColor: colors.primary },
+  tabOnBlue: { backgroundColor: colors.info },
+  tabText: { fontSize: typography.label.fontSize, lineHeight: typography.label.lineHeight, fontWeight: "700", color: colors.ink },
+  tabTextOn: { color: colors.textOnPrimary },
   searchRow: {
-    marginHorizontal: birdUi.horizontal,
+    marginHorizontal: space.lg,
   },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: birdUi.white,
+    gap: space.xs,
+    backgroundColor: colors.inputBg,
     borderWidth: 1,
-    borderColor: birdUi.border,
-    borderRadius: 14,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     paddingHorizontal: 12,
-    minHeight: 44,
+    minHeight: 48,
   },
-  searchInput: { flex: 1, fontSize: typography.body.fontSize, color: birdUi.text, paddingVertical: 8 },
+  searchInput: {
+    flex: 1,
+    ...typography.body,
+    color: colors.ink,
+    paddingVertical: 6,
+  },
+  dock: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: space.lg,
+    paddingTop: 6,
+    paddingBottom: 10,
+    backgroundColor: colors.bg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    gap: 6,
+    ...shadows.soft,
+  },
   bulkBar: {
-    marginHorizontal: birdUi.horizontal,
-    backgroundColor: birdUi.white,
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: birdUi.border,
-    padding: 12,
-    gap: 10,
+    borderColor: colors.border,
+    padding: 10,
+    gap: 6,
   },
   bulkTopRow: {
+    minHeight: 30,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 8,
-    flexWrap: "wrap",
+    gap: space.sm,
   },
-  bulkLeft: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
-  bulkCount: { fontWeight: "800", color: birdUi.text, fontSize: typography.body.fontSize },
+  bulkLeft: { flexDirection: "row", alignItems: "center", gap: space.xs, flexShrink: 1 },
+  bulkTopActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  clearSelectionHit: {
+    minWidth: layout.touchTarget,
+    minHeight: layout.touchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bulkCount: { ...typography.bodyStrong, color: colors.ink },
+  selectAllHit: { minHeight: 32, justifyContent: "center", paddingHorizontal: space.xs },
   selectAllLink: {
-    fontWeight: "800",
-    color: birdUi.primary,
     fontSize: typography.label.fontSize,
+    lineHeight: typography.label.lineHeight,
+    fontWeight: "800",
+    color: colors.primary,
     textDecorationLine: "underline",
   },
-  bulkActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
-  bulkHint: { fontSize: typography.caption.fontSize, color: birdUi.orange, fontWeight: "600" },
-  vaxBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: birdUi.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+  bulkActionsRow: { flexDirection: "row", gap: 8, paddingRight: 4, paddingVertical: 2 },
+  bulkActionChip: {
+    minWidth: 76,
+    minHeight: 62,
     borderRadius: 12,
-  },
-  vaxBtnText: { color: "#fff", fontWeight: "700", fontSize: typography.secondary.fontSize },
-  mortalityBtn: {
-    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: "center",
-    gap: 6,
-    backgroundColor: birdUi.error,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
+    justifyContent: "center",
+    gap: 4,
+    paddingHorizontal: 8,
   },
-  mortalityBtnText: { color: "#fff", fontWeight: "700", fontSize: typography.secondary.fontSize },
-  transferBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: birdUi.blue,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  transferBtnText: { color: "#fff", fontWeight: "700", fontSize: typography.secondary.fontSize },
-  soldBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: birdUi.orange,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  soldBtnText: { color: "#fff", fontWeight: "700", fontSize: typography.secondary.fontSize },
-  btnDisabled: { opacity: 0.45 },
+  bulkActionChipDanger: { borderColor: colors.danger, backgroundColor: birdUi.errorPale },
+  bulkActionChipDisabled: { opacity: 0.35 },
+  bulkActionLabel: { fontSize: typography.caption.fontSize, fontWeight: "700", textAlign: "center" },
+  bulkHint: { fontSize: typography.caption.fontSize, lineHeight: typography.caption.lineHeight, color: colors.warning, fontWeight: "600" },
   birdCard: {
-    marginHorizontal: birdUi.horizontal,
+    marginHorizontal: space.lg,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: birdUi.white,
-    borderRadius: birdUi.cardRadius,
+    backgroundColor: colors.surface,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: birdUi.border,
+    borderColor: colors.border,
     paddingVertical: 8,
-    paddingHorizontal: 10,
-    minHeight: 48,
+    paddingHorizontal: 12,
+    minHeight: layout.touchTarget,
   },
-  birdCardSelected: { borderColor: birdUi.primary, backgroundColor: birdUi.paleMint },
+  birdCardSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
   birdAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: birdUi.iconCircle,
+    width: icons.xl,
+    height: icons.xl,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
@@ -1332,47 +1414,29 @@ const styles = StyleSheet.create({
   birdAvatarImg: { width: "100%", height: "100%" },
   birdCopy: { flex: 1, minWidth: 0, gap: 1 },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: space.lg,
+    height: space.lg,
+    borderRadius: radius.sm,
     borderWidth: 2,
-    borderColor: birdUi.border,
+    borderColor: colors.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxOn: { backgroundColor: birdUi.primary, borderColor: birdUi.primary },
+  checkboxOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   checkboxDisabled: { opacity: 0.35 },
-  band: { fontSize: typography.body.fontSize, fontWeight: "800", color: birdUi.text },
-  birdMeta: { fontSize: typography.caption.fontSize, color: birdUi.muted },
-  link: { color: birdUi.primary, fontWeight: "700", fontSize: typography.secondary.fontSize, marginTop: 4 },
-  fabWrap: {
-    position: "absolute",
-    left: birdUi.horizontal,
-    right: birdUi.horizontal,
-    bottom: 4,
+  band: { fontSize: typography.bodyStrong.fontSize, lineHeight: 22, fontWeight: "800", color: colors.ink },
+  birdMeta: { ...typography.caption, color: colors.inkMuted },
+  link: { fontSize: typography.secondary.fontSize, lineHeight: typography.secondary.lineHeight, fontWeight: "700", color: colors.primary },
+  bandAction: {
+    minHeight: layout.touchTarget,
+    justifyContent: "center",
+    alignSelf: "flex-start",
   },
-  addBtn: {
-    minHeight: 54,
-    borderRadius: 16,
-    backgroundColor: birdUi.primary,
-    flexDirection: "row",
+  profileHit: {
+    minWidth: layout.touchTarget,
+    minHeight: layout.touchTarget,
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
   },
-  addBtnText: { color: "#fff", fontSize: typography.button.fontSize, fontWeight: "700" },
-  emptyBox: { alignItems: "center", paddingVertical: 32, gap: 10, paddingHorizontal: 24 },
-  emptyIcon: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: birdUi.paleMint,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  emptyIconImg: { width: "100%", height: "100%" },
-  emptyTitle: { fontSize: typography.screenTitle.fontSize, fontWeight: "800", color: birdUi.text, textAlign: "center" },
-  emptyBody: { fontSize: typography.label.fontSize, color: birdUi.muted, textAlign: "center", lineHeight: 20 },
-  error: { color: birdUi.error, fontWeight: "600" },
+  emptyBox: { paddingHorizontal: space.lg, paddingVertical: space.md },
 });

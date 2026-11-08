@@ -20,6 +20,7 @@ import { createFarmer } from "../../../src/api/farmers";
 import { describeApiError } from "../../../src/api/client";
 import { listSheds } from "../../../src/api/sheds";
 import { MultiSelectField } from "../../../src/components/ui/MultiSelectField";
+import { useResetSearchOnContextChange } from "../../../src/features/search/searchLifecycle";
 import { useAuth } from "../../../src/features/auth/AuthContext";
 import {
   ALL_GRANTABLE_FARMER_PERMS,
@@ -64,6 +65,8 @@ export default function CreateFarmerScreen() {
   const [selectedSheds, setSelectedSheds] = useState<string[]>([]);
   const [perms, setPerms] = useState<string[]>([...CREATE_FARMER_INITIAL_PERMS]);
   const [loading, setLoading] = useState(false);
+
+  useResetSearchOnContextChange(ownerAccountId, () => setSelectedSheds([]));
 
   const shedOptions = useMemo(
     () =>
