@@ -45,6 +45,9 @@ postgres-data/
 mobile-tmp/
 .claude/
 **/.claude/
+# Per-developer AI assistant skills (not app code)
+.agents/
+skills-lock.json
 expo-env.d.ts
 *.tsbuildinfo
 .metro-health-check*
